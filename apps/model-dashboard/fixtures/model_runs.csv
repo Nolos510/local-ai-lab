@@ -1,0 +1,5 @@
+id,model_id,date_tested,backend,format,quantization,context_window,hardware,temperature,top_p,tokens_per_sec,ram_usage_gb,stability_notes,run_notes
+1,1,2026-05-01,llama.cpp,GGUF,Q4_K_M,8192,MacBook Air M2,0.2,0.9,42.5,4.2,Stable across smoke prompts,"Fast enough for quick local coding checks."
+2,2,2026-05-02,llama.cpp,GGUF,Q5_K_M,16384,MacBook Pro M3,0.3,0.95,18.8,8.7,Stable but slower,"Best fixture run for synthesis and planning checks."
+3,3,2026-05-03,llama.cpp,GGUF,Q4_K_M,32768,MacBook Pro M3 Max,0.2,0.9,21.4,11.6,Stable on coding prompts,"Strong fixture run for coding comparisons."
+4,4,2026-05-04,llama.cpp,GGUF,Q4_K_M,16384,MacBook Pro M3,0.3,0.9,26.2,7.8,Stable across mixed prompts,"Balanced local assistant fixture run."

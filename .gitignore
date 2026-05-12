@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Local runtime state
+data/dashboard/*.sqlite
+data/dashboard/*.sqlite-*
+data/dashboard/exports/
+
+# Local OS/editor noise
+.DS_Store
+.idea/
+.vscode/

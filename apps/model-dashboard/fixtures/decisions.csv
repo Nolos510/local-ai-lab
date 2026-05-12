@@ -1,0 +1,5 @@
+id,model_id,decision,keep_installed,best_use_case,weakness,retest_condition,created_at
+1,1,keep,1,"Quick local coding checks","Weak long-context synthesis","Retest after next TinyCoder quant refresh",2026-05-04T09:00:00-07:00
+2,2,watchlist,1,"Research synthesis and planning","Slower than small coding model","Retest on larger local hardware",2026-05-04T10:00:00-07:00
+3,3,keep,1,"Local coding and debugging","Higher RAM use than smaller coding model","Retest after quantization refresh",2026-05-04T11:00:00-07:00
+4,4,keep,1,"General local assistant tasks","Less specialized for coding than Qwen fixture","Retest after new local eval batch",2026-05-04T12:00:00-07:00

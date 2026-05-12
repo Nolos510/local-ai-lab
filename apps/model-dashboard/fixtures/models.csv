@@ -1,0 +1,5 @@
+id,model_name,model_family,provider,params_b,license,source_url,notes
+1,TinyCoder Local 1.1B,TinyCoder,Local Fixture,1.1,Apache-2.0,local-registry://tinycoder-1.1b,"Small coding model used for local smoke tests."
+2,ResearchLite Local 7B,ResearchLite,Local Fixture,7.0,MIT,local-registry://researchlite-7b,"General research model used for dashboard fixture coverage."
+3,Qwen2.5-Coder 14B Instruct,Qwen2.5-Coder,Local Fixture,14.0,Apache-2.0,local-registry://qwen2.5-coder-14b-instruct,"Coder-focused local fixture model."
+4,Llama 3.1 Local 8B Instruct,Llama 3.1,Local Fixture,8.0,Community,local-registry://llama-3.1-8b-instruct,"Balanced local assistant fixture model."
