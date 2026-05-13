@@ -5,7 +5,8 @@ A dependency-free local dashboard for reviewing model evaluation results in AI L
 ## Requirements
 
 - Python 3.9 or newer
-- No Python package install is required
+- No runtime package install is required for the dashboard itself
+- The repo `dev` extra installs `pytest` for test validation
 - No API keys, cloud services, model downloads, or network calls are required
 
 ## Quick Start
@@ -73,11 +74,14 @@ Use `--demo` with `serve` to load fixtures automatically when the selected datab
 
 ## Tests
 
-Run the stdlib test suite from the repository root:
+From the repository root, install the dev extra and run pytest:
 
 ```bash
-python3 -m unittest discover apps/model-dashboard/tests
+python -m pip install -e ".[dev]"
+python -m pytest -q
 ```
+
+The test files use `unittest`, and pytest is the configured test runner for the repo.
 
 ## CSV Tables
 

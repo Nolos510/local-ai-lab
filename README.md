@@ -31,6 +31,25 @@ The `skills/` directory contains reusable Codex workflows for local LLM evaluati
 
 ## Quick Start
 
+Create a local virtual environment and install the repo with developer tools:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+```
+
+Run the test suite:
+
+```bash
+python -m pytest -q
+```
+
+The editable install exposes the dashboard package from `apps/model-dashboard`.
+The dashboard runtime currently uses only Python standard library modules; the
+`dev` extra installs `pytest` for local validation.
+
 ```bash
 python3 apps/model-dashboard/run_dashboard.py init-db --reset --with-fixtures
 python3 apps/model-dashboard/run_dashboard.py report
