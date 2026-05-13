@@ -19,3 +19,7 @@ The dashboard ships with demo CSV fixtures so the app, tests, and reports work b
 ## 2026-05-12: No Model Automation in MVP
 
 The MVP tracks model results only. It does not download, install, run, benchmark, or call any AI model.
+
+## 2026-05-13: Root Python Project Metadata
+
+AI Lab OS uses a root `pyproject.toml` so local setup is reproducible with `python -m pip install -e ".[dev]"`. The dashboard package is discovered from `apps/model-dashboard`, runtime dependencies remain empty because the app is stdlib-only, and the `dev` extra installs `pytest` for validation.
