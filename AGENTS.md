@@ -124,17 +124,25 @@ CLI / FastAPI
 
 ## 14. Required Checks Before Completion
 
-Run these when relevant to the change:
+Always-runnable local/code checks:
 
 ```bash
 uv sync
 docker compose config
 uv run ruff check .
 uv run pytest
+LOCAL_AI_LAB_LLM_PROVIDER=mock uv run local-ai-lab ask "What is this lab for?"
+```
+
+Live local-stack checks:
+
+```bash
 uv run local-ai-lab doctor
 uv run local-ai-lab ingest --path data/sample_docs
 uv run local-ai-lab ask "What is this lab for?"
 ```
+
+`uv run local-ai-lab doctor` performs live Qdrant and selected model-provider checks. It may fail when Qdrant, Ollama, LM Studio, or the configured local model is not running. If Ollama is selected and reachable but the configured model is missing, `doctor` must keep returning nonzero; document that exact model-availability reason instead of treating it as passed.
 
 If a command is not implemented, not relevant, blocked by local services, or cannot run in the current environment, explicitly document that in PR notes. Do not imply it passed.
 

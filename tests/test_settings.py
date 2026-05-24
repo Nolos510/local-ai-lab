@@ -6,4 +6,5 @@ def test_settings_defaults_are_local_first() -> None:
 
     assert settings.qdrant_url == "http://localhost:6333"
     assert settings.embedding_provider == "deterministic"
+    assert settings.vector_store_provider == "qdrant"
     assert settings.llm_provider == "ollama"

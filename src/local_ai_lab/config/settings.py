@@ -23,6 +23,8 @@ class Settings(BaseSettings):
 
     embedding_provider: str = "deterministic"
 
+    vector_store_provider: str = "qdrant"
+
     llm_provider: str = "ollama"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen3:14b"

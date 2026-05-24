@@ -1,0 +1,175 @@
+from io import StringIO
+from pathlib import Path
+from typing import Any
+
+import httpx
+
+from local_ai_lab.cli.doctor import CheckStatus, DoctorCheck, collect_doctor_checks, run_doctor
+from local_ai_lab.config.settings import Settings
+
+
+class FakeResponse:
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self._payload = payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict[str, Any]:
+        return self._payload
+
+
+def test_doctor_passes_required_checks_with_ollama_available(tmp_path: Path) -> None:
+    root = _make_project_root(tmp_path)
+    calls: list[str] = []
+    settings = Settings(
+        llm_provider="ollama",
+        qdrant_url="http://localhost:6333",
+        ollama_base_url="http://localhost:11434",
+        ollama_model="qwen3:14b",
+    )
+
+    def fake_get(url: str, *, timeout: float) -> FakeResponse:
+        del timeout
+        calls.append(url)
+        payloads = {
+            "http://localhost:6333/collections": {"result": {"collections": []}},
+            "http://localhost:11434/api/tags": {"models": [{"name": "qwen3:14b"}]},
+        }
+        return FakeResponse(payloads[url])
+
+    output = StringIO()
+    exit_code = run_doctor(
+        root=root,
+        output=output,
+        settings_factory=lambda: settings,
+        http_get=fake_get,
+    )
+
+    assert exit_code == 0
+    assert calls == ["http://localhost:6333/collections", "http://localhost:11434/api/tags"]
+    report = output.getvalue()
+    assert "Local AI Lab Doctor" in report
+    assert "Qdrant" in report
+    assert "PASS" in report
+    assert "LM Studio/OpenAI-compatible endpoint" in report
+    assert "WARN" in report
+
+
+def test_doctor_fails_when_selected_ollama_is_unreachable(tmp_path: Path) -> None:
+    root = _make_project_root(tmp_path)
+    settings = Settings(
+        llm_provider="ollama",
+        qdrant_url="http://localhost:6333",
+        ollama_base_url="http://localhost:11434",
+        ollama_model="qwen3:14b",
+    )
+
+    def fake_get(url: str, *, timeout: float) -> FakeResponse:
+        del timeout
+        if url == "http://localhost:6333/collections":
+            return FakeResponse({"result": {"collections": []}})
+        request = httpx.Request("GET", url)
+        raise httpx.ConnectError("connection failed", request=request)
+
+    checks = collect_doctor_checks(root=root, settings_factory=lambda: settings, http_get=fake_get)
+
+    assert _status(checks, "Qdrant") == CheckStatus.PASS
+    assert _status(checks, "Ollama endpoint") == CheckStatus.FAIL
+    assert _status(checks, "Ollama model") == CheckStatus.FAIL
+    assert any(check.required and check.status == CheckStatus.FAIL for check in checks)
+
+
+def test_doctor_checks_openai_compatible_endpoint_when_selected(tmp_path: Path) -> None:
+    root = _make_project_root(tmp_path)
+    calls: list[str] = []
+    settings = Settings(llm_provider="lm_studio")
+
+    def fake_get(url: str, *, timeout: float) -> FakeResponse:
+        del timeout
+        calls.append(url)
+        payloads = {
+            "http://localhost:6333/collections": {"result": {"collections": []}},
+            "http://localhost:1234/v1/models": {"data": []},
+        }
+        return FakeResponse(payloads[url])
+
+    exit_code = run_doctor(
+        root=root,
+        output=StringIO(),
+        settings_factory=lambda: settings,
+        http_get=fake_get,
+    )
+
+    assert exit_code == 0
+    assert calls == ["http://localhost:6333/collections", "http://localhost:1234/v1/models"]
+
+
+def test_doctor_fails_without_calling_services_when_settings_do_not_parse(tmp_path: Path) -> None:
+    root = _make_project_root(tmp_path)
+
+    def bad_settings() -> Settings:
+        msg = "bad settings"
+        raise ValueError(msg)
+
+    def fake_get(url: str, *, timeout: float) -> FakeResponse:
+        raise AssertionError(f"unexpected live check: {url} {timeout}")
+
+    exit_code = run_doctor(
+        root=root,
+        output=StringIO(),
+        settings_factory=bad_settings,
+        http_get=fake_get,
+    )
+
+    assert exit_code == 1
+
+
+def test_doctor_sanitizes_configured_urls(tmp_path: Path) -> None:
+    root = _make_project_root(tmp_path)
+    settings = Settings(
+        llm_provider="mock",
+        qdrant_url="http://user:secret@localhost:6333/private?token=abc",
+    )
+
+    def fake_get(url: str, *, timeout: float) -> FakeResponse:
+        del timeout
+        assert "secret" in url
+        return FakeResponse({"result": {"collections": []}})
+
+    output = StringIO()
+    exit_code = run_doctor(
+        root=root,
+        output=output,
+        settings_factory=lambda: settings,
+        http_get=fake_get,
+    )
+
+    assert exit_code == 0
+    report = output.getvalue()
+    assert "secret" not in report
+    assert "token" not in report
+    assert "private" not in report
+    assert "http://localhost:6333" in report
+
+
+def _make_project_root(root: Path) -> Path:
+    root.joinpath("pyproject.toml").write_text(
+        '[project]\nname = "local-ai-lab"\n',
+        encoding="utf-8",
+    )
+    for path in (
+        "data/raw",
+        "data/parsed",
+        "data/chunked",
+        "data/eval",
+        "data/synthetic",
+        "data/sample_docs",
+    ):
+        root.joinpath(path).mkdir(parents=True)
+    root.joinpath("compose.yaml").write_text("services: {}\n", encoding="utf-8")
+    return root
+
+
+def _status(checks: list[DoctorCheck], name: str) -> CheckStatus:
+    return next(check.status for check in checks if check.name == name)
