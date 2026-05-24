@@ -88,7 +88,7 @@ Some commands may not exist yet during scaffolding. If a command is missing, doc
 - Pull request, ownership, and CI defaults live under `.github/`.
 - Architecture decisions live under `docs/adr/`.
 - The v0 implementation should remain narrow and testable.
-- This governance pass does not add app code.
+- This governance branch does not introduce additional app code; it documents and constrains the v0 app scaffold that already exists in the repository.
 
 Known command gaps:
 
