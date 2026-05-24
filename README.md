@@ -1,134 +1,117 @@
 # local-ai-lab
 
-`local-ai-lab` is a minimal Apple Silicon local AI engineering lab. It is built for a Mac Studio-style workflow where infrastructure services run in Docker, while model runtimes stay native on macOS.
+`local-ai-lab` is a local-first Apple Silicon AI engineering lab for local inference, local RAG, local model/provider experimentation, evaluation, benchmarking, reproducible AI systems engineering, and privacy-first workflows.
 
-The v0 path is intentionally thin:
+The target machine is an Apple Silicon Mac Studio with 256 GB unified memory, large local storage, and a local-first operating model.
+
+## v0
+
+Current milestone: **v0: Local RAG Backbone + Provider Harness**.
+
+Target architecture:
 
 ```text
-User / CLI uv commands
-  -> FastAPI RAG harness native via uv
-  -> Qdrant Docker service for vector search
-  -> Ollama or LM Studio native macOS endpoint
-  -> Answer with citations
+CLI / FastAPI
+  -> ingestion
+  -> chunking
+  -> Qdrant retrieval
+  -> prompt assembly
+  -> local model provider
+  -> answer + citations
 ```
 
-## What v0 Includes
+## What v0 Is
 
-- FastAPI `/ask` endpoint
-- CLI commands for ingestion and question answering
-- Markdown/text ingestion
-- Basic chunking with source metadata
-- Deterministic local embedding provider for reproducible tests and smoke runs
-- Qdrant vector indexing and retrieval
-- Ollama chat provider
-- LM Studio/OpenAI-compatible chat provider
-- Docker Compose for Qdrant and Open WebUI
-- Starter docs, roadmaps, TODOs, and test coverage
+- A small local RAG backbone.
+- A provider harness for local model endpoints.
+- A reproducible Python project using `uv`.
+- A Docker-backed local infrastructure setup for Qdrant and optional Open WebUI.
+- A foundation for later evaluation, benchmarking, and Apple Silicon runtime experiments.
 
-## Requirements
+## What v0 Is Not
 
-- macOS on Apple Silicon
-- [`uv`](https://docs.astral.sh/uv/)
-- Docker Desktop or a compatible Docker runtime
-- One native local model runtime:
-  - Ollama at `http://localhost:11434`, or
-  - LM Studio local server at `http://localhost:1234/v1`
+- Not an agent framework.
+- Not graph RAG.
+- Not MCP or browser automation.
+- Not a voice assistant.
+- Not an auth system.
+- Not a frontend app.
+- Not a cloud deployment.
+- Not a fine-tuning implementation.
 
-## Quick Start
+## Local-First Architecture
 
-```bash
-cd local-ai-lab
-cp .env.example .env
-uv sync
-docker compose up -d qdrant open-webui
-```
+Docker is used only for local infrastructure services in v0:
 
-Start a local model runtime natively:
+- Qdrant
+- Open WebUI
 
-```bash
-# Ollama example
-ollama pull qwen3:14b
-ollama serve
-```
+Model runtimes stay native on macOS:
 
-Or start LM Studio's OpenAI-compatible local server and set:
+- Ollama
+- LM Studio OpenAI-compatible server
+- MLX / MLX-LM
+- llama.cpp
 
-```bash
-LOCAL_AI_LAB_LLM_PROVIDER=lm_studio
-```
+Open WebUI is optional and parallel. The FastAPI RAG harness must not depend on Open WebUI.
 
-Ingest the sample docs:
+## Python Environment
 
-```bash
-uv run local-ai-lab ingest --path data/sample_docs
-```
+The project uses:
 
-Ask a question:
+- `uv`
+- `pyproject.toml`
+- `uv.lock`
+- `.python-version`
+- `.env.example`
 
-```bash
-uv run local-ai-lab ask "What is this lab for?"
-```
+Do not introduce Conda/Mamba or a primary `requirements.txt` workflow for v0.
 
-Run the API:
-
-```bash
-uv run uvicorn local_ai_lab.api.app:create_app --factory --reload
-```
-
-Then call:
-
-```bash
-curl -s http://127.0.0.1:8000/ask \
-  -H 'content-type: application/json' \
-  -d '{"question":"What is this lab for?"}'
-```
-
-Open WebUI will be available at [http://localhost:8080](http://localhost:8080).
-
-## Offline Smoke Mode
-
-The app includes a `mock` LLM provider so the retrieval path can be exercised without a local model running:
-
-```bash
-LOCAL_AI_LAB_LLM_PROVIDER=mock uv run local-ai-lab ask "What is this lab for?"
-```
-
-The mock provider is not a model. It is only a deterministic development aid.
-
-## Verification
+## Expected First-Run Commands
 
 ```bash
 uv sync
 docker compose config
+docker compose up -d qdrant
 uv run ruff check .
 uv run pytest
+uv run local-ai-lab doctor
+uv run local-ai-lab ingest --path data/sample_docs
+uv run local-ai-lab ask "What is this lab for?"
 ```
 
-## Repository Map
+Some commands may not exist yet during scaffolding. If a command is missing, document that clearly in PR notes instead of treating it as passed.
 
-```text
-src/local_ai_lab/
-  api/            FastAPI app and schemas
-  cli/            uv command entrypoint
-  config/         settings and environment loading
-  embeddings/     embedding provider interfaces
-  ingestion/      document loading and chunking
-  llms/           Ollama, LM Studio, and mock chat providers
-  prompts/        RAG prompt assembly
-  rag/            orchestration service
-  vectorstores/   Qdrant client wrapper
+## Current Status
 
-data/             local corpora and generated data
-models/           base models, quantized models, adapters, embedders, rerankers
-experiments/      dated experiment runs
-reports/          benchmark, eval, and postmortem outputs
-docs/             architecture and roadmap notes
-```
+- Governance and architecture rules live in `AGENTS.md`.
+- Pull request, ownership, and CI defaults live under `.github/`.
+- Architecture decisions live under `docs/adr/`.
+- The v0 implementation should remain narrow and testable.
+- This governance pass does not add app code.
 
-## Design Principles
+Known command gaps:
 
-- Privacy first: local data stays local by default.
-- Reproducible: uv, explicit environment variables, and source metadata.
-- Small surface area: v0 avoids agents, graph RAG, voice, MCP, and fine-tuning implementation.
-- Native where it matters: MLX, Ollama, LM Studio, and llama.cpp are macOS-native workflows.
-- Portable later: API boundaries keep future Docker and cloud deployment plausible.
+- `uv run local-ai-lab doctor` is listed as a required future check, but the command is not implemented yet.
+- `uv run local-ai-lab ask "What is this lab for?"` depends on a native local model endpoint by default. If Ollama or LM Studio is not running with the configured model, document the failure instead of claiming the check passed.
+
+## Future Roadmap
+
+See `docs/roadmap.md` for the staged plan.
+
+Near-term direction:
+
+- Stabilize local RAG ingestion and retrieval.
+- Add reliable local provider checks for Ollama and LM Studio.
+- Add evaluation and benchmark harnesses.
+- Add MLX-LM fine-tuning experiments only after v0 is stable.
+- Document future cloud portability before implementing it.
+
+## Privacy-First Assumptions
+
+- No hidden cloud calls.
+- No secrets committed.
+- `.env.example` contains safe placeholder values only.
+- Logs should not dump user documents, prompts, retrieved chunks, API keys, or private paths by default.
+- Telemetry must be opt-in or disabled by default.
+- Local-first behavior is the default unless an ADR explicitly changes that direction.
