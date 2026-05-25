@@ -139,6 +139,25 @@ Known command gaps:
 
 - `uv run local-ai-lab ask "What is this lab for?"` depends on a native local model endpoint by default. If Ollama or LM Studio is not running with the configured model, document the failure instead of claiming the check passed.
 
+## Troubleshooting
+
+### Provider Errors
+
+If `uv run local-ai-lab ask "What is this lab for?"` fails at the model-provider step, start with:
+
+```bash
+uv run local-ai-lab doctor
+```
+
+For Ollama, confirm the configured model is installed. The default configured model is `qwen3:14b`; replace it if `LOCAL_AI_LAB_OLLAMA_MODEL` is set differently.
+
+```bash
+ollama list
+ollama pull qwen3:14b
+```
+
+For LM Studio/OpenAI-compatible mode, confirm the local server is running and that `LOCAL_AI_LAB_LLM_PROVIDER` is set to the intended provider (`ollama`, `lm_studio`, `openai_compatible`, or `mock`). Use `LOCAL_AI_LAB_LLM_PROVIDER=mock` for smoke checks that should avoid real model calls; it still requires Qdrant, retrieval, and indexed docs.
+
 ## Future Roadmap
 
 See `docs/roadmap.md` for the staged plan.
