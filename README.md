@@ -69,18 +69,63 @@ Do not introduce Conda/Mamba or a primary `requirements.txt` workflow for v0.
 
 ## Expected First-Run Commands
 
+Always-runnable local/code checks:
+
 ```bash
 uv sync
 docker compose config
-docker compose up -d qdrant
 uv run ruff check .
 uv run pytest
+```
+
+Local RAG smoke checks requiring Qdrant and indexed docs, but not a real model:
+
+```bash
+docker compose up -d qdrant
+uv run local-ai-lab ingest --path data/sample_docs
+LOCAL_AI_LAB_LLM_PROVIDER=mock uv run local-ai-lab ask "What is this lab for?"
+```
+
+Live local-model checks:
+
+```bash
+uv run local-ai-lab doctor
+uv run local-ai-lab ask "What is this lab for?"
+```
+
+The mock provider means "no real LLM call." It does not mean "no Qdrant/retrieval dependency." The mock ask path still requires settings to load, deterministic embeddings to run, Qdrant to be reachable, and sample documents/chunks to be indexed.
+
+Live local-model checks may fail if Ollama, LM Studio, or the configured local model is missing. Document those failures honestly instead of treating the commands as passed.
+
+## Health Checks
+
+Run the local v0 stack health check with:
+
+```bash
+uv run local-ai-lab doctor
+```
+
+The command validates package and settings loading, required data directories, `data/sample_docs`, `compose.yaml`, the configured embedding and vector-store providers, Qdrant reachability, and the selected model-provider endpoint. Provider checks for non-selected runtimes are reported as warnings and do not fail the command. Selected provider failures and Qdrant failures return a nonzero exit code.
+
+If Ollama is selected, `doctor` also verifies that the configured Ollama model is available locally. It exits nonzero when Ollama is reachable but the configured model is missing; that means the runtime is up, but the local model inventory does not match configuration.
+
+Local RAG smoke path without a real LLM call:
+
+```bash
+docker compose up -d qdrant
+uv run local-ai-lab ingest --path data/sample_docs
+LOCAL_AI_LAB_LLM_PROVIDER=mock uv run local-ai-lab ask "What is this lab for?"
+```
+
+Real Ollama smoke path:
+
+```bash
+ollama pull qwen3:14b
+docker compose up -d qdrant
 uv run local-ai-lab doctor
 uv run local-ai-lab ingest --path data/sample_docs
 uv run local-ai-lab ask "What is this lab for?"
 ```
-
-Some commands may not exist yet during scaffolding. If a command is missing, document that clearly in PR notes instead of treating it as passed.
 
 ## Current Status
 
@@ -92,7 +137,6 @@ Some commands may not exist yet during scaffolding. If a command is missing, doc
 
 Known command gaps:
 
-- `uv run local-ai-lab doctor` is listed as a required future check, but the command is not implemented yet.
 - `uv run local-ai-lab ask "What is this lab for?"` depends on a native local model endpoint by default. If Ollama or LM Studio is not running with the configured model, document the failure instead of claiming the check passed.
 
 ## Future Roadmap
