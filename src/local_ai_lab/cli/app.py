@@ -1,8 +1,10 @@
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from local_ai_lab.cli.doctor import run_doctor
+from local_ai_lab.llms.base import ChatProviderError
 from local_ai_lab.rag.factory import build_rag_service
 
 
@@ -33,7 +35,11 @@ def main() -> int:
 
     if args.command == "ask":
         service = build_rag_service()
-        result = service.ask(args.question, top_k=args.top_k)
+        try:
+            result = service.ask(args.question, top_k=args.top_k)
+        except ChatProviderError as exc:
+            print(f"Provider error: {exc}", file=sys.stderr)
+            return 1
         if args.json:
             print(
                 json.dumps(
