@@ -314,7 +314,11 @@ def _check_ollama_model(
     return DoctorCheck(
         "Ollama model",
         CheckStatus.FAIL,
-        "configured model is not available locally",
+        (
+            f"configured model '{settings.ollama_model}' is not available locally; "
+            f"run `ollama pull {settings.ollama_model}` or set "
+            "LOCAL_AI_LAB_OLLAMA_MODEL to an installed model"
+        ),
     )
 
 

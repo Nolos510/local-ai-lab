@@ -131,16 +131,24 @@ uv sync
 docker compose config
 uv run ruff check .
 uv run pytest
+```
+
+Local RAG smoke checks requiring Qdrant and indexed docs, but not a real model:
+
+```bash
+docker compose up -d qdrant
+uv run local-ai-lab ingest --path data/sample_docs
 LOCAL_AI_LAB_LLM_PROVIDER=mock uv run local-ai-lab ask "What is this lab for?"
 ```
 
-Live local-stack checks:
+Live local-model checks:
 
 ```bash
 uv run local-ai-lab doctor
-uv run local-ai-lab ingest --path data/sample_docs
 uv run local-ai-lab ask "What is this lab for?"
 ```
+
+The mock provider means "no real LLM call." It does not remove the Qdrant, retrieval, settings, embedding, or indexed-document dependencies from the ask path. Live local-model checks may fail if Ollama, LM Studio, or the configured local model is missing.
 
 `uv run local-ai-lab doctor` performs live Qdrant and selected model-provider checks. It may fail when Qdrant, Ollama, LM Studio, or the configured local model is not running. If Ollama is selected and reachable but the configured model is missing, `doctor` must keep returning nonzero; document that exact model-availability reason instead of treating it as passed.
 

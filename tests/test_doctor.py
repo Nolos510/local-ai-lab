@@ -80,6 +80,44 @@ def test_doctor_fails_when_selected_ollama_is_unreachable(tmp_path: Path) -> Non
     assert any(check.required and check.status == CheckStatus.FAIL for check in checks)
 
 
+def test_doctor_fails_with_actionable_detail_when_selected_ollama_model_is_missing(
+    tmp_path: Path,
+) -> None:
+    root = _make_project_root(tmp_path)
+    settings = Settings(
+        llm_provider="ollama",
+        qdrant_url="http://localhost:6333",
+        ollama_base_url="http://user:supersecret@localhost:11434/private?token=abc",
+        ollama_model="qwen3:14b",
+    )
+
+    def fake_get(url: str, *, timeout: float) -> FakeResponse:
+        del timeout
+        if url == "http://localhost:6333/collections":
+            return FakeResponse({"result": {"collections": []}})
+        assert "supersecret" in url
+        return FakeResponse({"models": [{"name": "llama3.2:3b"}]})
+
+    output = StringIO()
+    exit_code = run_doctor(
+        root=root,
+        output=output,
+        settings_factory=lambda: settings,
+        http_get=fake_get,
+    )
+
+    report = output.getvalue()
+    assert exit_code == 1
+    assert "Ollama model" in report
+    assert "FAIL" in report
+    assert "configured model 'qwen3:14b' is not available locally" in report
+    assert "`ollama pull qwen3:14b`" in report
+    assert "LOCAL_AI_LAB_OLLAMA_MODEL" in report
+    assert "supersecret" not in report
+    assert "token=abc" not in report
+    assert "/private" not in report
+
+
 def test_doctor_checks_openai_compatible_endpoint_when_selected(tmp_path: Path) -> None:
     root = _make_project_root(tmp_path)
     calls: list[str] = []

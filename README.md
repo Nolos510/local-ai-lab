@@ -76,19 +76,26 @@ uv sync
 docker compose config
 uv run ruff check .
 uv run pytest
-LOCAL_AI_LAB_LLM_PROVIDER=mock uv run local-ai-lab ask "What is this lab for?"
 ```
 
-Live local-stack checks:
+Local RAG smoke checks requiring Qdrant and indexed docs, but not a real model:
 
 ```bash
 docker compose up -d qdrant
-uv run local-ai-lab doctor
 uv run local-ai-lab ingest --path data/sample_docs
+LOCAL_AI_LAB_LLM_PROVIDER=mock uv run local-ai-lab ask "What is this lab for?"
+```
+
+Live local-model checks:
+
+```bash
+uv run local-ai-lab doctor
 uv run local-ai-lab ask "What is this lab for?"
 ```
 
-Some commands may not exist yet during scaffolding. If a command is missing, document that clearly in PR notes instead of treating it as passed.
+The mock provider means "no real LLM call." It does not mean "no Qdrant/retrieval dependency." The mock ask path still requires settings to load, deterministic embeddings to run, Qdrant to be reachable, and sample documents/chunks to be indexed.
+
+Live local-model checks may fail if Ollama, LM Studio, or the configured local model is missing. Document those failures honestly instead of treating the commands as passed.
 
 ## Health Checks
 
@@ -102,9 +109,11 @@ The command validates package and settings loading, required data directories, `
 
 If Ollama is selected, `doctor` also verifies that the configured Ollama model is available locally. It exits nonzero when Ollama is reachable but the configured model is missing; that means the runtime is up, but the local model inventory does not match configuration.
 
-Offline deterministic smoke path:
+Local RAG smoke path without a real LLM call:
 
 ```bash
+docker compose up -d qdrant
+uv run local-ai-lab ingest --path data/sample_docs
 LOCAL_AI_LAB_LLM_PROVIDER=mock uv run local-ai-lab ask "What is this lab for?"
 ```
 
