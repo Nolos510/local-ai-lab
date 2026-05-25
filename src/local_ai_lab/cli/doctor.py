@@ -100,6 +100,12 @@ def collect_doctor_checks(
                     "settings unavailable",
                     required=False,
                 ),
+                DoctorCheck(
+                    "LM Studio/OpenAI-compatible model",
+                    CheckStatus.WARN,
+                    "settings unavailable",
+                    required=False,
+                ),
             ]
         )
         return checks
@@ -130,10 +136,17 @@ def collect_doctor_checks(
     )
 
     openai_selected = settings.llm_provider.lower() in OPENAI_COMPATIBLE_PROVIDERS
+    openai_endpoint_check, openai_models_payload = _check_openai_compatible_endpoint(
+        settings,
+        http_get=http_get,
+        required=openai_selected,
+    )
+    checks.append(openai_endpoint_check)
     checks.append(
-        _check_openai_compatible_endpoint(
+        _check_openai_compatible_model(
             settings,
-            http_get=http_get,
+            models_payload=openai_models_payload,
+            endpoint_status=openai_endpoint_check.status,
             required=openai_selected,
         )
     )
@@ -327,24 +340,70 @@ def _check_openai_compatible_endpoint(
     *,
     http_get: HttpGet,
     required: bool,
+) -> tuple[DoctorCheck, dict[str, Any] | None]:
+    if not required:
+        return (
+            DoctorCheck(
+                "LM Studio/OpenAI-compatible endpoint",
+                CheckStatus.WARN,
+                "provider not selected; not checked",
+                required=False,
+            ),
+            None,
+        )
+
+    url = _join_url(settings.lm_studio_base_url, "models")
+    ok, detail, payload = _get_json(url, http_get=http_get, timeout_seconds=_timeout(settings))
+    if ok:
+        return (
+            DoctorCheck(
+                "LM Studio/OpenAI-compatible endpoint",
+                CheckStatus.PASS,
+                f"reachable at {_sanitize_url(settings.lm_studio_base_url)}",
+            ),
+            payload,
+        )
+    return DoctorCheck("LM Studio/OpenAI-compatible endpoint", CheckStatus.FAIL, detail), None
+
+
+def _check_openai_compatible_model(
+    settings: Settings,
+    *,
+    models_payload: dict[str, Any] | None,
+    endpoint_status: CheckStatus,
+    required: bool,
 ) -> DoctorCheck:
     if not required:
         return DoctorCheck(
-            "LM Studio/OpenAI-compatible endpoint",
+            "LM Studio/OpenAI-compatible model",
             CheckStatus.WARN,
             "provider not selected; not checked",
             required=False,
         )
-
-    url = _join_url(settings.lm_studio_base_url, "models")
-    ok, detail, _ = _get_json(url, http_get=http_get, timeout_seconds=_timeout(settings))
-    if ok:
+    if endpoint_status != CheckStatus.PASS or models_payload is None:
         return DoctorCheck(
-            "LM Studio/OpenAI-compatible endpoint",
-            CheckStatus.PASS,
-            f"reachable at {_sanitize_url(settings.lm_studio_base_url)}",
+            "LM Studio/OpenAI-compatible model",
+            CheckStatus.FAIL,
+            "LM Studio/OpenAI-compatible model list unavailable",
         )
-    return DoctorCheck("LM Studio/OpenAI-compatible endpoint", CheckStatus.FAIL, detail)
+
+    model_ids = _openai_compatible_model_ids(models_payload)
+    if settings.lm_studio_model in model_ids:
+        return DoctorCheck(
+            "LM Studio/OpenAI-compatible model",
+            CheckStatus.PASS,
+            "configured model is available locally",
+        )
+    models_url = _safe_openai_compatible_models_url(settings.lm_studio_base_url)
+    return DoctorCheck(
+        "LM Studio/OpenAI-compatible model",
+        CheckStatus.FAIL,
+        (
+            f"configured model '{settings.lm_studio_model}' was not found; "
+            f"run `curl -s {models_url} | uv run python -m json.tool`; "
+            "copy one of the returned `id` values into LOCAL_AI_LAB_LM_STUDIO_MODEL"
+        ),
+    )
 
 
 def _get_json(
@@ -384,6 +443,28 @@ def _sanitize_url(url: str) -> str:
     if parts.port is not None:
         netloc = f"{netloc}:{parts.port}"
     return urlunsplit((parts.scheme, netloc, "", "", ""))
+
+
+def _safe_openai_compatible_models_url(base_url: str) -> str:
+    parts = urlsplit(base_url)
+    if not parts.scheme or not parts.hostname:
+        return "http://localhost:1234/v1/models"
+    netloc = parts.hostname
+    if parts.port is not None:
+        netloc = f"{netloc}:{parts.port}"
+    path = "/v1/models" if parts.path.rstrip("/") == "/v1" else "/models"
+    return urlunsplit((parts.scheme, netloc, path, "", ""))
+
+
+def _openai_compatible_model_ids(payload: dict[str, Any]) -> set[str]:
+    data = payload.get("data", [])
+    if not isinstance(data, list):
+        return set()
+    return {
+        str(model.get("id"))
+        for model in data
+        if isinstance(model, dict) and model.get("id") is not None
+    }
 
 
 def _timeout(settings: Settings) -> float:
