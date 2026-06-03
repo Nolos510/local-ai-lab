@@ -17,7 +17,7 @@ AI Lab Radar
 
 ## Components
 
-- **AI Lab Radar:** Future automation for finding candidate models to review. It records candidates only and does not download models.
+- **AI Lab Radar:** Scaffolded workflow for finding candidate models to review. It records candidates only and does not download models.
 - **LLM Eval Harness:** Future local benchmark suite that writes structured eval outputs for dashboard import.
 - **Model Dashboard:** Current MVP. It stores model metadata, test runs, eval scores, and decisions in SQLite with CSV import/export.
 - **Skill Library:** Reusable workflows for evaluation, research, code review, PRD-to-tasks, resume bullets, and SEO audits.

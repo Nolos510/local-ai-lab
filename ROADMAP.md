@@ -22,9 +22,10 @@
 
 ## Phase 3: AI Lab Radar
 
-- Add `automations/ai-lab-radar` to track newly interesting local and open-weight models.
+- Use `automations/ai-lab-radar` to track newly interesting local and open-weight models.
 - Store radar findings as review candidates instead of auto-downloading anything.
 - Connect radar output to the model registry and task queue.
+- Current scaffold defines candidate schema, report template, and local-first boundaries.
 
 ## Phase 4: Workflow Skills and Briefs
 

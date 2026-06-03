@@ -24,6 +24,10 @@ The MVP tracks model results only. It does not download, install, run, benchmark
 
 AI Lab OS uses a root `pyproject.toml` so local setup is reproducible with `python -m pip install -e ".[dev]"`. The dashboard package is discovered from `apps/model-dashboard`, runtime dependencies remain empty because the app is stdlib-only, and the `dev` extra installs `pytest` for validation.
 
+## 2026-06-03: AI Lab Radar Starts as Candidate-Only
+
+AI Lab Radar starts as a documentation and schema scaffold under `automations/ai-lab-radar`. It can record user-approved model discovery notes as review candidates, but it must not crawl the web, download models, call cloud APIs, or turn source claims into eval scores without a local benchmark run.
+
 ## 2026-05-15: Local LLM Benchmark v0.1 Contract
 
 The first repeatable local LLM benchmark is documentation-first under `evals/local-llm-benchmark/SPEC.md`. It defines prompt set `ai-lab-local-llm-core-v0.1`, rubric version `ai-lab-local-llm-rubric-v0.1`, raw local artifact expectations, and dashboard-compatible CSV output. Benchmark-only identifiers stay in raw artifacts, skill reports, and `model_runs.run_notes` until the dashboard needs first-class prompt-level tables.
