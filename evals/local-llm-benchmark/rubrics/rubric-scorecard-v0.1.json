@@ -1,0 +1,378 @@
+{
+  "scorecard_schema_version": "ai-lab-rubric-scorecard-v0.1",
+  "rubric_version": "ai-lab-local-llm-rubric-v0.1",
+  "prompt_set_id": "ai-lab-local-llm-core-v0.1",
+  "source_spec": "evals/local-llm-benchmark/SPEC.md",
+  "format_status": "proposal",
+  "description": "Rubric and scorecard contract for evaluating Local LLM Benchmark v0.1 runs.",
+  "score_scale": {
+    "min": 0,
+    "max": 100,
+    "anchors": [
+      {
+        "range": "0-24",
+        "meaning": "Unusable, empty, or actively harmful for this dimension."
+      },
+      {
+        "range": "25-49",
+        "meaning": "Frequent failures; only useful with heavy human correction."
+      },
+      {
+        "range": "50-69",
+        "meaning": "Mixed but salvageable; useful for drafts or low-risk tasks."
+      },
+      {
+        "range": "70-84",
+        "meaning": "Reliable for normal local use with review."
+      },
+      {
+        "range": "85-100",
+        "meaning": "Strong, repeatable, and low-friction for this dimension."
+      }
+    ]
+  },
+  "evidence_rules": [
+    "Preserve the full raw response for each prompt before summary scoring.",
+    "Record a concise evaluator observation per prompt.",
+    "Require explicit evidence for every dimension score below 60 or above 85.",
+    "Keep raw_response, evaluator_observation, score_rationale, and dashboard_summary separate.",
+    "Represent missing timing, memory, token, or backend values as blank or null rather than estimated."
+  ],
+  "dimensions": [
+    {
+      "field": "instruction_following",
+      "description": "Follows requested structure, constraints, formats, and scope.",
+      "primary_prompt_ids": [
+        "LLMCORE-v0.1-001",
+        "LLMCORE-v0.1-002",
+        "LLMCORE-v0.1-003",
+        "LLMCORE-v0.1-004",
+        "LLMCORE-v0.1-006",
+        "LLMCORE-v0.1-008",
+        "LLMCORE-v0.1-009",
+        "LLMCORE-v0.1-011",
+        "LLMCORE-v0.1-012"
+      ],
+      "score_guidance": "Score structure, count constraints, format requests, scope control, and compliance with prompt-specific requirements."
+    },
+    {
+      "field": "truthfulness_uncertainty",
+      "description": "Avoids false certainty, handles unknowns, corrects false claims, and does not invent live access.",
+      "primary_prompt_ids": [
+        "LLMCORE-v0.1-001",
+        "LLMCORE-v0.1-002",
+        "LLMCORE-v0.1-008",
+        "LLMCORE-v0.1-012"
+      ],
+      "score_guidance": "Score epistemic caution, supplied-source faithfulness, refusal of invented live knowledge, and appropriate uncertainty."
+    },
+    {
+      "field": "reasoning",
+      "description": "Solves multi-step logic, arithmetic, and constraint problems without shortcut errors.",
+      "primary_prompt_ids": [
+        "LLMCORE-v0.1-001",
+        "LLMCORE-v0.1-002",
+        "LLMCORE-v0.1-003",
+        "LLMCORE-v0.1-005"
+      ],
+      "score_guidance": "Score arithmetic, logic chains, self-correction, and explanation quality."
+    },
+    {
+      "field": "coding_debugging",
+      "description": "Produces runnable code from specs, finds bugs, and explains fixes.",
+      "primary_prompt_ids": [
+        "LLMCORE-v0.1-001",
+        "LLMCORE-v0.1-004",
+        "LLMCORE-v0.1-005"
+      ],
+      "score_guidance": "Score input-contract handling, runnable stdlib code, deterministic behavior, meaningful tests, and bug diagnosis."
+    },
+    {
+      "field": "agent_planning",
+      "description": "Creates scoped plans with files, tests, risks, and non-goals.",
+      "primary_prompt_ids": [
+        "LLMCORE-v0.1-006",
+        "LLMCORE-v0.1-007",
+        "LLMCORE-v0.1-010"
+      ],
+      "score_guidance": "Score planning scope, sequencing, risks, tests, non-goals, and ability to preserve constraints."
+    },
+    {
+      "field": "local_ai_lab_usefulness",
+      "description": "Helps with local model workflows, privacy, metadata, and dashboard-ready decisions.",
+      "primary_prompt_ids": [
+        "LLMCORE-v0.1-006",
+        "LLMCORE-v0.1-007",
+        "LLMCORE-v0.1-012"
+      ],
+      "score_guidance": "Score local-first behavior, metadata capture, dashboard fit, privacy boundaries, and practical model-lab workflow advice."
+    },
+    {
+      "field": "research_synthesis",
+      "description": "Synthesizes supplied sources faithfully with attribution and unknowns.",
+      "primary_prompt_ids": [
+        "LLMCORE-v0.1-008",
+        "LLMCORE-v0.1-010"
+      ],
+      "score_guidance": "Score source grounding, citation discipline, unknown handling, and synthesis of notes without invented facts."
+    },
+    {
+      "field": "business_seo_strategy",
+      "description": "Gives practical business/SEO recommendations from provided constraints.",
+      "primary_prompt_ids": [
+        "LLMCORE-v0.1-009"
+      ],
+      "score_guidance": "Score local SEO specificity, prioritization, title/meta quality, content ideas, and constraint awareness."
+    },
+    {
+      "field": "long_context",
+      "description": "Organizes many notes without dropping key constraints or contradictions.",
+      "primary_prompt_ids": [
+        "LLMCORE-v0.1-010"
+      ],
+      "score_guidance": "Score retention of key notes, separation of decisions/risks/actions, and preservation of tensions."
+    },
+    {
+      "field": "creativity",
+      "description": "Produces original, constrained writing that fits tone and purpose.",
+      "primary_prompt_ids": [
+        "LLMCORE-v0.1-009",
+        "LLMCORE-v0.1-011"
+      ],
+      "score_guidance": "Score originality, audience fit, tone, useful language, and constraint satisfaction."
+    },
+    {
+      "field": "speed_practicality",
+      "description": "Balances answer quality with latency, throughput, RAM use, and first-pass productivity.",
+      "primary_prompt_ids": [
+        "LLMCORE-v0.1-007"
+      ],
+      "score_guidance": "Score observed runtime, throughput, memory behavior, stability, and whether quality is useful enough for fast iteration."
+    }
+  ],
+  "score_caps": [
+    {
+      "dimension": "truthfulness_uncertainty",
+      "max_score": 60,
+      "condition": "The response invents live knowledge, tool access, current facts, or unsupported supplied-source claims."
+    },
+    {
+      "dimension": "coding_debugging",
+      "max_score": 65,
+      "condition": "The code is not runnable without obvious fixes."
+    },
+    {
+      "dimension": "instruction_following",
+      "max_score": 70,
+      "condition": "The response misses an explicit output section, count constraint, or core requested format."
+    },
+    {
+      "dimension": "speed_practicality",
+      "max_score": 70,
+      "condition": "The run is fast but the answer quality is too weak for dependable first-pass use."
+    }
+  ],
+  "aggregate_score": {
+    "field": "total_score",
+    "method": "arithmetic_mean",
+    "round_to_decimal_places": 2,
+    "input_fields": [
+      "instruction_following",
+      "truthfulness_uncertainty",
+      "reasoning",
+      "coding_debugging",
+      "agent_planning",
+      "local_ai_lab_usefulness",
+      "research_synthesis",
+      "business_seo_strategy",
+      "long_context",
+      "creativity",
+      "speed_practicality"
+    ],
+    "dashboard_behavior": "apps/model-dashboard computes this mean when total_score is blank in eval_scores.csv."
+  },
+  "final_labels": [
+    "DAILY_DRIVER",
+    "CODING_SPECIALIST",
+    "RESEARCH_SPECIALIST",
+    "AGENT_PLANNER",
+    "CREATIVE_WRITER",
+    "LOCAL_AI_ASSISTANT",
+    "SEO_BUSINESS_HELPER",
+    "MULTIMODAL_SPECIALIST",
+    "SANDBOX_ONLY",
+    "WATCHLIST",
+    "SKIP"
+  ],
+  "decision_values": [
+    {
+      "decision": "keep",
+      "meaning": "Useful enough to keep installed for a defined use case.",
+      "default_keep_installed": 1
+    },
+    {
+      "decision": "watchlist",
+      "meaning": "Promising, but not reliable enough yet.",
+      "default_keep_installed": 0
+    },
+    {
+      "decision": "retest",
+      "meaning": "Result is incomplete, unstable, or needs a different quant/backend.",
+      "default_keep_installed": 0
+    },
+    {
+      "decision": "skip",
+      "meaning": "Not worth keeping for the current lab.",
+      "default_keep_installed": 0
+    }
+  ],
+  "prompt_result_record_proposal": {
+    "prompt_id": "LLMCORE-v0.1-001",
+    "status": "not_run",
+    "status_allowed_values": [
+      "not_run",
+      "completed",
+      "timeout",
+      "error",
+      "empty",
+      "invalid_refusal"
+    ],
+    "raw_response_path": null,
+    "evaluator_observation": null,
+    "failure_modes": [],
+    "evidence_items": [
+      {
+        "dimension": "instruction_following",
+        "evidence_type": "paraphrase",
+        "note": null,
+        "quote": null
+      }
+    ],
+    "prompt_dimension_scores": {
+      "instruction_following": null,
+      "truthfulness_uncertainty": null,
+      "reasoning": null,
+      "coding_debugging": null,
+      "agent_planning": null,
+      "local_ai_lab_usefulness": null,
+      "research_synthesis": null,
+      "business_seo_strategy": null,
+      "long_context": null,
+      "creativity": null,
+      "speed_practicality": null
+    }
+  },
+  "run_scorecard_record_proposal": {
+    "benchmark_run_id": "YYYYMMDD-slug-model-backend-quant",
+    "prompt_set_id": "ai-lab-local-llm-core-v0.1",
+    "rubric_version": "ai-lab-local-llm-rubric-v0.1",
+    "model_metadata": {
+      "model_name": null,
+      "model_family": null,
+      "provider": null,
+      "params_b": null,
+      "license": null,
+      "source_url": null,
+      "notes": null
+    },
+    "run_metadata": {
+      "date_tested": null,
+      "backend": null,
+      "format": null,
+      "quantization": null,
+      "context_window": null,
+      "hardware": null,
+      "temperature": null,
+      "top_p": null,
+      "tokens_per_sec": null,
+      "ram_usage_gb": null,
+      "stability_notes": null,
+      "run_notes": null
+    },
+    "prompt_results_path": "data/eval_results/<benchmark_run_id>/raw_responses.jsonl",
+    "prompt_scorecards_path": "data/eval_results/<benchmark_run_id>/scorecard.json",
+    "aggregate_scores": {
+      "instruction_following": null,
+      "truthfulness_uncertainty": null,
+      "reasoning": null,
+      "coding_debugging": null,
+      "agent_planning": null,
+      "local_ai_lab_usefulness": null,
+      "research_synthesis": null,
+      "business_seo_strategy": null,
+      "long_context": null,
+      "creativity": null,
+      "speed_practicality": null,
+      "total_score": null,
+      "final_label": null
+    },
+    "decision": {
+      "decision": null,
+      "keep_installed": null,
+      "best_use_case": null,
+      "weakness": null,
+      "retest_condition": null
+    }
+  },
+  "dashboard_normalized_outputs": {
+    "models_csv_fields": [
+      "id",
+      "model_name",
+      "model_family",
+      "provider",
+      "params_b",
+      "license",
+      "source_url",
+      "notes"
+    ],
+    "model_runs_csv_fields": [
+      "id",
+      "model_id",
+      "date_tested",
+      "backend",
+      "format",
+      "quantization",
+      "context_window",
+      "hardware",
+      "temperature",
+      "top_p",
+      "tokens_per_sec",
+      "ram_usage_gb",
+      "stability_notes",
+      "run_notes"
+    ],
+    "eval_scores_csv_fields": [
+      "id",
+      "run_id",
+      "instruction_following",
+      "truthfulness_uncertainty",
+      "reasoning",
+      "coding_debugging",
+      "agent_planning",
+      "local_ai_lab_usefulness",
+      "research_synthesis",
+      "business_seo_strategy",
+      "long_context",
+      "creativity",
+      "speed_practicality",
+      "total_score",
+      "final_label"
+    ],
+    "decisions_csv_fields": [
+      "id",
+      "model_id",
+      "decision",
+      "keep_installed",
+      "best_use_case",
+      "weakness",
+      "retest_condition",
+      "created_at"
+    ],
+    "benchmark_fields_for_run_notes": [
+      "benchmark_run_id",
+      "prompt_set_id",
+      "rubric_version",
+      "raw_artifact_path"
+    ]
+  }
+}

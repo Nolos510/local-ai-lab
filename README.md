@@ -36,9 +36,14 @@ Create a local virtual environment and install the repo with developer tools:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
+python --version
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
+
+Use `python3` to create the virtual environment on macOS. After activation, use
+`python` so every command runs through `.venv/bin/python`. If `python` does not
+resolve to the virtualenv, reactivate it with `source .venv/bin/activate`.
 
 Run the test suite:
 
@@ -46,9 +51,24 @@ Run the test suite:
 python -m pytest -q
 ```
 
+Run the dashboard smoke check:
+
+```bash
+python3 scripts/model_dashboard_smoke.py
+```
+
 The editable install exposes the dashboard package from `apps/model-dashboard`.
 The dashboard runtime currently uses only Python standard library modules; the
 `dev` extra installs `pytest` for local validation.
+
+If `python -m pytest -q` fails with `No module named pytest`, the `dev` extra is
+not installed in the active environment. Rerun `python -m pip install -e ".[dev]"`
+after activating `.venv`.
+
+In sandboxed Codex runs, pip may need network approval to download build tooling
+or `pytest` from PyPI. That network access is only for installing developer
+dependencies; running the dashboard and tests does not call cloud APIs, download
+models, or require secrets.
 
 ```bash
 python3 apps/model-dashboard/run_dashboard.py init-db --reset --with-fixtures

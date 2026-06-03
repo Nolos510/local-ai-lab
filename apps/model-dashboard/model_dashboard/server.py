@@ -2,7 +2,7 @@
 
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from . import db
 from .reports import generate_markdown_report
@@ -41,6 +41,125 @@ def _table(headers, rows, empty_message="No rows yet."):
         row_html.append("<tr>{}</tr>".format("".join("<td>{}</td>".format(cell) for cell in row)))
     return "<table><thead><tr>{}</tr></thead><tbody>{}</tbody></table>".format(
         header_html, "".join(row_html)
+    )
+
+
+def _query_value(query, key):
+    value = query.get(key, "")
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else ""
+    return str(value).strip()
+
+
+def _option(value, label, selected):
+    selected_attr = " selected" if value == selected else ""
+    return '<option value="{}"{}>{}</option>'.format(
+        _text(value), selected_attr, _text(label)
+    )
+
+
+def _field_options(rows, field):
+    values = {str(row[field]) for row in rows if row[field] not in (None, "")}
+    return sorted(values, key=lambda value: value.lower())
+
+
+def _filter_values(query):
+    return {
+        "q": _query_value(query, "q"),
+        "label": _query_value(query, "label"),
+        "decision": _query_value(query, "decision"),
+        "keep": _query_value(query, "keep"),
+    }
+
+
+def _matches_search(row, search):
+    if not search:
+        return True
+    haystack = " ".join(
+        str(row[field] or "")
+        for field in (
+            "model_name",
+            "model_family",
+            "provider",
+            "backend",
+            "quantization",
+            "final_label",
+            "decision",
+            "best_use_case",
+        )
+    )
+    return search.lower() in haystack.lower()
+
+
+def _filter_summaries(rows, filters):
+    filtered = []
+    for row in rows:
+        if filters["label"] and row["final_label"] != filters["label"]:
+            continue
+        if filters["decision"] and row["decision"] != filters["decision"]:
+            continue
+        if filters["keep"] == "yes" and row["keep_installed"] != 1:
+            continue
+        if filters["keep"] == "no" and row["keep_installed"] != 0:
+            continue
+        if not _matches_search(row, filters["q"]):
+            continue
+        filtered.append(row)
+    return filtered
+
+
+def _overview_filters(rows, filters):
+    label_options = "".join(
+        _option(label, label, filters["label"]) for label in _field_options(rows, "final_label")
+    )
+    decision_options = "".join(
+        _option(decision, decision, filters["decision"])
+        for decision in _field_options(rows, "decision")
+    )
+    clear_link = '<a class="clear-link" href="/">Clear</a>' if any(filters.values()) else ""
+    return """
+    <form class="filters" method="get" action="/">
+      <div class="field field-wide">
+        <label for="filter-q">Search</label>
+        <input id="filter-q" name="q" type="search" value="{q}">
+      </div>
+      <div class="field">
+        <label for="filter-label">Label</label>
+        <select id="filter-label" name="label">
+          {all_labels}
+          {label_options}
+        </select>
+      </div>
+      <div class="field">
+        <label for="filter-decision">Decision</label>
+        <select id="filter-decision" name="decision">
+          {all_decisions}
+          {decision_options}
+        </select>
+      </div>
+      <div class="field">
+        <label for="filter-keep">Install</label>
+        <select id="filter-keep" name="keep">
+          {any_keep}
+          {keep_yes}
+          {keep_no}
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button type="submit">Apply</button>
+        {clear_link}
+      </div>
+    </form>
+    """.format(
+        q=_text(filters["q"]),
+        all_labels=_option("", "All labels", filters["label"]),
+        label_options=label_options,
+        all_decisions=_option("", "All decisions", filters["decision"]),
+        decision_options=decision_options,
+        any_keep=_option("", "Any", filters["keep"]),
+        keep_yes=_option("yes", "Keep", filters["keep"]),
+        keep_no=_option("no", "Not kept", filters["keep"]),
+        clear_link=clear_link,
     )
 
 
@@ -135,6 +254,55 @@ def _layout(title, current_path, body):
       font-size: 26px;
       font-weight: 700;
     }}
+    .filters {{
+      display: grid;
+      grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(140px, 1fr)) auto;
+      gap: 10px;
+      align-items: end;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      margin: 0 0 14px;
+    }}
+    .field label {{
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      margin: 0 0 4px;
+    }}
+    input, select {{
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fffdf8;
+      color: var(--ink);
+      font: inherit;
+      padding: 7px 9px;
+    }}
+    button {{
+      min-height: 36px;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent);
+      color: #ffffff;
+      font: inherit;
+      font-weight: 700;
+      padding: 7px 12px;
+      cursor: pointer;
+    }}
+    .filter-actions {{
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }}
+    .clear-link {{
+      color: var(--muted);
+      font-size: 13px;
+      text-decoration: none;
+    }}
     h2 {{
       font-size: 20px;
       margin: 0 0 12px;
@@ -188,6 +356,8 @@ def _layout(title, current_path, body):
       gap: 16px;
     }}
     @media (max-width: 780px) {{
+      .filters {{ grid-template-columns: 1fr; }}
+      .filter-actions {{ justify-content: flex-start; }}
       .split {{ grid-template-columns: 1fr; }}
       h1 {{ font-size: 24px; }}
       th, td {{ padding: 8px 7px; }}
@@ -203,9 +373,11 @@ def _layout(title, current_path, body):
     )
 
 
-def _overview(conn):
+def _overview(conn, query=None):
     counts = {table: db.table_count(conn, table) for table in db.TABLES}
     summaries = db.list_model_summaries(conn)
+    filters = _filter_values(query or {})
+    filtered_summaries = _filter_summaries(summaries, filters)
     avg_score = conn.execute("SELECT AVG(total_score) AS avg_score FROM eval_scores").fetchone()[
         "avg_score"
     ]
@@ -213,7 +385,7 @@ def _overview(conn):
         "SELECT COUNT(*) AS count FROM decisions WHERE keep_installed = 1"
     ).fetchone()["count"]
     rows = []
-    for row in summaries:
+    for row in filtered_summaries:
         rows.append(
             [
                 '<a href="/models/{id}">{name}</a>'.format(
@@ -237,7 +409,8 @@ def _overview(conn):
       <div class="stat"><div class="label">Kept installed</div><div class="value">{kept}</div></div>
     </section>
     <section>
-      <h2>Ranked Local Models</h2>
+      {filters}
+      <h2>Ranked Local Models{filtered_count}</h2>
       {table}
     </section>
     """.format(
@@ -245,6 +418,12 @@ def _overview(conn):
         runs=counts["model_runs"],
         avg=_number(avg_score, 1, "0.0"),
         kept=keep_count,
+        filters=_overview_filters(summaries, filters),
+        filtered_count=(
+            " ({} of {})".format(len(filtered_summaries), len(summaries))
+            if any(filters.values())
+            else ""
+        ),
         table=_table(
             [
                 "Model",
@@ -258,6 +437,7 @@ def _overview(conn):
                 "Decision",
             ],
             rows,
+            empty_message="No models match these filters.",
         ),
     )
     return _layout("Overview", "/", body)
@@ -441,7 +621,7 @@ def make_handler(database_path):
             try:
                 with db.connect(database_path) as conn:
                     db.create_schema(conn)
-                    html = self._route(parsed.path, conn)
+                    html = self._route(parsed.path, parse_qs(parsed.query), conn)
                 self.send_response(200)
             except Exception as exc:
                 html = _layout("Error", "", "<h2>Error</h2><p>{}</p>".format(_text(exc)))
@@ -453,9 +633,9 @@ def make_handler(database_path):
         def log_message(self, fmt, *args):
             return
 
-        def _route(self, path, conn):
+        def _route(self, path, query, conn):
             if path == "/":
-                return _overview(conn)
+                return _overview(conn, query)
             if path == "/runs":
                 return _runs(conn)
             if path == "/compare":

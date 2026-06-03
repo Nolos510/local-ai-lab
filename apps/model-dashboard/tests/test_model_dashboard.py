@@ -9,7 +9,7 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
 
-from model_dashboard import csv_io, db, reports  # noqa: E402
+from model_dashboard import csv_io, db, reports, server  # noqa: E402
 
 
 FIXTURE_DIR = APP_DIR / "fixtures"
@@ -131,6 +131,32 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("ResearchLite Local 7B", report)
             self.assertIn("TinyCoder Local 1.1B", report)
             self.assertIn("Qwen2.5-Coder 14B Instruct", report)
+
+    def test_overview_filters_by_label(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            csv_io.import_fixture_set(db_path, FIXTURE_DIR)
+
+            with db.connect(db_path) as conn:
+                html = server._overview(conn, {"label": ["RESEARCH_SPECIALIST"]})
+
+            self.assertIn("Ranked Local Models (1 of 4)", html)
+            self.assertIn("ResearchLite Local 7B", html)
+            self.assertNotIn("TinyCoder Local 1.1B</a>", html)
+            self.assertNotIn("Qwen2.5-Coder 14B Instruct</a>", html)
+
+    def test_overview_filters_by_search_and_install_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            csv_io.import_fixture_set(db_path, FIXTURE_DIR)
+
+            with db.connect(db_path) as conn:
+                html = server._overview(conn, {"q": ["coding"], "keep": ["yes"]})
+
+            self.assertIn("Ranked Local Models (2 of 4)", html)
+            self.assertIn("TinyCoder Local 1.1B", html)
+            self.assertIn("Qwen2.5-Coder 14B Instruct", html)
+            self.assertNotIn("ResearchLite Local 7B</a>", html)
 
 
 if __name__ == "__main__":

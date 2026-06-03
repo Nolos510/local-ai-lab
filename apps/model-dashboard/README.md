@@ -72,16 +72,51 @@ python3 apps/model-dashboard/run_dashboard.py serve
 
 Use `--demo` with `serve` to load fixtures automatically when the selected database has no model rows.
 
+The Overview page supports URL-backed filters for search text, final label, decision, and install status. Filtered views can be bookmarked or shared locally, for example:
+
+```text
+http://127.0.0.1:8765/?label=CODING_SPECIALIST&keep=yes
+```
+
 ## Tests
 
-From the repository root, install the dev extra and run pytest:
+From the repository root, create or activate the repo venv, install the dev
+extra, and run pytest:
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-The test files use `unittest`, and pytest is the configured test runner for the repo.
+Use `python3` before the venv exists, then use `python` after activation. The
+test files use `unittest`, and pytest is the configured test runner for the
+repo. If pytest is missing, the `dev` extra was not installed in the active
+environment.
+
+In sandboxed environments, pip may need network approval to fetch pytest or
+build tooling. The dashboard itself still has no runtime package dependencies
+and does not make network, cloud, API, or model download calls.
+
+## Smoke Test
+
+Run the dashboard smoke script from the repository root:
+
+```bash
+python3 scripts/model_dashboard_smoke.py
+```
+
+The smoke script runs the dashboard tests, creates a fixture SQLite database in a system temp directory, and writes a Markdown report next to that temp database.
+
+To include a local server probe, pass:
+
+```bash
+python3 scripts/model_dashboard_smoke.py --probe-server
+```
+
+The server probe binds to `127.0.0.1` on a temporary free port and requests only local dashboard pages.
 
 ## CSV Tables
 
@@ -93,3 +128,9 @@ The import/export workflow expects one CSV per table:
 - `decisions.csv`
 
 Headers must match the table fields exported by the app. Blank `total_score` and `final_label` values in `eval_scores.csv` are filled deterministically during import.
+
+## Benchmark Import Contract
+
+The initial repeatable local LLM benchmark format lives in `evals/local-llm-benchmark/SPEC.md`.
+It defines the prompt set, rubric version, raw evidence expectations, scoring dimensions, and
+the normalized CSV fields that map into the dashboard MVP tables.

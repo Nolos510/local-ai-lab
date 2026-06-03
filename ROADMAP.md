@@ -18,6 +18,7 @@
 - Build `evals/local-llm-benchmark` around repeatable local prompts and rubric scoring.
 - Capture speed, RAM use, context handling, instruction following, coding, research synthesis, and agent planning.
 - Keep raw runs and summarized results importable into the dashboard.
+- Keep the v0.3 harness stdlib-only unless a dependency passes the documented dependency review gate.
 
 ## Phase 3: AI Lab Radar
 
