@@ -10,20 +10,26 @@ Use this skill to turn benchmark runs into comparable local model evaluation rec
 ## Harness Contract
 
 - Use `evals/local-llm-benchmark/SPEC.md` as the canonical v0.1 prompt set, rubric, artifact, and dashboard import contract when no newer spec is named.
-- v0.1 does not define a runner command. Do not invent one. The harness directory defines the benchmark contract only and does not download, install, run, or call any model.
+- Use the stdlib CLI at `evals/local-llm-benchmark/harness.py` for artifact scaffolding, response capture, and dashboard CSV export.
+- The harness does not download, install, run, or call any model. Run prompts manually in the chosen local backend, then feed human-supplied responses back into the harness.
+- Supported harness commands: `list-prompts`, `init-run`, `record-responses`, and `export-dashboard`.
 - Expected artifact root: `data/eval_results/<benchmark_run_id>/`.
-- Source artifacts: `metadata.json`, `raw_responses.jsonl`, and `evidence.md`.
-- Summary artifacts: `report.md` and `dashboard-import/models.csv`, `dashboard-import/model_runs.csv`, `dashboard-import/eval_scores.csv`, `dashboard-import/decisions.csv`.
+- Source artifacts: `metadata.json`, `response-template.jsonl`, `raw_responses.jsonl`, `scores-template.json`, `decision-template.json`, and `evidence.md`.
+- Dashboard artifacts: `dashboard-import/models.csv`, `dashboard-import/model_runs.csv`, `dashboard-import/eval_scores.csv`, and `dashboard-import/decisions.csv`.
+- `eval_scores.csv` and `decisions.csv` are header-only until filled score and decision JSON files are provided to `export-dashboard`.
 
 ## Workflow
 
-1. Collect the benchmark source artifacts: `metadata.json`, `raw_responses.jsonl`, `evidence.md`, timing output, hardware notes, and any harness logs.
-2. Normalize model and run metadata using dashboard field names where possible: `model_name`, `backend`, `format`, `quantization`, `context_window`, `hardware`, `temperature`, `top_p`, `tokens_per_sec`, and `ram_usage_gb`.
-3. Preserve raw prompt evidence before summarizing. Do not invent missing timing, memory, or score values.
-4. Score each benchmark dimension on a 0-100 scale: `instruction_following`, `truthfulness_uncertainty`, `reasoning`, `coding_debugging`, `agent_planning`, `local_ai_lab_usefulness`, `research_synthesis`, `business_seo_strategy`, `long_context`, `creativity`, and `speed_practicality`.
-5. Calculate `total_score` as the mean of the eleven benchmark dimensions unless the harness provides a documented aggregate.
-6. Assign one valid `final_label`: `DAILY_DRIVER`, `CODING_SPECIALIST`, `RESEARCH_SPECIALIST`, `AGENT_PLANNER`, `CREATIVE_WRITER`, `LOCAL_AI_ASSISTANT`, `SEO_BUSINESS_HELPER`, `MULTIMODAL_SPECIALIST`, `SANDBOX_ONLY`, `WATCHLIST`, or `SKIP`.
-7. End with a dashboard-ready decision: `keep`, `watchlist`, `retest`, or `skip`, plus best use case, weakness, and retest condition.
+1. If starting a run, scaffold artifacts with `python3 evals/local-llm-benchmark/harness.py init-run --benchmark-run-id <id> --model-name "<name>" --backend "<backend>"` plus known run metadata.
+2. Run prompts manually in the local backend. Use `response-template.jsonl` as the response schema, keep raw model text in `raw_response`, and record it with `record-responses`.
+3. Collect source artifacts: `metadata.json`, `raw_responses.jsonl`, `evidence.md`, timing output, hardware notes, and any harness logs.
+4. Normalize model and run metadata using dashboard field names where possible: `model_name`, `backend`, `format`, `quantization`, `context_window`, `hardware`, `temperature`, `top_p`, `tokens_per_sec`, and `ram_usage_gb`.
+5. Preserve raw prompt evidence before summarizing. Do not invent missing timing, memory, or score values.
+6. Score each benchmark dimension on a 0-100 scale: `instruction_following`, `truthfulness_uncertainty`, `reasoning`, `coding_debugging`, `agent_planning`, `local_ai_lab_usefulness`, `research_synthesis`, `business_seo_strategy`, `long_context`, `creativity`, and `speed_practicality`.
+7. Calculate `total_score` as the mean of the eleven benchmark dimensions unless the harness provides a documented aggregate.
+8. Fill score and decision JSON from `scores-template.json` and `decision-template.json`, then run `export-dashboard --scores-json <scores.json> --decision-json <decision.json>`.
+9. Assign one valid `final_label`: `DAILY_DRIVER`, `CODING_SPECIALIST`, `RESEARCH_SPECIALIST`, `AGENT_PLANNER`, `CREATIVE_WRITER`, `LOCAL_AI_ASSISTANT`, `SEO_BUSINESS_HELPER`, `MULTIMODAL_SPECIALIST`, `SANDBOX_ONLY`, `WATCHLIST`, or `SKIP`.
+10. End with a dashboard-ready decision: `keep`, `watchlist`, `retest`, or `skip`, plus best use case, weakness, and retest condition.
 
 ## Benchmark Notes
 

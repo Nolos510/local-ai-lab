@@ -6,10 +6,16 @@
 - Prompt set ID:
 - Rubric version:
 - Spec path: `evals/local-llm-benchmark/SPEC.md`
-- Harness command: none in v0.1; contract-only benchmark spec
+- Harness CLI: `python3 evals/local-llm-benchmark/harness.py`
+- Init command:
+- Record responses command:
+- Export dashboard command:
 - Artifact root: `data/eval_results/<benchmark_run_id>/`
 - Metadata: `metadata.json`
+- Response template: `response-template.jsonl`
 - Raw responses: `raw_responses.jsonl`
+- Scores template: `scores-template.json`
+- Decision template: `decision-template.json`
 - Evidence: `evidence.md`
 - Date:
 
@@ -91,5 +97,8 @@ Use 0-100 scores. Leave unknown values blank until verified.
 - Model runs CSV: `model_runs.csv`
 - Eval scores CSV: `eval_scores.csv`
 - Decisions CSV: `decisions.csv`
+- Scores source JSON:
+- Decision source JSON:
+- Header-only CSVs remaining:
 - Missing fields:
 - Dashboard mapping notes:
