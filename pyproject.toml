@@ -23,5 +23,5 @@ where = ["apps/model-dashboard"]
 include = ["model_dashboard*"]
 
 [tool.pytest.ini_options]
-testpaths = ["apps/model-dashboard/tests"]
+testpaths = ["apps/model-dashboard/tests", "evals/local-llm-benchmark/tests"]
 pythonpath = ["apps/model-dashboard"]

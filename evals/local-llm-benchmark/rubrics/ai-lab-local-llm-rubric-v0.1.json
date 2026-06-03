@@ -1,0 +1,80 @@
+{
+  "rubric_version": "ai-lab-local-llm-rubric-v0.1",
+  "score_scale": [
+    {
+      "range": "0-24",
+      "anchor": "Unusable, empty, or actively harmful for this dimension."
+    },
+    {
+      "range": "25-49",
+      "anchor": "Frequent failures; only useful with heavy human correction."
+    },
+    {
+      "range": "50-69",
+      "anchor": "Mixed but salvageable; useful for drafts or low-risk tasks."
+    },
+    {
+      "range": "70-84",
+      "anchor": "Reliable for normal local use with review."
+    },
+    {
+      "range": "85-100",
+      "anchor": "Strong, repeatable, and low-friction for this dimension."
+    }
+  ],
+  "metric_fields": [
+    "instruction_following",
+    "truthfulness_uncertainty",
+    "reasoning",
+    "coding_debugging",
+    "agent_planning",
+    "local_ai_lab_usefulness",
+    "research_synthesis",
+    "business_seo_strategy",
+    "long_context",
+    "creativity",
+    "speed_practicality"
+  ],
+  "dimensions": {
+    "instruction_following": "Follows requested structure, constraints, formats, and scope.",
+    "truthfulness_uncertainty": "Avoids false certainty, handles unknowns, corrects false claims, and does not invent live access.",
+    "reasoning": "Solves multi-step logic, arithmetic, and constraint problems without shortcut errors.",
+    "coding_debugging": "Produces runnable code from specs, finds bugs, and explains fixes.",
+    "agent_planning": "Creates scoped plans with files, tests, risks, and non-goals.",
+    "local_ai_lab_usefulness": "Helps with local model workflows, privacy, metadata, and dashboard-ready decisions.",
+    "research_synthesis": "Synthesizes supplied sources faithfully with attribution and unknowns.",
+    "business_seo_strategy": "Gives practical business/SEO recommendations from provided constraints.",
+    "long_context": "Organizes many notes without dropping key constraints or contradictions.",
+    "creativity": "Produces original, constrained writing that fits tone and purpose.",
+    "speed_practicality": "Balances answer quality with latency, throughput, RAM use, and first-pass productivity."
+  },
+  "scoring_notes": [
+    "Penalize confident fabricated facts more than cautious omissions.",
+    "Penalize claims of internet, browser, file, or tool access in the baseline run.",
+    "Penalize code that only appears correct but ignores the input contract.",
+    "Give partial credit when a model identifies uncertainty but misses a minor detail.",
+    "Cap truthfulness_uncertainty at 60 when the response invents live knowledge.",
+    "Cap coding_debugging at 65 when code is not runnable without obvious fixes.",
+    "Cap instruction_following at 70 when the response misses an explicit output section or count constraint.",
+    "Let speed_practicality combine observed speed and qualitative usefulness. Fast but low-quality runs should not score above 70."
+  ],
+  "final_labels": [
+    "DAILY_DRIVER",
+    "CODING_SPECIALIST",
+    "RESEARCH_SPECIALIST",
+    "AGENT_PLANNER",
+    "CREATIVE_WRITER",
+    "LOCAL_AI_ASSISTANT",
+    "SEO_BUSINESS_HELPER",
+    "MULTIMODAL_SPECIALIST",
+    "SANDBOX_ONLY",
+    "WATCHLIST",
+    "SKIP"
+  ],
+  "decision_values": [
+    "keep",
+    "watchlist",
+    "retest",
+    "skip"
+  ]
+}
