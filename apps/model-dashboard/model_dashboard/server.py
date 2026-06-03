@@ -1,17 +1,24 @@
 """A dependency-free local web dashboard for model eval results."""
 
+import csv
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from . import db
 from .reports import generate_markdown_report
 from .scoring import METRIC_FIELDS
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+CANDIDATE_REGISTRY_PATH = REPO_ROOT / "data" / "model_registry" / "candidates.csv"
+EVAL_RESULTS_DIR = REPO_ROOT / "data" / "eval_results"
+
 NAV_ITEMS = (
     ("/", "Overview"),
     ("/runs", "Model Runs"),
     ("/compare", "Compare Models"),
+    ("/radar", "Radar Candidates"),
     ("/storage", "Storage / Install Status"),
     ("/reports", "Reports"),
 )
@@ -32,15 +39,16 @@ def _pill(value):
     return '<span class="pill">{}</span>'.format(label)
 
 
-def _table(headers, rows, empty_message="No rows yet."):
+def _table(headers, rows, empty_message="No rows yet.", table_class=""):
     if not rows:
         return '<p class="empty">{}</p>'.format(escape(empty_message))
     header_html = "".join("<th>{}</th>".format(escape(header)) for header in headers)
     row_html = []
     for row in rows:
         row_html.append("<tr>{}</tr>".format("".join("<td>{}</td>".format(cell) for cell in row)))
-    return "<table><thead><tr>{}</tr></thead><tbody>{}</tbody></table>".format(
-        header_html, "".join(row_html)
+    class_attr = ' class="{}"'.format(escape(table_class)) if table_class else ""
+    return "<table{}><thead><tr>{}</tr></thead><tbody>{}</tbody></table>".format(
+        class_attr, header_html, "".join(row_html)
     )
 
 
@@ -89,6 +97,151 @@ def _matches_search(row, search):
         )
     )
     return search.lower() in haystack.lower()
+
+
+def _load_radar_candidates(path=CANDIDATE_REGISTRY_PATH):
+    registry_path = Path(path)
+    if not registry_path.exists():
+        return []
+    with registry_path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        return [
+            {key: (value or "").strip() for key, value in row.items() if key}
+            for row in reader
+        ]
+
+
+def _radar_filter_values(query):
+    return {
+        "q": _query_value(query, "q"),
+        "status": _query_value(query, "status"),
+        "family": _query_value(query, "family"),
+        "runtime": _query_value(query, "runtime"),
+    }
+
+
+def _matches_candidate_search(row, search):
+    if not search:
+        return True
+    haystack = " ".join(
+        row.get(field, "")
+        for field in (
+            "candidate_id",
+            "model_name",
+            "model_family",
+            "provider_or_org",
+            "status",
+            "format_or_runtime",
+            "why_interesting",
+            "risk_notes",
+            "proposed_eval",
+            "benchmark_run_id",
+        )
+    )
+    return search.lower() in haystack.lower()
+
+
+def _filter_candidates(candidates, filters):
+    filtered = []
+    for row in candidates:
+        if filters["status"] and row.get("status") != filters["status"]:
+            continue
+        if filters["family"] and row.get("model_family") != filters["family"]:
+            continue
+        if filters["runtime"] and row.get("format_or_runtime") != filters["runtime"]:
+            continue
+        if not _matches_candidate_search(row, filters["q"]):
+            continue
+        filtered.append(row)
+    return filtered
+
+
+def _radar_filters(candidates, filters):
+    status_options = "".join(
+        _option(status, status, filters["status"])
+        for status in _field_options(candidates, "status")
+    )
+    family_options = "".join(
+        _option(family, family, filters["family"])
+        for family in _field_options(candidates, "model_family")
+    )
+    runtime_options = "".join(
+        _option(runtime, runtime, filters["runtime"])
+        for runtime in _field_options(candidates, "format_or_runtime")
+    )
+    clear_link = '<a class="clear-link" href="/radar">Clear</a>' if any(filters.values()) else ""
+    return """
+    <form class="filters" method="get" action="/radar">
+      <div class="field field-wide">
+        <label for="radar-q">Search</label>
+        <input id="radar-q" name="q" type="search" value="{q}">
+      </div>
+      <div class="field">
+        <label for="radar-status">Status</label>
+        <select id="radar-status" name="status">
+          {all_statuses}
+          {status_options}
+        </select>
+      </div>
+      <div class="field">
+        <label for="radar-family">Family</label>
+        <select id="radar-family" name="family">
+          {all_families}
+          {family_options}
+        </select>
+      </div>
+      <div class="field">
+        <label for="radar-runtime">Runtime</label>
+        <select id="radar-runtime" name="runtime">
+          {all_runtimes}
+          {runtime_options}
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button type="submit">Apply</button>
+        {clear_link}
+      </div>
+    </form>
+    """.format(
+        q=_text(filters["q"]),
+        all_statuses=_option("", "All statuses", filters["status"]),
+        status_options=status_options,
+        all_families=_option("", "All families", filters["family"]),
+        family_options=family_options,
+        all_runtimes=_option("", "All runtimes", filters["runtime"]),
+        runtime_options=runtime_options,
+        clear_link=clear_link,
+    )
+
+
+def _path_cell(value):
+    if not value:
+        return '<span class="empty">None</span>'
+    return "<code>{}</code>".format(_text(value))
+
+
+def _relative_path(path):
+    try:
+        return str(Path(path).resolve().relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def _artifact_link(benchmark_run_id):
+    if not benchmark_run_id:
+        return '<span class="empty">Not linked</span>'
+    return '<a href="/artifacts/{id}"><code>{id}</code></a>'.format(
+        id=_text(benchmark_run_id)
+    )
+
+
+def _dashboard_model_links(conn):
+    links = {}
+    for row in db.list_model_summaries(conn):
+        model_name = str(row["model_name"] or "")
+        if model_name:
+            links[model_name.lower()] = row["id"]
+    return links
 
 
 def _filter_summaries(rows, filters):
@@ -355,6 +508,30 @@ def _layout(title, current_path, body):
       grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.6fr);
       gap: 16px;
     }}
+    .cell-stack {{
+      display: grid;
+      gap: 6px;
+    }}
+    .cell-stack strong {{
+      color: var(--muted);
+      font-size: 12px;
+    }}
+    .radar-table th:nth-child(1),
+    .radar-table td:nth-child(1) {{
+      width: 180px;
+    }}
+    .radar-table th:nth-child(2),
+    .radar-table td:nth-child(2) {{
+      width: 112px;
+    }}
+    .radar-table th:nth-child(3),
+    .radar-table td:nth-child(3) {{
+      width: 132px;
+    }}
+    .radar-table th:nth-child(6),
+    .radar-table td:nth-child(6) {{
+      width: 190px;
+    }}
     @media (max-width: 780px) {{
       .filters {{ grid-template-columns: 1fr; }}
       .filter-actions {{ justify-content: flex-start; }}
@@ -501,6 +678,155 @@ def _compare(conn):
     return _layout("Compare Models", "/compare", body)
 
 
+def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
+    candidates = _load_radar_candidates(registry_path)
+    filters = _radar_filter_values(query or {})
+    filtered_candidates = _filter_candidates(candidates, filters)
+    model_links = _dashboard_model_links(conn)
+    ready_count = sum(1 for row in candidates if row.get("status") == "ready_for_eval")
+    watchlist_count = sum(1 for row in candidates if row.get("status") == "watchlist")
+    linked_count = sum(1 for row in candidates if row.get("benchmark_run_id"))
+
+    rows = []
+    for row in filtered_candidates:
+        model_id = model_links.get(row.get("model_name", "").lower())
+        model_name = _text(row.get("model_name"))
+        if model_id:
+            model_name = '<a href="/models/{id}">{name}</a>'.format(
+                id=model_id, name=model_name
+            )
+        metadata = """
+        <div class="cell-stack">
+          <div><strong>Family</strong><br>{family}</div>
+          <div><strong>Runtime</strong><br>{runtime}</div>
+        </div>
+        """.format(
+            family=_text(row.get("model_family")),
+            runtime=_text(row.get("format_or_runtime")),
+        )
+        context = """
+        <div class="cell-stack">
+          <div><strong>Why</strong><br>{why}</div>
+          <div><strong>Risk</strong><br>{risk}</div>
+        </div>
+        """.format(
+            why=_text(row.get("why_interesting")),
+            risk=_text(row.get("risk_notes")),
+        )
+        links = """
+        <div class="cell-stack">
+          <div><strong>Benchmark</strong><br>{artifact}</div>
+          <div><strong>Source</strong><br>{source}</div>
+          <div><strong>Report</strong><br>{report}</div>
+        </div>
+        """.format(
+            artifact=_artifact_link(row.get("benchmark_run_id")),
+            source=_path_cell(row.get("source_packet_path")),
+            report=_path_cell(row.get("report_path")),
+        )
+        rows.append(
+            [
+                '<div class="cell-stack"><div>{name}</div><code>{id}</code></div>'.format(
+                    name=model_name,
+                    id=_text(row.get("candidate_id")),
+                ),
+                _pill(row.get("status")),
+                metadata,
+                context,
+                _text(row.get("proposed_eval")),
+                links,
+            ]
+        )
+
+    body = """
+    <section class="grid">
+      <div class="stat"><div class="label">Candidates</div><div class="value">{candidates}</div></div>
+      <div class="stat"><div class="label">Ready for eval</div><div class="value">{ready}</div></div>
+      <div class="stat"><div class="label">Watchlist</div><div class="value">{watchlist}</div></div>
+      <div class="stat"><div class="label">Linked artifacts</div><div class="value">{linked}</div></div>
+    </section>
+    <section>
+      {filters}
+      <h2>Radar Candidates{filtered_count}</h2>
+      {table}
+    </section>
+    """.format(
+        candidates=len(candidates),
+        ready=ready_count,
+        watchlist=watchlist_count,
+        linked=linked_count,
+        filters=_radar_filters(candidates, filters),
+        filtered_count=(
+            " ({} of {})".format(len(filtered_candidates), len(candidates))
+            if any(filters.values())
+            else ""
+        ),
+        table=_table(
+            [
+                "Candidate",
+                "Status",
+                "Metadata",
+                "Review notes",
+                "Proposed eval",
+                "Links",
+            ],
+            rows,
+            empty_message="No candidates match these filters.",
+            table_class="radar-table",
+        ),
+    )
+    return _layout("Radar Candidates", "/radar", body)
+
+
+def _artifact_detail(conn, benchmark_run_id, registry_path=CANDIDATE_REGISTRY_PATH):
+    candidates = _load_radar_candidates(registry_path)
+    candidate = next(
+        (row for row in candidates if row.get("benchmark_run_id") == benchmark_run_id),
+        None,
+    )
+    if candidate is None:
+        return _layout("Benchmark Artifact", "", "<h2>Artifact not found</h2>")
+
+    artifact_dir = EVAL_RESULTS_DIR / benchmark_run_id
+    model_id = _dashboard_model_links(conn).get(candidate.get("model_name", "").lower())
+    dashboard_link = (
+        '<a href="/models/{id}">Dashboard model</a>'.format(id=model_id)
+        if model_id
+        else '<span class="empty">Not imported into the active database</span>'
+    )
+    file_rows = []
+    if artifact_dir.exists():
+        for path in sorted(artifact_dir.iterdir(), key=lambda item: item.name.lower()):
+            kind = "directory" if path.is_dir() else "file"
+            file_rows.append([_text(path.name), _text(kind), _path_cell(_relative_path(path))])
+
+    body = """
+    <div class="split">
+      <section class="panel">
+        <h2>{name}</h2>
+        <p><strong>Status:</strong> {status}</p>
+        <p><strong>Benchmark run:</strong> <code>{run_id}</code></p>
+        <p><strong>Dashboard:</strong> {dashboard_link}</p>
+      </section>
+      <section class="panel">
+        <h2>Radar Context</h2>
+        <p><strong>Source packet:</strong> {source}</p>
+        <p><strong>Report:</strong> {report}</p>
+      </section>
+    </div>
+    <section style="margin-top:16px"><h2>Artifact Files</h2>{files}</section>
+    """.format(
+        name=_text(candidate.get("model_name")),
+        status=_pill(candidate.get("status")),
+        run_id=_text(benchmark_run_id),
+        dashboard_link=dashboard_link,
+        source=_path_cell(candidate.get("source_packet_path")),
+        report=_path_cell(candidate.get("report_path")),
+        files=_table(["Name", "Type", "Path"], file_rows, empty_message="Artifact directory not found."),
+    )
+    return _layout("Benchmark Artifact", "", body)
+
+
 def _model_detail(conn, model_id):
     detail = db.get_model_detail(conn, model_id)
     if detail is None:
@@ -640,10 +966,15 @@ def make_handler(database_path):
                 return _runs(conn)
             if path == "/compare":
                 return _compare(conn)
+            if path == "/radar":
+                return _radar(conn, query)
             if path == "/storage":
                 return _storage(conn)
             if path == "/reports":
                 return _reports(conn, database_path)
+            if path.startswith("/artifacts/"):
+                benchmark_run_id = path.rsplit("/", 1)[-1]
+                return _artifact_detail(conn, benchmark_run_id)
             if path.startswith("/models/"):
                 model_id = int(path.rsplit("/", 1)[-1])
                 return _model_detail(conn, model_id)

@@ -17,7 +17,13 @@ from urllib.request import urlopen
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DASHBOARD_CLI = REPO_ROOT / "apps" / "model-dashboard" / "run_dashboard.py"
 TEST_DIR = REPO_ROOT / "apps" / "model-dashboard" / "tests"
-SERVER_PATHS = ("/", "/?label=CODING_SPECIALIST&keep=yes", "/reports", "/models/3")
+SERVER_PATHS = (
+    "/",
+    "/?label=CODING_SPECIALIST&keep=yes",
+    "/radar",
+    "/reports",
+    "/models/3",
+)
 
 
 class SmokeFailure(RuntimeError):

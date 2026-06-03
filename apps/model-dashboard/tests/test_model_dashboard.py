@@ -13,6 +13,57 @@ from model_dashboard import csv_io, db, reports, server  # noqa: E402
 
 
 FIXTURE_DIR = APP_DIR / "fixtures"
+CANDIDATE_FIELDS = [
+    "candidate_id",
+    "model_name",
+    "model_family",
+    "provider_or_org",
+    "status",
+    "format_or_runtime",
+    "source_packet_path",
+    "report_path",
+    "benchmark_run_id",
+    "why_interesting",
+    "risk_notes",
+    "proposed_eval",
+]
+
+
+def write_candidate_registry(path):
+    rows = [
+        {
+            "candidate_id": "20260603-ready-local",
+            "model_name": "Ready Local 7B",
+            "model_family": "Ready",
+            "provider_or_org": "local",
+            "status": "ready_for_eval",
+            "format_or_runtime": "llama.cpp",
+            "source_packet_path": "automations/ai-lab-radar/inputs/ready.md",
+            "report_path": "automations/ai-lab-radar/reports/ready.md",
+            "benchmark_run_id": "20260603-ready-local",
+            "why_interesting": "Already installed for a local retest.",
+            "risk_notes": "Needs scored evidence.",
+            "proposed_eval": "Run the local benchmark prompt set.",
+        },
+        {
+            "candidate_id": "20260603-watch-local",
+            "model_name": "Watch Local 13B",
+            "model_family": "Watch",
+            "provider_or_org": "local",
+            "status": "watchlist",
+            "format_or_runtime": "MLX",
+            "source_packet_path": "automations/ai-lab-radar/inputs/watch.md",
+            "report_path": "automations/ai-lab-radar/reports/watch.md",
+            "benchmark_run_id": "",
+            "why_interesting": "Interesting but not ready.",
+            "risk_notes": "Runtime unknown.",
+            "proposed_eval": "Confirm local artifact first.",
+        },
+    ]
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=CANDIDATE_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 class ModelDashboardQaTests(unittest.TestCase):
@@ -157,6 +208,61 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("TinyCoder Local 1.1B", html)
             self.assertIn("Qwen2.5-Coder 14B Instruct", html)
             self.assertNotIn("ResearchLite Local 7B</a>", html)
+
+    def test_radar_filters_candidate_registry_by_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(registry_path)
+
+            with db.connect(db_path) as conn:
+                html = server._radar(
+                    conn,
+                    {"status": ["ready_for_eval"]},
+                    registry_path=registry_path,
+                )
+
+            self.assertIn("Radar Candidates (1 of 2)", html)
+            self.assertIn("Ready Local 7B", html)
+            self.assertIn("/artifacts/20260603-ready-local", html)
+            self.assertNotIn("Watch Local 13B", html)
+
+    def test_radar_missing_registry_renders_empty_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+
+            with db.connect(db_path) as conn:
+                html = server._radar(conn, registry_path=Path(tmp) / "missing.csv")
+
+            self.assertIn("Radar Candidates", html)
+            self.assertIn("No candidates match these filters.", html)
+
+    def test_artifact_detail_links_only_registry_entries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(registry_path)
+
+            with db.connect(db_path) as conn:
+                html = server._artifact_detail(
+                    conn,
+                    "20260603-ready-local",
+                    registry_path=registry_path,
+                )
+                missing_html = server._artifact_detail(
+                    conn,
+                    "20260603-unregistered",
+                    registry_path=registry_path,
+                )
+
+            self.assertIn("Ready Local 7B", html)
+            self.assertIn("Not imported into the active database", html)
+            self.assertIn("Artifact not found", missing_html)
 
 
 if __name__ == "__main__":

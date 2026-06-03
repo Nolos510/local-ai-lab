@@ -78,6 +78,17 @@ The Overview page supports URL-backed filters for search text, final label, deci
 http://127.0.0.1:8765/?label=CODING_SPECIALIST&keep=yes
 ```
 
+The Radar Candidates page is available at:
+
+```text
+http://127.0.0.1:8765/radar
+```
+
+It reads `data/model_registry/candidates.csv` and displays candidate-only radar
+records separately from scored eval results. Candidate rows may link to local
+source packets, radar reports, and benchmark artifact directories, but they do
+not become dashboard scores or final labels.
+
 ## Tests
 
 From the repository root, create or activate the repo venv, install the dev
