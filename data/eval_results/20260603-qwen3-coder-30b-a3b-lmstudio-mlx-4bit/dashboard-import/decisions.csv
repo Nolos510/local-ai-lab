@@ -1,0 +1,2 @@
+id,model_id,decision,keep_installed,best_use_case,weakness,retest_condition,created_at
+1,1,retest,1,Not established; LM Studio daemon failed before prompt execution.,Runtime unavailable during benchmark attempt.,Retest after LM Studio daemon/server starts and the installed local model can answer the full prompt set.,2026-06-03T19:40:51+00:00
