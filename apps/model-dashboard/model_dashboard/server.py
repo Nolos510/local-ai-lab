@@ -1,9 +1,14 @@
 """A dependency-free local web dashboard for model eval results."""
 
 import csv
+import ipaddress
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import secrets
+import subprocess
+import sys
+from datetime import date
 from urllib.parse import parse_qs, urlparse
 
 from . import db
@@ -14,7 +19,12 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 CANDIDATE_REGISTRY_PATH = REPO_ROOT / "data" / "model_registry" / "candidates.csv"
 PROJECT_REGISTRY_PATH = REPO_ROOT / "data" / "project_registry" / "github_repos.csv"
 EVAL_RESULTS_DIR = REPO_ROOT / "data" / "eval_results"
+HARNESS_PATH = REPO_ROOT / "evals" / "local-llm-benchmark" / "harness.py"
 SPECIALTY_LANE_TERMS = ("abliterated", "dolphin")
+SUPPORTED_LOCAL_RUNNERS = {
+    "lmstudio-cli": "LM Studio CLI",
+    "openai-compatible": "OpenAI-compatible local endpoint",
+}
 
 NAV_ITEMS = (
     ("/lab", "Lab Dashboard"),
@@ -406,6 +416,231 @@ def _candidate_availability(row):
     )
 
 
+def _slug(value):
+    slug = []
+    previous_dash = False
+    for char in str(value or "").lower():
+        if char.isalnum():
+            slug.append(char)
+            previous_dash = False
+        elif not previous_dash:
+            slug.append("-")
+            previous_dash = True
+    return "".join(slug).strip("-")[:96] or "local-model"
+
+
+def _candidate_runner_label(row):
+    runner = row.get("local_runner", "")
+    return SUPPORTED_LOCAL_RUNNERS.get(runner, runner or "not configured")
+
+
+def _candidate_run_ready(row):
+    runner = row.get("local_runner", "")
+    model_id = row.get("local_model_id", "")
+    if runner == "lmstudio-cli":
+        return bool(model_id)
+    if runner == "openai-compatible":
+        return bool(row.get("default_endpoint") and (model_id or row.get("model_name")))
+    return False
+
+
+def _run_test_control(row, enable_run_tests=False, action_token=""):
+    if not _candidate_run_ready(row):
+        return (
+            '<span class="empty">Needs exact local model id</span>'
+            '<div class="empty">Runner: {}</div>'
+        ).format(_text(_candidate_runner_label(row)))
+    if not enable_run_tests:
+        return (
+            '<div class="cell-stack">'
+            '<span class="empty">Run button disabled</span>'
+            '<div>Restart with <code>--enable-run-tests</code></div>'
+            '<div><strong>Runner</strong><br>{runner}</div>'
+            '<div><strong>Model id</strong><br><code>{model_id}</code></div>'
+            "</div>"
+        ).format(
+            runner=_text(_candidate_runner_label(row)),
+            model_id=_text(row.get("local_model_id") or row.get("model_name")),
+        )
+    return """
+    <form class="inline-form" method="post" action="/actions/run-test">
+      <input type="hidden" name="token" value="{token}">
+      <input type="hidden" name="candidate_id" value="{candidate_id}">
+      <button type="submit">Run Test</button>
+      <div class="empty">Runner: {runner}</div>
+      <div><code>{model_id}</code></div>
+    </form>
+    """.format(
+        token=_text(action_token),
+        candidate_id=_text(row.get("candidate_id")),
+        runner=_text(_candidate_runner_label(row)),
+        model_id=_text(row.get("local_model_id") or row.get("model_name")),
+    )
+
+
+def _next_dashboard_run_id(row, eval_results_dir=EVAL_RESULTS_DIR):
+    base = "{}-{}-dashboard-test".format(
+        date.today().strftime("%Y%m%d"),
+        _slug(row.get("model_name") or row.get("candidate_id")),
+    )
+    root = Path(eval_results_dir)
+    candidate = base
+    index = 2
+    while (root / candidate).exists():
+        candidate = "{}-r{}".format(base, index)
+        index += 1
+    return candidate
+
+
+def _append_arg(command, flag, value):
+    if value not in (None, ""):
+        command.extend([flag, str(value)])
+
+
+def _run_subprocess(command, timeout):
+    return subprocess.run(
+        command,
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=timeout,
+    )
+
+
+def _build_candidate_commands(row, run_id, eval_results_dir):
+    run_dir = Path(eval_results_dir) / run_id
+    init_command = [
+        sys.executable,
+        str(HARNESS_PATH),
+        "init-run",
+        "--benchmark-run-id",
+        run_id,
+        "--model-name",
+        row.get("model_name", ""),
+        "--backend",
+        _candidate_runner_label(row),
+        "--output-root",
+        str(eval_results_dir),
+        "--run-notes",
+        "benchmark_run_id={} | candidate_id={} | dashboard_run_button=yes".format(
+            run_id,
+            row.get("candidate_id", ""),
+        ),
+    ]
+    _append_arg(init_command, "--model-family", row.get("model_family"))
+    _append_arg(init_command, "--provider", row.get("provider_or_org"))
+    _append_arg(init_command, "--source-url", row.get("model_page_url"))
+    _append_arg(init_command, "--format", row.get("format_or_runtime"))
+
+    runner = row.get("local_runner", "")
+    if runner == "lmstudio-cli":
+        capture_command = [
+            sys.executable,
+            str(HARNESS_PATH),
+            "run-lmstudio-cli",
+            "--run-dir",
+            str(run_dir),
+            "--model-id",
+            row.get("local_model_id", ""),
+            "--force",
+        ]
+    elif runner == "openai-compatible":
+        capture_command = [
+            sys.executable,
+            str(HARNESS_PATH),
+            "run-local",
+            "--run-dir",
+            str(run_dir),
+            "--endpoint",
+            row.get("default_endpoint", ""),
+            "--model",
+            row.get("local_model_id") or row.get("model_name", ""),
+            "--force",
+        ]
+    else:
+        raise ValueError("Unsupported local runner: {}".format(runner))
+    return init_command, capture_command
+
+
+def _run_candidate_test(candidate_id, registry_path, eval_results_dir, timeout):
+    candidates = _load_radar_candidates(registry_path)
+    row = next((item for item in candidates if item.get("candidate_id") == candidate_id), None)
+    if row is None:
+        raise ValueError("Candidate not found: {}".format(candidate_id))
+    if not _candidate_run_ready(row):
+        raise ValueError("Candidate is missing exact local runner metadata.")
+    run_id = _next_dashboard_run_id(row, eval_results_dir)
+    init_command, capture_command = _build_candidate_commands(row, run_id, eval_results_dir)
+    init_result = _run_subprocess(init_command, timeout)
+    if init_result.returncode != 0:
+        return {
+            "candidate": row,
+            "run_id": run_id,
+            "run_dir": str(Path(eval_results_dir) / run_id),
+            "init": init_result,
+            "capture": None,
+        }
+    capture_result = _run_subprocess(capture_command, timeout)
+    return {
+        "candidate": row,
+        "run_id": run_id,
+        "run_dir": str(Path(eval_results_dir) / run_id),
+        "init": init_result,
+        "capture": capture_result,
+    }
+
+
+def _result_block(label, result):
+    if result is None:
+        return '<p class="empty">{} did not run.</p>'.format(_text(label))
+    status = "passed" if result.returncode == 0 else "failed"
+    return """
+    <div class="panel">
+      <h2>{label} {status}</h2>
+      <p>Exit code: <code>{code}</code></p>
+      <pre class="command">{stdout}{stderr}</pre>
+    </div>
+    """.format(
+        label=_text(label),
+        status=_text(status),
+        code=_text(result.returncode),
+        stdout=_text(result.stdout or ""),
+        stderr=_text(result.stderr or ""),
+    )
+
+
+def _run_action_page(result):
+    candidate = result["candidate"]
+    body = """
+    <section class="panel">
+      <h2>Run Test Result</h2>
+      <p><strong>Candidate:</strong> {candidate}</p>
+      <p><strong>Runner:</strong> {runner}</p>
+      <p><strong>Artifact:</strong> {artifact}</p>
+      <p class="empty">Raw responses are local artifact evidence. Scores and decisions still require human review.</p>
+    </section>
+    <section style="margin-top:16px">{init}</section>
+    <section style="margin-top:16px">{capture}</section>
+    """.format(
+        candidate=_text(candidate.get("model_name")),
+        runner=_text(_candidate_runner_label(candidate)),
+        artifact=_artifact_link(result["run_id"]),
+        init=_result_block("Init run", result["init"]),
+        capture=_result_block("Capture prompts", result["capture"]),
+    )
+    return _layout("Run Test Result", "", body)
+
+
+def _is_loopback_host(host):
+    if str(host).lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def _relative_path(path):
     try:
         return str(Path(path).resolve().relative_to(REPO_ROOT))
@@ -744,6 +979,11 @@ def _layout(title, current_path, body):
       padding: 7px 12px;
       cursor: pointer;
     }}
+    .inline-form {{
+      display: grid;
+      gap: 6px;
+      align-items: start;
+    }}
     .filter-actions {{
       display: flex;
       align-items: center;
@@ -991,6 +1231,8 @@ def _lab(
     registry_path=CANDIDATE_REGISTRY_PATH,
     eval_results_dir=EVAL_RESULTS_DIR,
     project_registry_path=PROJECT_REGISTRY_PATH,
+    enable_run_tests=False,
+    action_token="",
 ):
     candidates = _load_radar_candidates(registry_path)
     projects = _load_project_repos(project_registry_path)
@@ -1102,6 +1344,7 @@ def _lab(
                     availability=_candidate_availability(row),
                     risk=_text(row.get("risk_notes")),
                 ),
+                _run_test_control(row, enable_run_tests, action_token),
                 _command_block(command),
             ]
         )
@@ -1235,7 +1478,7 @@ def _lab(
             table_class="project-table",
         ),
         queue=_table(
-            ["Candidate", "Status", "State", "Next command"],
+            ["Candidate", "Status", "State", "Run", "Next command"],
             queue_rows,
             empty_message="No ready candidates. Approve one in radar first.",
             table_class="lab-queue",
@@ -1709,7 +1952,12 @@ def _reports(conn, database_path):
     return _layout("Reports", "/reports", body)
 
 
-def make_handler(database_path):
+def make_handler(
+    database_path,
+    enable_run_tests=False,
+    action_token="",
+    run_test_timeout=3600,
+):
     class DashboardHandler(BaseHTTPRequestHandler):
         def do_GET(self):
             parsed = urlparse(self.path)
@@ -1725,12 +1973,53 @@ def make_handler(database_path):
             self.end_headers()
             self.wfile.write(html.encode("utf-8"))
 
+        def do_POST(self):
+            parsed = urlparse(self.path)
+            try:
+                if parsed.path != "/actions/run-test":
+                    html = _layout("Not Found", "", "<h2>Page not found</h2>")
+                    self.send_response(404)
+                elif not enable_run_tests:
+                    html = _layout(
+                        "Run Tests Disabled",
+                        "",
+                        "<h2>Run tests disabled</h2><p>Restart the dashboard with <code>--enable-run-tests</code>.</p>",
+                    )
+                    self.send_response(403)
+                else:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if length > 4096:
+                        raise ValueError("Request body too large.")
+                    form = parse_qs(self.rfile.read(length).decode("utf-8"))
+                    token = _query_value(form, "token")
+                    if token != action_token:
+                        raise ValueError("Invalid run-test token.")
+                    candidate_id = _query_value(form, "candidate_id")
+                    result = _run_candidate_test(
+                        candidate_id,
+                        CANDIDATE_REGISTRY_PATH,
+                        EVAL_RESULTS_DIR,
+                        run_test_timeout,
+                    )
+                    html = _run_action_page(result)
+                    self.send_response(200)
+            except Exception as exc:
+                html = _layout("Run Test Error", "", "<h2>Run Test Error</h2><p>{}</p>".format(_text(exc)))
+                self.send_response(400)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(html.encode("utf-8"))
+
         def log_message(self, fmt, *args):
             return
 
         def _route(self, path, query, conn):
             if path == "/lab":
-                return _lab(conn)
+                return _lab(
+                    conn,
+                    enable_run_tests=enable_run_tests,
+                    action_token=action_token,
+                )
             if path == "/":
                 return _overview(conn, query)
             if path == "/runs":
@@ -1756,9 +2045,28 @@ def make_handler(database_path):
     return DashboardHandler
 
 
-def serve(database_path, host="127.0.0.1", port=8765):
-    server = ThreadingHTTPServer((host, port), make_handler(database_path))
+def serve(
+    database_path,
+    host="127.0.0.1",
+    port=8765,
+    enable_run_tests=False,
+    run_test_timeout=3600,
+):
+    if enable_run_tests and not _is_loopback_host(host):
+        raise ValueError("Run-test actions require a localhost or loopback bind host.")
+    action_token = secrets.token_urlsafe(24) if enable_run_tests else ""
+    server = ThreadingHTTPServer(
+        (host, port),
+        make_handler(
+            database_path,
+            enable_run_tests=enable_run_tests,
+            action_token=action_token,
+            run_test_timeout=run_test_timeout,
+        ),
+    )
     print("Serving Local Model Dashboard at http://{}:{}".format(host, port), flush=True)
+    if enable_run_tests:
+        print("Dashboard run-test actions enabled for local candidates.", flush=True)
     try:
         server.serve_forever()
     finally:

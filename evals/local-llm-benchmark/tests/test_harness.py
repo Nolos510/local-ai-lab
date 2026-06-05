@@ -322,6 +322,69 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertEqual(failed.returncode, 2)
             self.assertIn("public IP", failed.stderr)
 
+    def test_run_lmstudio_cli_captures_all_prompts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_id = "20260605-lmstudio-cli-fixture"
+            fake_lms = tmp_path / "lms"
+            fake_lms.write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env python3",
+                        "import sys",
+                        "model_id = sys.argv[2]",
+                        "prompt = sys.argv[sys.argv.index('-p') + 1]",
+                        "prompt_id = 'unknown'",
+                        "for candidate in ('LLMCORE-v0.1-001', 'LLMCORE-v0.1-012'):",
+                        "    if candidate in prompt:",
+                        "        prompt_id = candidate",
+                        "print('mock lms response for {} using {}'.format(prompt_id, model_id))",
+                        "print('prompt tokens: 10')",
+                        "print('completion tokens: 5')",
+                        "print('12.5 tok/s')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            fake_lms.chmod(0o755)
+            self.run_harness(
+                "init-run",
+                "--benchmark-run-id",
+                run_id,
+                "--model-name",
+                "Fixture LM Studio Model",
+                "--backend",
+                "LM Studio CLI",
+                "--output-root",
+                tmp,
+            )
+            run_dir = tmp_path / run_id
+
+            self.run_harness(
+                "run-lmstudio-cli",
+                "--run-dir",
+                str(run_dir),
+                "--model-id",
+                "fixture-model-id",
+                "--lms-path",
+                str(fake_lms),
+                "--force",
+            )
+
+            records = [
+                json.loads(line)
+                for line in (run_dir / "raw_responses.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertEqual(len(records), 12)
+            self.assertEqual(records[0]["stop_reason"], "cli_exit_0")
+            self.assertEqual(records[0]["input_tokens"], 10)
+            self.assertEqual(records[0]["output_tokens"], 5)
+            self.assertEqual(records[0]["tokens_per_sec"], 12.5)
+            self.assertIn("fixture-model-id", records[0]["raw_response"])
+            self.assertTrue((run_dir / "lms-cli-capture.log").exists())
+
     def test_suggest_scores_writes_draft_and_exports_draft_csv(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_id = "20260605-fixture-draft-scoring"

@@ -83,6 +83,20 @@ radar candidates, benchmark artifact state, draft/confirmed score counts, import
 linkage, decisions, an abliterated/Dolphin specialty candidate lane, GitHub
 project radar, and the next benchmark commands to run locally.
 
+By default, the dashboard is read-only. To enable local run-test buttons for
+already-downloaded candidates with exact `local_runner` and `local_model_id`
+registry metadata, start it explicitly with:
+
+```bash
+python3 apps/model-dashboard/run_dashboard.py serve --enable-run-tests
+```
+
+Run-test buttons create a benchmark artifact and capture raw responses only.
+They do not download models, create scores, import CSVs, or make keep/watch
+decisions. For LM Studio CLI candidates, the button uses
+`run-lmstudio-cli`, which avoids the OpenAI-compatible server path when the
+server responds with `401 Unauthorized`.
+
 The Overview page supports URL-backed filters for search text, final label, decision, and install status. Filtered views can be bookmarked or shared locally, for example:
 
 ```text

@@ -54,7 +54,13 @@ def command_serve(args):
     if args.demo and not db.database_has_data(args.db):
         db.init_db(args.db, reset=False)
         csv_io.import_fixture_set(args.db, FIXTURE_DIR)
-    server.serve(args.db, host=args.host, port=args.port)
+    server.serve(
+        args.db,
+        host=args.host,
+        port=args.port,
+        enable_run_tests=args.enable_run_tests,
+        run_test_timeout=args.run_test_timeout,
+    )
     return 0
 
 
@@ -76,6 +82,17 @@ def build_parser():
     serve_parser.add_argument("--demo", action="store_true")
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8765)
+    serve_parser.add_argument(
+        "--enable-run-tests",
+        action="store_true",
+        help="Enable local run-test buttons for candidates with exact runner metadata.",
+    )
+    serve_parser.add_argument(
+        "--run-test-timeout",
+        type=int,
+        default=3600,
+        help="Maximum seconds allowed for each dashboard-triggered harness command.",
+    )
     serve_parser.set_defaults(func=command_serve)
 
     import_parser = subparsers.add_parser("import-csv", help="Import table-shaped CSV files.")

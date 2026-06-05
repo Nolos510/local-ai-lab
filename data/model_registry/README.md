@@ -35,6 +35,12 @@ sources. These links are metadata for review and should not be treated as
 download or install instructions unless the user separately approves an install
 task.
 
+Rows may also include `local_runner`, `local_model_id`, and `default_endpoint`
+for models that are already available in the local runtime inventory. These
+fields power dashboard run-test buttons when the local server is launched with
+run actions enabled. Leave them blank until the exact local runtime identifier
+is verified; public model names are not enough.
+
 ## Local-First Boundary
 
 This directory may contain local user notes. Treat unreviewed candidate records,

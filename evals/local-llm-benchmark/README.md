@@ -80,6 +80,21 @@ Allowed endpoints are `localhost`, loopback IPs, and literal private LAN IPs.
 Public hosts and public IP addresses are rejected. Runtime errors are preserved
 as raw benchmark evidence instead of being turned into scores.
 
+If LM Studio's OpenAI-compatible server is reachable but returns `401
+Unauthorized`, use the installed-model CLI lane for models that appear in local
+LM Studio inventory:
+
+```bash
+python3 evals/local-llm-benchmark/harness.py run-lmstudio-cli \
+  --run-dir data/eval_results/<run_id> \
+  --model-id qwen3-coder-30b-a3b-instruct-mlx \
+  --force
+```
+
+This runs `lms chat <model-id> -p <prompt> --stats --ttl 3600`, captures all
+prompt responses into `raw_responses.jsonl`, and preserves CLI output in
+`lms-cli-capture.log`. It does not download, install, or fetch models.
+
 Normalize human-supplied responses into the run artifact:
 
 ```bash

@@ -29,6 +29,9 @@ CANDIDATE_FIELDS = [
     "lm_studio_url",
     "ollama_url",
     "runtime_availability",
+    "local_runner",
+    "local_model_id",
+    "default_endpoint",
     "why_interesting",
     "risk_notes",
     "proposed_eval",
@@ -69,6 +72,9 @@ def write_candidate_registry(path, extra_rows=None):
             "lm_studio_url": "",
             "ollama_url": "https://ollama.com/library/ready-local",
             "runtime_availability": "GGUF; LM Studio and Ollama metadata",
+            "local_runner": "lmstudio-cli",
+            "local_model_id": "ready-local-7b",
+            "default_endpoint": "",
             "why_interesting": "Already installed for a local retest.",
             "risk_notes": "Needs scored evidence.",
             "proposed_eval": "Run the local benchmark prompt set.",
@@ -88,6 +94,9 @@ def write_candidate_registry(path, extra_rows=None):
             "lm_studio_url": "",
             "ollama_url": "",
             "runtime_availability": "unknown",
+            "local_runner": "",
+            "local_model_id": "",
+            "default_endpoint": "",
             "why_interesting": "Interesting but not ready.",
             "risk_notes": "Runtime unknown.",
             "proposed_eval": "Confirm local artifact first.",
@@ -501,6 +510,63 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("python3 evals/local-llm-benchmark/harness.py run-local", html)
             self.assertIn("/artifacts/20260603-ready-local", html)
             self.assertIn("Benchmark Artifacts", html)
+            self.assertIn("Run button disabled", html)
+            self.assertIn("ready-local-7b", html)
+
+    def test_lab_dashboard_can_enable_run_test_button_for_local_models(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(registry_path)
+
+            with db.connect(db_path) as conn:
+                html = server._lab(
+                    conn,
+                    registry_path=registry_path,
+                    eval_results_dir=tmp_path / "eval_results",
+                    project_registry_path=tmp_path / "missing-projects.csv",
+                    enable_run_tests=True,
+                    action_token="fixture-token",
+                )
+
+            self.assertIn('method="post" action="/actions/run-test"', html)
+            self.assertIn('name="token" value="fixture-token"', html)
+            self.assertIn('name="candidate_id" value="20260603-ready-local"', html)
+            self.assertIn("Run Test", html)
+            self.assertIn("LM Studio CLI", html)
+
+    def test_run_button_command_builder_uses_fixed_lmstudio_cli_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            row = {
+                "candidate_id": "20260603-ready-local",
+                "model_name": "Ready Local 7B",
+                "model_family": "Ready",
+                "provider_or_org": "local",
+                "format_or_runtime": "MLX",
+                "model_page_url": "https://huggingface.co/example/ready-local-7b",
+                "local_runner": "lmstudio-cli",
+                "local_model_id": "ready-local-7b",
+            }
+
+            init_command, capture_command = server._build_candidate_commands(
+                row,
+                "20260605-ready-local-test",
+                Path(tmp),
+            )
+
+            self.assertIn("init-run", init_command)
+            self.assertIn("--benchmark-run-id", init_command)
+            self.assertIn("run-lmstudio-cli", capture_command)
+            self.assertIn("--model-id", capture_command)
+            self.assertIn("ready-local-7b", capture_command)
+            self.assertNotIn("download", " ".join(capture_command))
+
+    def test_run_test_actions_require_loopback_host(self):
+        self.assertTrue(server._is_loopback_host("localhost"))
+        self.assertTrue(server._is_loopback_host("127.0.0.1"))
+        self.assertFalse(server._is_loopback_host("192.168.1.10"))
 
     def test_lab_dashboard_shows_abliterated_dolphin_lane(self):
         with tempfile.TemporaryDirectory() as tmp:

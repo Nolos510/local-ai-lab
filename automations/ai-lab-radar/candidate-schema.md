@@ -21,6 +21,9 @@ or benchmarked.
 | `lm_studio_url` | Optional | LM Studio-compatible model page when explicit. |
 | `ollama_url` | Optional | Ollama library or registry page when explicit. |
 | `runtime_availability` | Optional | Short text naming known or unverified runtimes such as LM Studio, Ollama, llama.cpp, MLX, GGUF, or Safetensors. |
+| `local_runner` | Optional | Exact local runner for approved one-click tests, such as `lmstudio-cli` or `openai-compatible`. Leave blank when unverified. |
+| `local_model_id` | Optional | Exact local runtime model id. Required before dashboard run buttons can execute a model. |
+| `default_endpoint` | Optional | Loopback/private-LAN endpoint for `openai-compatible` runs only. Do not store public URLs. |
 | `source_date` | Optional | Date of the source, not the discovery date. |
 | `discovered_at` | Required | ISO timestamp or date when added to radar. |
 | `why_interesting` | Required | Concise reason to track. |
@@ -46,6 +49,8 @@ map stable fields into:
 - A radar candidate is a review target, not an install request.
 - Runtime/model links are navigation metadata only. Do not turn them into
   download, install, or model execution steps without explicit user approval.
+- Dashboard run buttons may only use explicit local runner metadata from an
+  approved candidate row. Do not guess local model IDs from public model names.
 - Do not convert claims into scores without a benchmark run.
 - Do not create download instructions unless the user explicitly asks for a
   local install plan.

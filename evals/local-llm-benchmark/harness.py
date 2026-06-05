@@ -13,6 +13,9 @@ import hashlib
 import http.client
 import ipaddress
 import json
+import re
+import shutil
+import subprocess
 import sys
 import time
 from datetime import date, datetime, timezone
@@ -264,6 +267,101 @@ def _usage_value(response, key):
     usage = response.get("usage") or {}
     value = usage.get(key)
     return value if isinstance(value, (int, float)) else None
+
+
+def _resolve_lms_path(path=None):
+    if path:
+        candidate = Path(path).expanduser()
+        if candidate.name != "lms":
+            raise HarnessError("LM Studio CLI path must point to an `lms` executable.")
+        if candidate.exists() and candidate.is_file():
+            return str(candidate)
+        raise HarnessError("LM Studio CLI not found at: {}".format(candidate))
+    bundled = Path.home() / ".lmstudio" / "bin" / "lms"
+    if bundled.exists() and bundled.is_file():
+        return str(bundled)
+    found = shutil.which("lms")
+    if found:
+        return found
+    raise HarnessError("LM Studio CLI not found at ~/.lmstudio/bin/lms or on PATH.")
+
+
+def _parse_lms_stats(text):
+    stats = {}
+    tokens_per_sec = re.search(
+        r"([0-9]+(?:\.[0-9]+)?)\s*(?:tok/s|tokens/sec|tokens per second)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if tokens_per_sec:
+        stats["tokens_per_sec"] = float(tokens_per_sec.group(1))
+    input_pattern = (
+        r"(?:([0-9]+)[ \t]*(?:input|prompt)[ \t]*tokens?|"
+        r"(?:input|prompt)[ \t]*tokens?:[ \t]*([0-9]+))"
+    )
+    input_tokens = re.search(
+        input_pattern,
+        text,
+        flags=re.IGNORECASE,
+    )
+    if input_tokens:
+        stats["input_tokens"] = int(input_tokens.group(1) or input_tokens.group(2))
+    output_pattern = (
+        r"(?:([0-9]+)[ \t]*(?:output|completion)[ \t]*tokens?|"
+        r"(?:output|completion)[ \t]*tokens?:[ \t]*([0-9]+))"
+    )
+    output_tokens = re.search(
+        output_pattern,
+        text,
+        flags=re.IGNORECASE,
+    )
+    if output_tokens:
+        stats["output_tokens"] = int(output_tokens.group(1) or output_tokens.group(2))
+    return stats
+
+
+def _run_lms_chat(lms_path, model_id, prompt, timeout, ttl):
+    command = [
+        lms_path,
+        "chat",
+        model_id,
+        "-p",
+        prompt,
+        "--stats",
+        "--ttl",
+        str(ttl),
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "stdout": exc.stdout or "",
+            "stderr": exc.stderr or "",
+            "returncode": None,
+            "error": "LM Studio CLI timed out after {} seconds.".format(timeout),
+        }
+    output = result.stdout or ""
+    error_output = result.stderr or ""
+    error = None
+    if result.returncode != 0:
+        detail = (error_output or output).strip()
+        error = "LM Studio CLI returned exit {}: {}".format(
+            result.returncode,
+            detail[:500],
+        )
+    return {
+        "stdout": output,
+        "stderr": error_output,
+        "returncode": result.returncode,
+        "error": error,
+    }
 
 
 def _extract_json_object(text):
@@ -681,6 +779,88 @@ def run_local(args):
     return raw_path
 
 
+def run_lmstudio_cli(args):
+    run_dir = Path(args.run_dir).resolve()
+    metadata = _read_json(run_dir / "metadata.json")
+    prompt_set = _load_prompt_set()
+    lms_path = _resolve_lms_path(args.lms_path)
+    raw_path = run_dir / "raw_responses.jsonl"
+    log_path = run_dir / "lms-cli-capture.log"
+    _require_absent_empty_or_force(raw_path, args.force)
+    _require_absent_empty_or_force(log_path, args.force)
+
+    records = []
+    log_lines = [
+        "LM Studio CLI capture",
+        "benchmark_run_id={}".format(metadata["benchmark_run_id"]),
+        "model_id={}".format(args.model_id),
+        "started_at={}".format(_utc_now()),
+        "",
+    ]
+    for prompt in prompt_set["prompts"]:
+        started_at = _utc_now()
+        started = time.monotonic()
+        source = {
+            "prompt_id": prompt["id"],
+            "started_at": started_at,
+            "raw_response": "",
+            "error": None,
+        }
+        result = _run_lms_chat(
+            lms_path,
+            args.model_id,
+            prompt["prompt"],
+            args.timeout,
+            args.ttl,
+        )
+        completed = time.monotonic()
+        latency_ms = int(round((completed - started) * 1000))
+        combined_output = "\n".join(
+            part for part in (result["stdout"], result["stderr"]) if part
+        )
+        stats = _parse_lms_stats(combined_output)
+        source.update(
+            {
+                "completed_at": _utc_now(),
+                "latency_ms": latency_ms,
+                "input_tokens": stats.get("input_tokens"),
+                "output_tokens": stats.get("output_tokens"),
+                "tokens_per_sec": stats.get("tokens_per_sec"),
+                "stop_reason": (
+                    "cli_exit_0" if result["returncode"] == 0 else "error"
+                ),
+                "error": result["error"],
+                "raw_response": result["stdout"].strip(),
+            }
+        )
+        records.append(_normalize_response_record(source, metadata, prompt))
+        log_lines.extend(
+            [
+                "## {}".format(prompt["id"]),
+                "returncode={}".format(result["returncode"]),
+                "latency_ms={}".format(latency_ms),
+                "error={}".format(result["error"] or ""),
+                "stdout:",
+                result["stdout"].rstrip(),
+                "stderr:",
+                result["stderr"].rstrip(),
+                "",
+            ]
+        )
+
+    _write_jsonl(raw_path, records)
+    log_path.write_text("\n".join(log_lines), encoding="utf-8")
+    evidence_path = run_dir / "evidence.md"
+    with evidence_path.open("a", encoding="utf-8") as handle:
+        handle.write("\n## LM Studio CLI Runner\n\n")
+        handle.write("- Command shape: `lms chat <model-id> -p <prompt> --stats --ttl {}`\n".format(args.ttl))
+        handle.write("- Model id: `{}`\n".format(args.model_id))
+        handle.write("- Completed at: `{}`\n".format(_utc_now()))
+        handle.write("- Prompt records: `{}`\n".format(len(records)))
+        handle.write("- Capture log: `{}`\n".format(_display_path(log_path)))
+    return raw_path
+
+
 def _judge_prompt(metadata, raw_records, rubric):
     compact_records = [
         {
@@ -848,6 +1028,18 @@ def build_parser():
     run_parser.add_argument("--top-p", type=float)
     run_parser.add_argument("--force", action="store_true")
     run_parser.set_defaults(func=run_local)
+
+    lmstudio_parser = subparsers.add_parser(
+        "run-lmstudio-cli",
+        help="Capture prompt responses from an installed LM Studio CLI model.",
+    )
+    lmstudio_parser.add_argument("--run-dir", required=True, type=Path)
+    lmstudio_parser.add_argument("--model-id", required=True)
+    lmstudio_parser.add_argument("--lms-path")
+    lmstudio_parser.add_argument("--timeout", type=float, default=180.0)
+    lmstudio_parser.add_argument("--ttl", type=int, default=3600)
+    lmstudio_parser.add_argument("--force", action="store_true")
+    lmstudio_parser.set_defaults(func=run_lmstudio_cli)
 
     record_parser = subparsers.add_parser(
         "record-responses",
