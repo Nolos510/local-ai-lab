@@ -15,6 +15,7 @@ CANDIDATE_REGISTRY_PATH = REPO_ROOT / "data" / "model_registry" / "candidates.cs
 EVAL_RESULTS_DIR = REPO_ROOT / "data" / "eval_results"
 
 NAV_ITEMS = (
+    ("/lab", "Lab Dashboard"),
     ("/", "Overview"),
     ("/runs", "Model Runs"),
     ("/compare", "Compare Models"),
@@ -55,9 +56,10 @@ def _table(headers, rows, empty_message="No rows yet.", table_class=""):
     for row in rows:
         row_html.append("<tr>{}</tr>".format("".join("<td>{}</td>".format(cell) for cell in row)))
     class_attr = ' class="{}"'.format(escape(table_class)) if table_class else ""
-    return "<table{}><thead><tr>{}</tr></thead><tbody>{}</tbody></table>".format(
+    table = "<table{}><thead><tr>{}</tr></thead><tbody>{}</tbody></table>".format(
         class_attr, header_html, "".join(row_html)
     )
+    return '<div class="table-wrap">{}</div>'.format(table)
 
 
 def _query_value(query, key):
@@ -243,6 +245,58 @@ def _artifact_link(benchmark_run_id):
     )
 
 
+def _command_block(command):
+    return '<pre class="command">{}</pre>'.format(_text(command))
+
+
+def _file_status(path):
+    return "yes" if Path(path).exists() else "no"
+
+
+def _count_jsonl_lines(path):
+    path = Path(path)
+    if not path.exists():
+        return 0
+    with path.open(encoding="utf-8") as handle:
+        return sum(1 for line in handle if line.strip())
+
+
+def _artifact_summaries(eval_results_dir=EVAL_RESULTS_DIR):
+    root = Path(eval_results_dir)
+    if not root.exists():
+        return []
+    artifacts = []
+    for path in sorted(root.iterdir(), key=lambda item: item.name.lower()):
+        if not path.is_dir():
+            continue
+        artifacts.append(
+            {
+                "benchmark_run_id": path.name,
+                "path": path,
+                "raw_responses": _count_jsonl_lines(path / "raw_responses.jsonl"),
+                "scores": _file_status(path / "scores.json"),
+                "draft_scores": _file_status(path / "draft-scores.json"),
+                "decision": _file_status(path / "decision.json"),
+                "dashboard_import": _file_status(path / "dashboard-import"),
+            }
+        )
+    return artifacts
+
+
+def _score_status_counts(conn):
+    rows = conn.execute(
+        """
+        SELECT score_status, COUNT(*) AS count
+        FROM eval_scores
+        GROUP BY score_status
+        """
+    ).fetchall()
+    counts = {"confirmed": 0, "draft": 0}
+    for row in rows:
+        counts[row["score_status"]] = row["count"]
+    return counts
+
+
 def _dashboard_model_links(conn):
     links = {}
     for row in db.list_model_summaries(conn):
@@ -250,6 +304,17 @@ def _dashboard_model_links(conn):
         if model_name:
             links[model_name.lower()] = row["id"]
     return links
+
+
+def _dashboard_run_ids(conn):
+    run_ids = set()
+    for row in db.list_runs(conn):
+        notes = row["run_notes"] or ""
+        for part in str(notes).split("|"):
+            part = part.strip()
+            if part.startswith("benchmark_run_id="):
+                run_ids.add(part.split("=", 1)[1].strip())
+    return run_ids
 
 
 def _filter_summaries(rows, filters):
@@ -471,6 +536,7 @@ def _layout(title, current_path, body):
     }}
     table {{
       width: 100%;
+      min-width: 760px;
       border-collapse: collapse;
       background: var(--panel);
       border: 1px solid var(--line);
@@ -489,6 +555,11 @@ def _layout(title, current_path, body):
       background: #ede7dc;
       color: #393b3f;
       font-size: 13px;
+    }}
+    .table-wrap {{
+      width: 100%;
+      overflow-x: auto;
+      border-radius: 8px;
     }}
     tr:last-child td {{ border-bottom: 0; }}
     a {{ color: var(--accent); }}
@@ -519,6 +590,35 @@ def _layout(title, current_path, body):
       padding: 16px;
       overflow-x: auto;
       white-space: pre-wrap;
+    }}
+    .command {{
+      margin: 0;
+      background: #1e2227;
+      color: #f6f0e6;
+      border-radius: 8px;
+      padding: 10px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-size: 13px;
+    }}
+    .workflow-table td:nth-child(1) {{
+      width: 150px;
+      font-weight: 700;
+    }}
+    .lab-queue {{
+      min-width: 980px;
+    }}
+    .lab-queue th:nth-child(1),
+    .lab-queue td:nth-child(1) {{
+      width: 250px;
+    }}
+    .lab-queue th:nth-child(2),
+    .lab-queue td:nth-child(2),
+    .lab-queue th:nth-child(3),
+    .lab-queue td:nth-child(3),
+    .lab-queue th:nth-child(4),
+    .lab-queue td:nth-child(4) {{
+      width: 120px;
     }}
     .split {{
       display: grid;
@@ -637,6 +737,176 @@ def _overview(conn, query=None):
         ),
     )
     return _layout("Overview", "/", body)
+
+
+def _lab(conn, registry_path=CANDIDATE_REGISTRY_PATH, eval_results_dir=EVAL_RESULTS_DIR):
+    candidates = _load_radar_candidates(registry_path)
+    artifacts = _artifact_summaries(eval_results_dir)
+    model_links = _dashboard_model_links(conn)
+    imported_run_ids = _dashboard_run_ids(conn)
+    score_counts = _score_status_counts(conn)
+    ready_candidates = [
+        row for row in candidates if row.get("status") == "ready_for_eval"
+    ]
+    linked_candidates = [row for row in candidates if row.get("benchmark_run_id")]
+    artifact_ids = {row["benchmark_run_id"] for row in artifacts}
+    linked_imports = len(artifact_ids & imported_run_ids)
+
+    stage_rows = [
+        [
+            "Radar",
+            _pill("ready"),
+            "{} ready candidates".format(len(ready_candidates)),
+            '<a href="/radar?status=ready_for_eval">Review ready queue</a>',
+        ],
+        [
+            "Benchmark",
+            _pill("active"),
+            "{} artifact directories".format(len(artifacts)),
+            "Run a local endpoint benchmark for the next approved candidate.",
+        ],
+        [
+            "Score",
+            _status_pill("draft") if score_counts["draft"] else _status_pill("confirmed"),
+            "{} draft / {} confirmed".format(
+                score_counts["draft"], score_counts["confirmed"]
+            ),
+            "Use draft scores for review, then export confirmed scores.",
+        ],
+        [
+            "Import",
+            _pill("linked"),
+            "{} artifacts linked to active DB".format(linked_imports),
+            '<a href="/runs">Inspect imported runs</a>',
+        ],
+        [
+            "Decision",
+            _pill("local"),
+            "{} decisions logged".format(db.table_count(conn, "decisions")),
+            '<a href="/storage">Review keep/watch/retest state</a>',
+        ],
+    ]
+
+    queue_rows = []
+    for row in ready_candidates:
+        run_id = row.get("benchmark_run_id")
+        model_id = model_links.get(row.get("model_name", "").lower())
+        dashboard_state = (
+            '<a href="/models/{id}">imported</a>'.format(id=model_id)
+            if model_id
+            else '<span class="empty">not imported</span>'
+        )
+        artifact_state = (
+            _artifact_link(run_id)
+            if run_id
+            else '<span class="empty">no artifact yet</span>'
+        )
+        proposed_run_id = run_id or "YYYYMMDD-{}-local".format(
+            row.get("candidate_id", "candidate").replace("_", "-")
+        )
+        command = "\n".join(
+            [
+                "python3 evals/local-llm-benchmark/harness.py init-run \\",
+                "  --benchmark-run-id {} \\".format(proposed_run_id),
+                '  --model-name "{}" \\'.format(row.get("model_name", "")),
+                '  --backend "Local OpenAI-compatible" \\',
+                "  --temperature 0.2 \\",
+                "  --top-p 0.9",
+                "",
+                "python3 evals/local-llm-benchmark/harness.py run-local \\",
+                "  --run-dir data/eval_results/{} \\".format(proposed_run_id),
+                "  --endpoint http://127.0.0.1:1234/v1 \\",
+                '  --model "{}" \\'.format(row.get("model_name", "")),
+                "  --force",
+            ]
+        )
+        queue_rows.append(
+            [
+                '<div class="cell-stack"><div>{name}</div><code>{id}</code></div>'.format(
+                    name=_text(row.get("model_name")),
+                    id=_text(row.get("candidate_id")),
+                ),
+                _pill(row.get("status")),
+                """
+                <div class="cell-stack">
+                  <div><strong>Artifact</strong><br>{artifact}</div>
+                  <div><strong>Dashboard</strong><br>{dashboard}</div>
+                  <div><strong>Risk</strong><br>{risk}</div>
+                </div>
+                """.format(
+                    artifact=artifact_state,
+                    dashboard=dashboard_state,
+                    risk=_text(row.get("risk_notes")),
+                ),
+                _command_block(command),
+            ]
+        )
+
+    artifact_rows = []
+    for row in artifacts:
+        run_id = row["benchmark_run_id"]
+        artifact_rows.append(
+            [
+                _artifact_link(run_id),
+                _text(row["raw_responses"]),
+                _text(row["scores"]),
+                _text(row["draft_scores"]),
+                _text(row["decision"]),
+                _text(row["dashboard_import"]),
+                "yes" if run_id in imported_run_ids else "no",
+            ]
+        )
+
+    body = """
+    <section class="grid">
+      <div class="stat"><div class="label">Ready candidates</div><div class="value">{ready}</div></div>
+      <div class="stat"><div class="label">Artifacts</div><div class="value">{artifacts}</div></div>
+      <div class="stat"><div class="label">Draft scores</div><div class="value">{drafts}</div></div>
+      <div class="stat"><div class="label">Confirmed scores</div><div class="value">{confirmed}</div></div>
+    </section>
+    <section>
+      <h2>Product Loop</h2>
+      {stages}
+    </section>
+    <section style="margin-top:16px">
+      <h2>Ready Queue</h2>
+      {queue}
+    </section>
+    <section style="margin-top:16px">
+      <h2>Benchmark Artifacts</h2>
+      {artifacts_table}
+    </section>
+    """.format(
+        ready=len(ready_candidates),
+        artifacts=len(artifacts),
+        drafts=score_counts["draft"],
+        confirmed=score_counts["confirmed"],
+        stages=_table(
+            ["Stage", "State", "Signal", "Next action"],
+            stage_rows,
+            table_class="workflow-table",
+        ),
+        queue=_table(
+            ["Candidate", "Status", "State", "Next command"],
+            queue_rows,
+            empty_message="No ready candidates. Approve one in radar first.",
+            table_class="lab-queue",
+        ),
+        artifacts_table=_table(
+            [
+                "Run",
+                "Responses",
+                "Scores",
+                "Draft",
+                "Decision",
+                "CSV",
+                "Imported",
+            ],
+            artifact_rows,
+            empty_message="No benchmark artifacts found.",
+        ),
+    )
+    return _layout("Lab Dashboard", "/lab", body)
 
 
 def _runs(conn):
@@ -986,6 +1256,8 @@ def make_handler(database_path):
             return
 
         def _route(self, path, query, conn):
+            if path == "/lab":
+                return _lab(conn)
             if path == "/":
                 return _overview(conn, query)
             if path == "/runs":

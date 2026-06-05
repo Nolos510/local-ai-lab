@@ -72,6 +72,16 @@ python3 apps/model-dashboard/run_dashboard.py serve
 
 Use `--demo` with `serve` to load fixtures automatically when the selected database has no model rows.
 
+The Lab Dashboard page is available at:
+
+```text
+http://127.0.0.1:8765/lab
+```
+
+It is the read-only v1 command center for the local product loop. It shows ready
+radar candidates, benchmark artifact state, draft/confirmed score counts, import
+linkage, decisions, and the next benchmark commands to run locally.
+
 The Overview page supports URL-backed filters for search text, final label, decision, and install status. Filtered views can be bookmarked or shared locally, for example:
 
 ```text

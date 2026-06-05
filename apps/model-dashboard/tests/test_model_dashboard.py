@@ -266,6 +266,36 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Not imported into the active database", html)
             self.assertIn("Artifact not found", missing_html)
 
+    def test_lab_dashboard_shows_product_loop_and_next_commands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            eval_results = tmp_path / "eval_results"
+            artifact_dir = eval_results / "20260603-ready-local"
+            artifact_dir.mkdir(parents=True)
+            (artifact_dir / "raw_responses.jsonl").write_text(
+                '{"prompt_id": "LLMCORE-v0.1-001"}\n', encoding="utf-8"
+            )
+            (artifact_dir / "dashboard-import").mkdir()
+
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(registry_path)
+
+            with db.connect(db_path) as conn:
+                html = server._lab(
+                    conn,
+                    registry_path=registry_path,
+                    eval_results_dir=eval_results,
+                )
+
+            self.assertIn("Lab Dashboard", html)
+            self.assertIn("Product Loop", html)
+            self.assertIn("Ready Local 7B", html)
+            self.assertIn("python3 evals/local-llm-benchmark/harness.py run-local", html)
+            self.assertIn("/artifacts/20260603-ready-local", html)
+            self.assertIn("Benchmark Artifacts", html)
+
 
 if __name__ == "__main__":
     unittest.main()
