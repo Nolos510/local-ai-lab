@@ -13,7 +13,7 @@ Goal: prove a small local-first RAG path on Apple Silicon.
 
 ## v1: Retrieval Quality
 
-- [ ] Add a real local embedding provider.
+- [x] Add a real local embedding provider.
 - [ ] Add retrieval evaluation fixtures.
 - [ ] Improve citation and source metadata handling.
 - [ ] Consider hybrid retrieval after the basic path is measured.

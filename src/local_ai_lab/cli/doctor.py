@@ -21,7 +21,7 @@ REQUIRED_DATA_DIRS = (
 )
 OLLAMA_PROVIDER = "ollama"
 OPENAI_COMPATIBLE_PROVIDERS = {"lm_studio", "openai_compatible"}
-SUPPORTED_EMBEDDING_PROVIDERS = {"deterministic"}
+SUPPORTED_EMBEDDING_PROVIDERS = {"deterministic", "ollama"}
 SUPPORTED_VECTOR_STORE_PROVIDERS = {"qdrant"}
 
 HttpGet = Callable[..., Any]
@@ -95,6 +95,12 @@ def collect_doctor_checks(
                     required=False,
                 ),
                 DoctorCheck(
+                    "Ollama embedding model",
+                    CheckStatus.WARN,
+                    "settings unavailable",
+                    required=False,
+                ),
+                DoctorCheck(
                     "LM Studio/OpenAI-compatible endpoint",
                     CheckStatus.WARN,
                     "settings unavailable",
@@ -114,10 +120,11 @@ def collect_doctor_checks(
 
     ollama_tags_payload: dict[str, Any] | None = None
     ollama_selected = settings.llm_provider.lower() == OLLAMA_PROVIDER
+    ollama_embedding_selected = settings.embedding_provider.lower() == OLLAMA_PROVIDER
     ollama_endpoint_check, ollama_tags_payload = _check_ollama_endpoint(
         settings,
         http_get=http_get,
-        required=ollama_selected,
+        required=ollama_selected or ollama_embedding_selected,
     )
     checks.append(ollama_endpoint_check)
     checks.append(
@@ -126,6 +133,14 @@ def collect_doctor_checks(
             tags_payload=ollama_tags_payload,
             endpoint_status=ollama_endpoint_check.status,
             required=ollama_selected,
+        )
+    )
+    checks.append(
+        _check_ollama_embedding_model(
+            settings,
+            tags_payload=ollama_tags_payload,
+            endpoint_status=ollama_endpoint_check.status,
+            required=ollama_embedding_selected,
         )
     )
 
@@ -318,6 +333,50 @@ def _check_ollama_model(
             f"configured model '{settings.ollama_model}' is not available locally; "
             f"run `ollama pull {settings.ollama_model}` or set "
             "LOCAL_AI_LAB_OLLAMA_MODEL to an installed model"
+        ),
+    )
+
+
+def _check_ollama_embedding_model(
+    settings: Settings,
+    *,
+    tags_payload: dict[str, Any] | None,
+    endpoint_status: CheckStatus,
+    required: bool,
+) -> DoctorCheck:
+    if not required:
+        return DoctorCheck(
+            "Ollama embedding model",
+            CheckStatus.WARN,
+            "provider not selected; not checked",
+            required=False,
+        )
+    if endpoint_status != CheckStatus.PASS or tags_payload is None:
+        return DoctorCheck(
+            "Ollama embedding model",
+            CheckStatus.FAIL,
+            "Ollama model list unavailable",
+        )
+
+    model_names = {
+        str(model.get("name"))
+        for model in tags_payload.get("models", [])
+        if isinstance(model, dict) and model.get("name") is not None
+    }
+    if settings.ollama_embedding_model in model_names:
+        return DoctorCheck(
+            "Ollama embedding model",
+            CheckStatus.PASS,
+            "configured embedding model is available locally",
+        )
+    return DoctorCheck(
+        "Ollama embedding model",
+        CheckStatus.FAIL,
+        (
+            f"configured embedding model '{settings.ollama_embedding_model}' "
+            "is not available locally; "
+            f"run `ollama pull {settings.ollama_embedding_model}` or set "
+            "LOCAL_AI_LAB_OLLAMA_EMBEDDING_MODEL to an installed embedding model"
         ),
     )
 

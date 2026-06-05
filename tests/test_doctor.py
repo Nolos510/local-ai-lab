@@ -143,6 +143,78 @@ def test_doctor_checks_openai_compatible_endpoint_when_selected(tmp_path: Path) 
     assert calls == ["http://localhost:6333/collections", "http://localhost:1234/v1/models"]
 
 
+def test_doctor_checks_ollama_embedding_model_when_selected(tmp_path: Path) -> None:
+    root = _make_project_root(tmp_path)
+    calls: list[str] = []
+    settings = Settings(
+        embedding_provider="ollama",
+        llm_provider="mock",
+        qdrant_url="http://localhost:6333",
+        ollama_base_url="http://localhost:11434",
+        ollama_embedding_model="bge-m3",
+    )
+
+    def fake_get(url: str, *, timeout: float) -> FakeResponse:
+        del timeout
+        calls.append(url)
+        payloads = {
+            "http://localhost:6333/collections": {"result": {"collections": []}},
+            "http://localhost:11434/api/tags": {"models": [{"name": "bge-m3"}]},
+        }
+        return FakeResponse(payloads[url])
+
+    output = StringIO()
+    exit_code = run_doctor(
+        root=root,
+        output=output,
+        settings_factory=lambda: settings,
+        http_get=fake_get,
+    )
+
+    assert exit_code == 0
+    assert calls == ["http://localhost:6333/collections", "http://localhost:11434/api/tags"]
+    report = output.getvalue()
+    assert "Ollama embedding model" in report
+    assert "configured embedding model is available locally" in report
+    assert "Ollama model" in report
+    assert "provider not selected; not checked" in report
+
+
+def test_doctor_fails_when_ollama_embedding_model_is_missing(tmp_path: Path) -> None:
+    root = _make_project_root(tmp_path)
+    settings = Settings(
+        embedding_provider="ollama",
+        llm_provider="mock",
+        qdrant_url="http://localhost:6333",
+        ollama_base_url="http://user:secret@localhost:11434/private?token=abc",
+        ollama_embedding_model="bge-m3",
+    )
+
+    def fake_get(url: str, *, timeout: float) -> FakeResponse:
+        del timeout
+        if url == "http://localhost:6333/collections":
+            return FakeResponse({"result": {"collections": []}})
+        assert "secret" in url
+        return FakeResponse({"models": [{"name": "nomic-embed-text:latest"}]})
+
+    output = StringIO()
+    exit_code = run_doctor(
+        root=root,
+        output=output,
+        settings_factory=lambda: settings,
+        http_get=fake_get,
+    )
+
+    report = output.getvalue()
+    assert exit_code == 1
+    assert "configured embedding model 'bge-m3' is not available locally" in report
+    assert "`ollama pull bge-m3`" in report
+    assert "LOCAL_AI_LAB_OLLAMA_EMBEDDING_MODEL" in report
+    assert "secret" not in report
+    assert "token=abc" not in report
+    assert "/private" not in report
+
+
 def test_doctor_fails_without_calling_services_when_settings_do_not_parse(tmp_path: Path) -> None:
     root = _make_project_root(tmp_path)
 

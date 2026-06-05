@@ -112,6 +112,21 @@ uv run local-ai-lab ingest --path data/sample_docs
 LOCAL_AI_LAB_LLM_PROVIDER=mock uv run local-ai-lab ask "What is this lab for?"
 ```
 
+Semantic local embeddings can be enabled through Ollama after installing the
+configured embedding model:
+
+```bash
+ollama pull bge-m3
+LOCAL_AI_LAB_EMBEDDING_PROVIDER=ollama \
+LOCAL_AI_LAB_OLLAMA_EMBEDDING_MODEL=bge-m3 \
+LOCAL_AI_LAB_QDRANT_VECTOR_SIZE=1024 \
+uv run local-ai-lab doctor
+```
+
+Qdrant collection vector size is fixed at creation time. Changing embedding
+provider, model, or vector size requires recreating the collection and
+reingesting documents; see `docs/rag.md`.
+
 Live local-model checks:
 
 ```bash

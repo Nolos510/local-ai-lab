@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from local_ai_lab.cli.doctor import run_doctor
+from local_ai_lab.embeddings.base import EmbeddingProviderError
 from local_ai_lab.llms.base import ChatProviderError
 from local_ai_lab.rag.factory import build_rag_service
 
@@ -29,7 +30,11 @@ def main() -> int:
 
     if args.command == "ingest":
         service = build_rag_service()
-        result = service.ingest_path(args.path)
+        try:
+            result = service.ingest_path(args.path)
+        except EmbeddingProviderError as exc:
+            print(f"Embedding provider error: {exc}", file=sys.stderr)
+            return 1
         print(f"Ingested {result['documents']} document(s) into {result['chunks']} chunk(s).")
         return 0
 
@@ -37,6 +42,9 @@ def main() -> int:
         service = build_rag_service()
         try:
             result = service.ask(args.question, top_k=args.top_k)
+        except EmbeddingProviderError as exc:
+            print(f"Embedding provider error: {exc}", file=sys.stderr)
+            return 1
         except ChatProviderError as exc:
             print(f"Provider error: {exc}", file=sys.stderr)
             return 1

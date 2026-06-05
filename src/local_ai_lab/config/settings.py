@@ -19,9 +19,10 @@ class Settings(BaseSettings):
 
     qdrant_url: str = "http://localhost:6333"
     qdrant_collection: str = "local_ai_lab_chunks"
-    qdrant_vector_size: int = Field(default=384, ge=8)
+    qdrant_vector_size: int = Field(default=1024, ge=8)
 
     embedding_provider: str = "deterministic"
+    ollama_embedding_model: str = "bge-m3"
 
     vector_store_provider: str = "qdrant"
 
