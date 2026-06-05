@@ -375,6 +375,18 @@ def _artifact_link(benchmark_run_id):
     )
 
 
+def _benchmark_run_id_from_notes(notes):
+    for part in str(notes or "").split("|"):
+        part = part.strip()
+        if part.startswith("benchmark_run_id="):
+            return part.split("=", 1)[1].strip()
+    return ""
+
+
+def _artifact_link_from_notes(notes):
+    return _artifact_link(_benchmark_run_id_from_notes(notes))
+
+
 def _command_block(command):
     return '<pre class="command">{}</pre>'.format(_text(command))
 
@@ -439,12 +451,46 @@ def _dashboard_model_links(conn):
 def _dashboard_run_ids(conn):
     run_ids = set()
     for row in db.list_runs(conn):
-        notes = row["run_notes"] or ""
-        for part in str(notes).split("|"):
-            part = part.strip()
-            if part.startswith("benchmark_run_id="):
-                run_ids.add(part.split("=", 1)[1].strip())
+        run_id = _benchmark_run_id_from_notes(row["run_notes"])
+        if run_id:
+            run_ids.add(run_id)
     return run_ids
+
+
+def _dashboard_runs_by_benchmark_id(conn):
+    runs = {}
+    for row in db.list_runs(conn):
+        run_id = _benchmark_run_id_from_notes(row["run_notes"])
+        if run_id:
+            runs[run_id] = row
+    return runs
+
+
+def _latest_decisions_by_model_id(conn):
+    decisions = {}
+    for row in db.list_decisions(conn):
+        if row["model_id"] not in decisions:
+            decisions[row["model_id"]] = row
+    return decisions
+
+
+def _import_state_for_run(run, decisions_by_model):
+    if not run:
+        return '<span class="empty">not imported</span>'
+    decision = decisions_by_model.get(run["model_id"])
+    decision_state = _text(decision["decision"]) if decision else "no decision"
+    return (
+        '<div class="cell-stack">'
+        '<a href="/models/{id}">imported model</a>'
+        '<div>{score} {status}</div>'
+        '<div>decision: {decision}</div>'
+        "</div>"
+    ).format(
+        id=run["model_id"],
+        score=_number(run["total_score"], 2, "unscored"),
+        status=_status_pill(run["score_status"]),
+        decision=decision_state,
+    )
 
 
 def _filter_summaries(rows, filters):
@@ -898,13 +944,14 @@ def _lab(
     artifacts = _artifact_summaries(eval_results_dir)
     model_links = _dashboard_model_links(conn)
     imported_run_ids = _dashboard_run_ids(conn)
+    dashboard_runs = _dashboard_runs_by_benchmark_id(conn)
+    decisions_by_model = _latest_decisions_by_model_id(conn)
     score_counts = _score_status_counts(conn)
     ready_candidates = [
         row for row in candidates if row.get("status") == "ready_for_eval"
     ]
     specialty_candidates = [row for row in candidates if _is_specialty_candidate(row)]
     ready_projects = [row for row in projects if row.get("status") == "ready_for_review"]
-    linked_candidates = [row for row in candidates if row.get("benchmark_run_id")]
     artifact_ids = {row["benchmark_run_id"] for row in artifacts}
     linked_imports = len(artifact_ids & imported_run_ids)
 
@@ -1007,6 +1054,9 @@ def _lab(
     artifact_rows = []
     for row in artifacts:
         run_id = row["benchmark_run_id"]
+        dashboard_state = _import_state_for_run(
+            dashboard_runs.get(run_id), decisions_by_model
+        )
         artifact_rows.append(
             [
                 _artifact_link(run_id),
@@ -1015,7 +1065,7 @@ def _lab(
                 _text(row["draft_scores"]),
                 _text(row["decision"]),
                 _text(row["dashboard_import"]),
-                "yes" if run_id in imported_run_ids else "no",
+                dashboard_state,
             ]
         )
 
@@ -1141,7 +1191,7 @@ def _lab(
                 "Draft",
                 "Decision",
                 "CSV",
-                "Imported",
+                "Dashboard",
             ],
             artifact_rows,
             empty_message="No benchmark artifacts found.",
@@ -1168,6 +1218,7 @@ def _runs(conn):
                 _number(row["total_score"], 2),
                 _status_pill(row["score_status"]),
                 _pill(row["final_label"]),
+                _artifact_link_from_notes(row["run_notes"]),
                 _text(row["stability_notes"]),
             ]
         )
@@ -1185,6 +1236,7 @@ def _runs(conn):
                 "Score",
                 "Status",
                 "Label",
+                "Artifact",
                 "Stability",
             ],
             rows,
@@ -1429,15 +1481,24 @@ def _artifact_detail(conn, benchmark_run_id, registry_path=CANDIDATE_REGISTRY_PA
         (row for row in candidates if row.get("benchmark_run_id") == benchmark_run_id),
         None,
     )
-    if candidate is None:
+    artifact_dir = EVAL_RESULTS_DIR / benchmark_run_id
+    if candidate is None and not artifact_dir.exists():
         return _layout("Benchmark Artifact", "", "<h2>Artifact not found</h2>")
 
-    artifact_dir = EVAL_RESULTS_DIR / benchmark_run_id
-    model_id = _dashboard_model_links(conn).get(candidate.get("model_name", "").lower())
-    dashboard_link = (
-        '<a href="/models/{id}">Dashboard model</a>'.format(id=model_id)
-        if model_id
-        else '<span class="empty">Not imported into the active database</span>'
+    dashboard_run = _dashboard_runs_by_benchmark_id(conn).get(benchmark_run_id)
+    decisions_by_model = _latest_decisions_by_model_id(conn)
+    dashboard_state = _import_state_for_run(dashboard_run, decisions_by_model)
+    candidate_state = (
+        _pill(candidate.get("status"))
+        if candidate
+        else '<span class="empty">not registered</span>'
+    )
+    artifact_name = (
+        candidate.get("model_name")
+        if candidate
+        else dashboard_run["model_name"]
+        if dashboard_run
+        else benchmark_run_id
     )
     file_rows = []
     if artifact_dir.exists():
@@ -1449,9 +1510,9 @@ def _artifact_detail(conn, benchmark_run_id, registry_path=CANDIDATE_REGISTRY_PA
     <div class="split">
       <section class="panel">
         <h2>{name}</h2>
-        <p><strong>Status:</strong> {status}</p>
+        <p><strong>Candidate:</strong> {status}</p>
         <p><strong>Benchmark run:</strong> <code>{run_id}</code></p>
-        <p><strong>Dashboard:</strong> {dashboard_link}</p>
+        <p><strong>Dashboard:</strong> {dashboard_state}</p>
       </section>
       <section class="panel">
         <h2>Radar Context</h2>
@@ -1461,12 +1522,12 @@ def _artifact_detail(conn, benchmark_run_id, registry_path=CANDIDATE_REGISTRY_PA
     </div>
     <section style="margin-top:16px"><h2>Artifact Files</h2>{files}</section>
     """.format(
-        name=_text(candidate.get("model_name")),
-        status=_pill(candidate.get("status")),
+        name=_text(artifact_name),
+        status=candidate_state,
         run_id=_text(benchmark_run_id),
-        dashboard_link=dashboard_link,
-        source=_path_cell(candidate.get("source_packet_path")),
-        report=_path_cell(candidate.get("report_path")),
+        dashboard_state=dashboard_state,
+        source=_path_cell(candidate.get("source_packet_path") if candidate else ""),
+        report=_path_cell(candidate.get("report_path") if candidate else ""),
         files=_table(["Name", "Type", "Path"], file_rows, empty_message="Artifact directory not found."),
     )
     return _layout("Benchmark Artifact", "", body)
@@ -1491,6 +1552,7 @@ def _model_detail(conn, model_id):
                 _number(row["total_score"], 2),
                 _status_pill(row["score_status"]),
                 _pill(row["final_label"]),
+                _artifact_link_from_notes(row["run_notes"]),
                 _text(row["run_notes"]),
             ]
         )
@@ -1545,6 +1607,7 @@ def _model_detail(conn, model_id):
                 "Score",
                 "Status",
                 "Label",
+                "Artifact",
                 "Notes",
             ],
             run_rows,

@@ -10,6 +10,7 @@ APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
 
 from model_dashboard import csv_io, db, reports, server  # noqa: E402
+from model_dashboard.scoring import METRIC_FIELDS  # noqa: E402
 
 
 FIXTURE_DIR = APP_DIR / "fixtures"
@@ -325,8 +326,113 @@ class ModelDashboardQaTests(unittest.TestCase):
                 )
 
             self.assertIn("Ready Local 7B", html)
-            self.assertIn("Not imported into the active database", html)
+            self.assertIn("not imported", html)
             self.assertIn("Artifact not found", missing_html)
+
+    def test_dashboard_loop_links_imported_runs_to_artifacts_and_decisions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            eval_results = tmp_path / "eval_results"
+            run_id = "20260605-loop-test"
+            artifact_dir = eval_results / run_id
+            artifact_dir.mkdir(parents=True)
+            (artifact_dir / "raw_responses.jsonl").write_text(
+                '{"prompt_id": "LLMCORE-v0.1-001"}\n', encoding="utf-8"
+            )
+            write_candidate_registry(
+                registry_path,
+                extra_rows=[
+                    {
+                        "candidate_id": "20260605-loop-candidate",
+                        "model_name": "Loop Link Model",
+                        "model_family": "Loop",
+                        "provider_or_org": "local",
+                        "status": "ready_for_eval",
+                        "format_or_runtime": "LM Studio",
+                        "source_packet_path": "automations/ai-lab-radar/inputs/loop.md",
+                        "report_path": "automations/ai-lab-radar/reports/loop.md",
+                        "benchmark_run_id": run_id,
+                        "why_interesting": "Tests the dashboard product loop.",
+                        "risk_notes": "Fixture only.",
+                        "proposed_eval": "Inspect links.",
+                    }
+                ],
+            )
+            db.init_db(db_path, reset=True)
+            with db.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO models (id, model_name, model_family, provider)
+                    VALUES (42, 'Loop Link Model', 'Loop', 'local')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO model_runs (id, model_id, date_tested, backend, run_notes)
+                    VALUES (
+                        77,
+                        42,
+                        '2026-06-05',
+                        'LM Studio',
+                        'benchmark_run_id=20260605-loop-test | raw_artifact=local'
+                    )
+                    """
+                )
+                score_fields = ", ".join(METRIC_FIELDS)
+                score_placeholders = ", ".join("80" for _ in METRIC_FIELDS)
+                conn.execute(
+                    """
+                    INSERT INTO eval_scores (
+                        id,
+                        run_id,
+                        {fields},
+                        total_score,
+                        final_label,
+                        score_status
+                    )
+                    VALUES (5, 77, {values}, 80, 'DAILY_DRIVER', 'confirmed')
+                    """.format(fields=score_fields, values=score_placeholders)
+                )
+                conn.execute(
+                    """
+                    INSERT INTO decisions (
+                        id,
+                        model_id,
+                        decision,
+                        keep_installed,
+                        best_use_case,
+                        weakness,
+                        retest_condition
+                    )
+                    VALUES (
+                        6,
+                        42,
+                        'keep',
+                        1,
+                        'Loop validation',
+                        'Fixture only',
+                        'Retest never'
+                    )
+                    """
+                )
+                old_eval_results_dir = server.EVAL_RESULTS_DIR
+                try:
+                    server.EVAL_RESULTS_DIR = eval_results
+                    runs_html = server._runs(conn)
+                    detail_html = server._model_detail(conn, 42)
+                    artifact_html = server._artifact_detail(
+                        conn, run_id, registry_path=registry_path
+                    )
+                finally:
+                    server.EVAL_RESULTS_DIR = old_eval_results_dir
+
+            self.assertIn("/artifacts/20260605-loop-test", runs_html)
+            self.assertIn("/artifacts/20260605-loop-test", detail_html)
+            self.assertIn("imported model", artifact_html)
+            self.assertIn("decision: keep", artifact_html)
+            self.assertIn("Loop Link Model", artifact_html)
 
     def test_lab_dashboard_shows_product_loop_and_next_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
