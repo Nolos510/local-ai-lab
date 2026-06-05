@@ -3,7 +3,7 @@
 import sqlite3
 from pathlib import Path
 
-from .scoring import FINAL_LABELS
+from .scoring import FINAL_LABELS, SCORE_STATUSES
 
 TABLES = ("models", "model_runs", "eval_scores", "decisions")
 
@@ -19,6 +19,7 @@ def connect(db_path):
 
 def create_schema(conn):
     label_list = ", ".join("'{}'".format(label) for label in FINAL_LABELS)
+    status_list = ", ".join("'{}'".format(status) for status in SCORE_STATUSES)
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS models (
@@ -64,7 +65,8 @@ def create_schema(conn):
             creativity REAL NOT NULL,
             speed_practicality REAL NOT NULL,
             total_score REAL NOT NULL,
-            final_label TEXT NOT NULL CHECK(final_label IN (__LABELS__))
+            final_label TEXT NOT NULL CHECK(final_label IN (__LABELS__)),
+            score_status TEXT NOT NULL DEFAULT 'confirmed' CHECK(score_status IN (__STATUSES__))
         );
 
         CREATE TABLE IF NOT EXISTS decisions (
@@ -81,9 +83,25 @@ def create_schema(conn):
         CREATE INDEX IF NOT EXISTS idx_model_runs_model_id ON model_runs(model_id);
         CREATE INDEX IF NOT EXISTS idx_eval_scores_run_id ON eval_scores(run_id);
         CREATE INDEX IF NOT EXISTS idx_decisions_model_id ON decisions(model_id);
-        """.replace("__LABELS__", label_list)
+        """.replace("__LABELS__", label_list).replace("__STATUSES__", status_list)
     )
+    _ensure_eval_score_status(conn)
     conn.commit()
+
+
+def _ensure_eval_score_status(conn):
+    columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(eval_scores)").fetchall()
+    }
+    if "score_status" not in columns:
+        conn.execute(
+            """
+            ALTER TABLE eval_scores
+            ADD COLUMN score_status TEXT NOT NULL DEFAULT 'confirmed'
+            CHECK(score_status IN ('confirmed', 'draft'))
+            """
+        )
 
 
 def init_db(db_path, reset=False):
@@ -127,6 +145,7 @@ def list_model_summaries(conn):
             r.ram_usage_gb,
             s.total_score,
             s.final_label,
+            s.score_status,
             d.decision,
             d.keep_installed,
             d.best_use_case
@@ -157,7 +176,7 @@ def get_model_detail(conn, model_id):
         return None
     runs = conn.execute(
         """
-        SELECT r.*, s.total_score, s.final_label
+        SELECT r.*, s.total_score, s.final_label, s.score_status
         FROM model_runs r
         LEFT JOIN eval_scores s ON s.run_id = r.id
         WHERE r.model_id = ?
@@ -185,7 +204,8 @@ def list_runs(conn):
             m.model_name,
             m.model_family,
             s.total_score,
-            s.final_label
+            s.final_label,
+            s.score_status
         FROM model_runs r
         JOIN models m ON m.id = r.model_id
         LEFT JOIN eval_scores s ON s.run_id = r.id

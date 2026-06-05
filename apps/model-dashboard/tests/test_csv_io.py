@@ -150,6 +150,60 @@ class CsvImportTests(unittest.TestCase):
                 self.assertEqual(db.table_count(conn, "eval_scores"), 1)
                 self.assertEqual(db.table_count(conn, "decisions"), 2)
 
+    def test_legacy_eval_scores_without_score_status_import_as_confirmed(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            db_path = tmp_path / "dashboard.sqlite"
+            csv_dir = tmp_path / "legacy"
+            write_table(
+                csv_dir / "models.csv",
+                "models",
+                [{"id": 1, "model_name": "Legacy Score Model"}],
+            )
+            write_table(
+                csv_dir / "model_runs.csv",
+                "model_runs",
+                [{"id": 1, "model_id": 1, "date_tested": "2026-06-05", "backend": "LM Studio"}],
+            )
+            legacy_fields = [
+                field for field in csv_io.TABLE_FIELDS["eval_scores"] if field != "score_status"
+            ]
+            with (csv_dir / "eval_scores.csv").open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=legacy_fields)
+                writer.writeheader()
+                writer.writerow(
+                    {
+                        "id": 1,
+                        "run_id": 1,
+                        "instruction_following": 70,
+                        "truthfulness_uncertainty": 70,
+                        "reasoning": 70,
+                        "coding_debugging": 70,
+                        "agent_planning": 70,
+                        "local_ai_lab_usefulness": 70,
+                        "research_synthesis": 70,
+                        "business_seo_strategy": 70,
+                        "long_context": 70,
+                        "creativity": 70,
+                        "speed_practicality": 70,
+                        "total_score": "",
+                        "final_label": "",
+                    }
+                )
+
+            csv_io.import_all(
+                db_path,
+                {
+                    "models": csv_dir / "models.csv",
+                    "model_runs": csv_dir / "model_runs.csv",
+                    "eval_scores": csv_dir / "eval_scores.csv",
+                },
+            )
+
+            with db.connect(db_path) as conn:
+                row = conn.execute("SELECT score_status FROM eval_scores").fetchone()
+            self.assertEqual(row["score_status"], "confirmed")
+
 
 if __name__ == "__main__":
     unittest.main()

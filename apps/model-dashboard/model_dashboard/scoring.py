@@ -28,6 +28,8 @@ FINAL_LABELS = (
     "SKIP",
 )
 
+SCORE_STATUSES = ("confirmed", "draft")
+
 SPECIALIST_LABELS = {
     "coding_debugging": "CODING_SPECIALIST",
     "research_synthesis": "RESEARCH_SPECIALIST",
@@ -68,6 +70,18 @@ def validate_final_label(label):
     return label
 
 
+def validate_score_status(status):
+    if status in (None, ""):
+        return "confirmed"
+    if status not in SCORE_STATUSES:
+        raise ValueError(
+            "Unknown score_status {!r}. Expected one of: {}".format(
+                status, ", ".join(SCORE_STATUSES)
+            )
+        )
+    return status
+
+
 def suggest_final_label(values):
     """Suggest a deterministic final label from metric strengths."""
     total = calculate_total_score(values)
@@ -102,4 +116,5 @@ def normalize_score_record(row):
     normalized["final_label"] = (
         suggest_final_label(normalized) if label in (None, "") else validate_final_label(label)
     )
+    normalized["score_status"] = validate_score_status(normalized.get("score_status"))
     return normalized

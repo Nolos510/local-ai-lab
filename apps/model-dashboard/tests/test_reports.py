@@ -23,6 +23,7 @@ class ReportTests(unittest.TestCase):
             text = report_path.read_text(encoding="utf-8")
             self.assertIn("# Local Model Performance Report", text)
             self.assertIn("Models tracked: 4", text)
+            self.assertIn("| Model | Backend | Quant | Score | Status | Label | Decision | Best use case |", text)
             self.assertIn("Qwen2.5-Coder 14B Instruct", text)
 
 

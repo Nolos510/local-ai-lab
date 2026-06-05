@@ -89,6 +89,12 @@ records separately from scored eval results. Candidate rows may link to local
 source packets, radar reports, and benchmark artifact directories, but they do
 not become dashboard scores or final labels.
 
+Scored eval rows now include `score_status`. Existing and manually confirmed
+scores default to `confirmed`; local-judge suggestions may be imported as
+`draft`. Draft scores are visible in the overview, run list, compare page, model
+detail page, and Markdown report so they are not confused with confirmed
+evidence.
+
 ## Tests
 
 From the repository root, create or activate the repo venv, install the dev
@@ -138,7 +144,10 @@ The import/export workflow expects one CSV per table:
 - `eval_scores.csv`
 - `decisions.csv`
 
-Headers must match the table fields exported by the app. Blank `total_score` and `final_label` values in `eval_scores.csv` are filled deterministically during import.
+Headers must match the table fields exported by the app. Blank `total_score` and
+`final_label` values in `eval_scores.csv` are filled deterministically during
+import. Older `eval_scores.csv` files without `score_status` import as
+`confirmed`.
 
 ## Benchmark Import Contract
 

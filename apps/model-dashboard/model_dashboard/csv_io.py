@@ -39,6 +39,7 @@ TABLE_FIELDS = {
         *METRIC_FIELDS,
         "total_score",
         "final_label",
+        "score_status",
     ),
     "decisions": (
         "id",
@@ -125,7 +126,9 @@ def import_table(conn, table_name, csv_path):
         raise ValueError("Unknown table: {}".format(table_name))
     with csv_path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
-        missing = set(TABLE_FIELDS[table_name]) - set(reader.fieldnames or [])
+        fieldnames = set(reader.fieldnames or [])
+        optional = {"score_status"} if table_name == "eval_scores" else set()
+        missing = (set(TABLE_FIELDS[table_name]) - optional) - fieldnames
         if missing:
             raise ValueError(
                 "{} is missing columns: {}".format(csv_path, ", ".join(sorted(missing)))

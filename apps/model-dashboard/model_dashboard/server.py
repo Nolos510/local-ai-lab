@@ -39,6 +39,14 @@ def _pill(value):
     return '<span class="pill">{}</span>'.format(label)
 
 
+def _status_pill(value):
+    status = value or "confirmed"
+    class_name = "pill score-status"
+    if status == "draft":
+        class_name += " draft"
+    return '<span class="{}">{}</span>'.format(class_name, _text(status.upper()))
+
+
 def _table(headers, rows, empty_message="No rows yet.", table_class=""):
     if not rows:
         return '<p class="empty">{}</p>'.format(escape(empty_message))
@@ -494,6 +502,15 @@ def _layout(title, current_path, body):
       font-weight: 700;
       white-space: nowrap;
     }}
+    .score-status {{
+      background: #e9ecef;
+      color: #3d434a;
+      text-transform: uppercase;
+    }}
+    .score-status.draft {{
+      background: #fff1d6;
+      color: #7a4a10;
+    }}
     .empty {{ color: var(--muted); }}
     .report {{
       background: #1e2227;
@@ -574,6 +591,7 @@ def _overview(conn, query=None):
                 _number(row["tokens_per_sec"]),
                 _number(row["ram_usage_gb"]),
                 _number(row["total_score"], 2),
+                _status_pill(row["score_status"]),
                 _pill(row["final_label"]),
                 _text(row["decision"]),
             ]
@@ -610,6 +628,7 @@ def _overview(conn, query=None):
                 "Tok/s",
                 "RAM GB",
                 "Score",
+                "Status",
                 "Label",
                 "Decision",
             ],
@@ -636,6 +655,7 @@ def _runs(conn):
                 _number(row["tokens_per_sec"]),
                 _number(row["ram_usage_gb"]),
                 _number(row["total_score"], 2),
+                _status_pill(row["score_status"]),
                 _pill(row["final_label"]),
                 _text(row["stability_notes"]),
             ]
@@ -652,6 +672,7 @@ def _runs(conn):
                 "Tok/s",
                 "RAM GB",
                 "Score",
+                "Status",
                 "Label",
                 "Stability",
             ],
@@ -662,7 +683,9 @@ def _runs(conn):
 
 
 def _compare(conn):
-    headers = ["Model", "Score", "Label"] + [field.replace("_", " ").title() for field in METRIC_FIELDS]
+    headers = ["Model", "Score", "Status", "Label"] + [
+        field.replace("_", " ").title() for field in METRIC_FIELDS
+    ]
     rows = []
     for row in db.list_score_details(conn):
         cells = [
@@ -670,6 +693,7 @@ def _compare(conn):
                 id=row["model_id"], name=_text(row["model_name"])
             ),
             _number(row["total_score"], 2),
+            _status_pill(row["score_status"]),
             _pill(row["final_label"]),
         ]
         cells.extend(_number(row[field], 0) for field in METRIC_FIELDS)
@@ -844,6 +868,7 @@ def _model_detail(conn, model_id):
                 _number(row["tokens_per_sec"]),
                 _number(row["ram_usage_gb"]),
                 _number(row["total_score"], 2),
+                _status_pill(row["score_status"]),
                 _pill(row["final_label"]),
                 _text(row["run_notes"]),
             ]
@@ -897,6 +922,7 @@ def _model_detail(conn, model_id):
                 "Tok/s",
                 "RAM GB",
                 "Score",
+                "Status",
                 "Label",
                 "Notes",
             ],

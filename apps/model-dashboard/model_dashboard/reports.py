@@ -40,17 +40,18 @@ def generate_markdown_report(db_path):
                 "",
                 "## Ranked Models",
                 "",
-                "| Model | Backend | Quant | Score | Label | Decision | Best use case |",
-                "| --- | --- | --- | ---: | --- | --- | --- |",
+                "| Model | Backend | Quant | Score | Status | Label | Decision | Best use case |",
+                "| --- | --- | --- | ---: | --- | --- | --- | --- |",
             ]
         )
         for row in summaries:
             lines.append(
-                "| {model} | {backend} | {quant} | {score} | {label} | {decision} | {use} |".format(
+                "| {model} | {backend} | {quant} | {score} | {status} | {label} | {decision} | {use} |".format(
                     model=_value(row["model_name"]),
                     backend=_value(row["backend"]),
                     quant=_value(row["quantization"]),
                     score=_score(row["total_score"]),
+                    status=_value(row["score_status"]),
                     label=_value(row["final_label"]),
                     decision=_value(row["decision"]),
                     use=_value(row["best_use_case"]),

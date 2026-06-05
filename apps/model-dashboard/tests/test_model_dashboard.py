@@ -135,11 +135,12 @@ class ModelDashboardQaTests(unittest.TestCase):
                             creativity,
                             speed_practicality,
                             total_score,
-                            final_label
+                            final_label,
+                            score_status
                         )
                         VALUES (
                             1, 1, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50,
-                            'NOT_A_LABEL'
+                            'NOT_A_LABEL', 'confirmed'
                         )
                         """
                     )
@@ -192,6 +193,7 @@ class ModelDashboardQaTests(unittest.TestCase):
                 html = server._overview(conn, {"label": ["RESEARCH_SPECIALIST"]})
 
             self.assertIn("Ranked Local Models (1 of 4)", html)
+            self.assertIn("CONFIRMED", html)
             self.assertIn("ResearchLite Local 7B", html)
             self.assertNotIn("TinyCoder Local 1.1B</a>", html)
             self.assertNotIn("Qwen2.5-Coder 14B Instruct</a>", html)
