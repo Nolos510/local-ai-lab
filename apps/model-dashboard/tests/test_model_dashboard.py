@@ -24,6 +24,11 @@ CANDIDATE_FIELDS = [
     "source_packet_path",
     "report_path",
     "benchmark_run_id",
+    "model_page_url",
+    "github_url",
+    "lm_studio_url",
+    "ollama_url",
+    "runtime_availability",
     "why_interesting",
     "risk_notes",
     "proposed_eval",
@@ -59,6 +64,11 @@ def write_candidate_registry(path, extra_rows=None):
             "source_packet_path": "automations/ai-lab-radar/inputs/ready.md",
             "report_path": "automations/ai-lab-radar/reports/ready.md",
             "benchmark_run_id": "20260603-ready-local",
+            "model_page_url": "https://huggingface.co/example/ready-local-7b",
+            "github_url": "https://github.com/example/ready-local",
+            "lm_studio_url": "",
+            "ollama_url": "https://ollama.com/library/ready-local",
+            "runtime_availability": "GGUF; LM Studio and Ollama metadata",
             "why_interesting": "Already installed for a local retest.",
             "risk_notes": "Needs scored evidence.",
             "proposed_eval": "Run the local benchmark prompt set.",
@@ -73,6 +83,11 @@ def write_candidate_registry(path, extra_rows=None):
             "source_packet_path": "automations/ai-lab-radar/inputs/watch.md",
             "report_path": "automations/ai-lab-radar/reports/watch.md",
             "benchmark_run_id": "",
+            "model_page_url": "",
+            "github_url": "",
+            "lm_studio_url": "",
+            "ollama_url": "",
+            "runtime_availability": "unknown",
             "why_interesting": "Interesting but not ready.",
             "risk_notes": "Runtime unknown.",
             "proposed_eval": "Confirm local artifact first.",
@@ -292,6 +307,28 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Radar Candidates (1 of 2)", html)
             self.assertIn("Ready Local 7B", html)
             self.assertIn("/artifacts/20260603-ready-local", html)
+            self.assertNotIn("Watch Local 13B", html)
+
+    def test_radar_shows_model_store_links_and_runtime_availability(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(registry_path)
+
+            with db.connect(db_path) as conn:
+                html = server._radar(conn, {"q": ["Ollama"]}, registry_path=registry_path)
+
+            self.assertIn("Radar Candidates (1 of 2)", html)
+            self.assertIn("Runtime availability", html)
+            self.assertIn("GGUF; LM Studio and Ollama metadata", html)
+            self.assertIn("Model/source page", html)
+            self.assertIn("https://huggingface.co/example/ready-local-7b", html)
+            self.assertIn("GitHub", html)
+            self.assertIn("https://github.com/example/ready-local", html)
+            self.assertIn("Ollama", html)
+            self.assertIn("https://ollama.com/library/ready-local", html)
             self.assertNotIn("Watch Local 13B", html)
 
     def test_radar_missing_registry_renders_empty_state(self):

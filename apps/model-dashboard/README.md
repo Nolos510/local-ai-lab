@@ -100,6 +100,11 @@ records separately from scored eval results. Candidate rows may link to local
 source packets, radar reports, and benchmark artifact directories, but they do
 not become dashboard scores or final labels.
 
+Candidate rows can also show model/source-page, GitHub, LM Studio, and Ollama
+review links plus a short runtime-availability note. These links are for
+inspection and source tracing only; they are not download, install, or benchmark
+execution approval.
+
 The radar and lab pages include an `Abliterated / Dolphin` count sourced from
 candidate registry rows whose names or families include abliterated or Dolphin
 terms. This is a benchmark queue signal only; low-refusal or uncensored source

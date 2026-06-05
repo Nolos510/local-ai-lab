@@ -16,6 +16,11 @@ or benchmarked.
 | `claimed_context_window` | Optional | Claimed context length. Leave blank when unknown. |
 | `license` | Optional | License string when known. Do not infer. |
 | `source_url` | Optional | Upstream page or local note reference. |
+| `model_page_url` | Optional | Public model page or local inventory page for user review. Metadata only; not an install command. |
+| `github_url` | Optional | GitHub repository for the model/project when one is explicit. |
+| `lm_studio_url` | Optional | LM Studio-compatible model page when explicit. |
+| `ollama_url` | Optional | Ollama library or registry page when explicit. |
+| `runtime_availability` | Optional | Short text naming known or unverified runtimes such as LM Studio, Ollama, llama.cpp, MLX, GGUF, or Safetensors. |
 | `source_date` | Optional | Date of the source, not the discovery date. |
 | `discovered_at` | Required | ISO timestamp or date when added to radar. |
 | `why_interesting` | Required | Concise reason to track. |
@@ -39,6 +44,8 @@ map stable fields into:
 ## Boundary Rules
 
 - A radar candidate is a review target, not an install request.
+- Runtime/model links are navigation metadata only. Do not turn them into
+  download, install, or model execution steps without explicit user approval.
 - Do not convert claims into scores without a benchmark run.
 - Do not create download instructions unless the user explicitly asks for a
   local install plan.

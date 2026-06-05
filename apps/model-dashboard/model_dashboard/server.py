@@ -161,6 +161,11 @@ def _matches_candidate_search(row, search):
             "risk_notes",
             "proposed_eval",
             "benchmark_run_id",
+            "model_page_url",
+            "github_url",
+            "lm_studio_url",
+            "ollama_url",
+            "runtime_availability",
         )
     )
     return search.lower() in haystack.lower()
@@ -358,6 +363,47 @@ def _path_cell(value):
     if not value:
         return '<span class="empty">None</span>'
     return "<code>{}</code>".format(_text(value))
+
+
+def _external_link(url, label):
+    value = str(url or "").strip()
+    if not value:
+        return '<span class="empty">None</span>'
+    parsed = urlparse(value)
+    if parsed.scheme not in ("http", "https"):
+        return '<span class="empty">Unsupported link</span>'
+    return '<a href="{url}" target="_blank" rel="noreferrer">{label}</a>'.format(
+        url=_text(value),
+        label=_text(label),
+    )
+
+
+def _candidate_review_links(row):
+    links = []
+    for field, label in (
+        ("model_page_url", "Model/source page"),
+        ("github_url", "GitHub"),
+        ("lm_studio_url", "LM Studio"),
+        ("ollama_url", "Ollama"),
+    ):
+        if row.get(field):
+            links.append("<div>{}</div>".format(_external_link(row.get(field), label)))
+    if not links:
+        return '<span class="empty">No verified model/store links</span>'
+    return "".join(links)
+
+
+def _candidate_availability(row):
+    runtime = row.get("runtime_availability") or row.get("format_or_runtime") or "unknown"
+    return """
+    <div class="cell-stack">
+      <div><strong>Runtime availability</strong><br>{runtime}</div>
+      <div><strong>Model/store links</strong><br>{links}</div>
+    </div>
+    """.format(
+        runtime=_text(runtime),
+        links=_candidate_review_links(row),
+    )
 
 
 def _relative_path(path):
@@ -812,6 +858,9 @@ def _layout(title, current_path, body):
       color: var(--muted);
       font-size: 12px;
     }}
+    .radar-table {{
+      min-width: 1120px;
+    }}
     .radar-table th:nth-child(1),
     .radar-table td:nth-child(1) {{
       width: 180px;
@@ -824,8 +873,12 @@ def _layout(title, current_path, body):
     .radar-table td:nth-child(3) {{
       width: 132px;
     }}
-    .radar-table th:nth-child(6),
-    .radar-table td:nth-child(6) {{
+    .radar-table th:nth-child(4),
+    .radar-table td:nth-child(4) {{
+      width: 220px;
+    }}
+    .radar-table th:nth-child(7),
+    .radar-table td:nth-child(7) {{
       width: 190px;
     }}
     .project-table {{
@@ -1040,11 +1093,13 @@ def _lab(
                 <div class="cell-stack">
                   <div><strong>Artifact</strong><br>{artifact}</div>
                   <div><strong>Dashboard</strong><br>{dashboard}</div>
+                  <div><strong>Availability</strong><br>{availability}</div>
                   <div><strong>Risk</strong><br>{risk}</div>
                 </div>
                 """.format(
                     artifact=artifact_state,
                     dashboard=dashboard_state,
+                    availability=_candidate_availability(row),
                     risk=_text(row.get("risk_notes")),
                 ),
                 _command_block(command),
@@ -1084,11 +1139,13 @@ def _lab(
                 """
                 <div class="cell-stack">
                   <div><strong>Runtime</strong><br>{runtime}</div>
+                  <div><strong>Availability</strong><br>{availability}</div>
                   <div><strong>Why</strong><br>{why}</div>
                   <div><strong>Risk</strong><br>{risk}</div>
                 </div>
                 """.format(
                     runtime=_text(row.get("format_or_runtime")),
+                    availability=_candidate_availability(row),
                     why=_text(row.get("why_interesting")),
                     risk=_text(row.get("risk_notes")),
                 ),
@@ -1320,6 +1377,7 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
                 ),
                 _pill(row.get("status")),
                 metadata,
+                _candidate_availability(row),
                 context,
                 _text(row.get("proposed_eval")),
                 links,
@@ -1356,6 +1414,7 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
                 "Candidate",
                 "Status",
                 "Metadata",
+                "Availability",
                 "Review notes",
                 "Proposed eval",
                 "Links",
