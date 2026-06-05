@@ -54,6 +54,10 @@ Radar work should produce:
   ready to track.
 - Follow-up task recommendations for local benchmark or dashboard work.
 
+No-op runs should not create tracked reports. If an automation finds no new
+approved packet, leave a console/status message or ignored runtime note instead
+of writing `*no-new-approved-source-packet.md` into the tracked report set.
+
 ## Workflow
 
 1. Collect source notes and record where they came from.

@@ -10,6 +10,7 @@ venv/
 data/dashboard/*.sqlite
 data/dashboard/*.sqlite-*
 data/dashboard/exports/
+automations/ai-lab-radar/reports/*no-new-approved-source-packet.md
 
 # Local OS/editor noise
 .DS_Store
