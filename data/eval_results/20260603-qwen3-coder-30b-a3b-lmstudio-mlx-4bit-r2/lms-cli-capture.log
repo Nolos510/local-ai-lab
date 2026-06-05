@@ -1,0 +1,95 @@
+## LLMCORE-v0.1-001
+
+returncode=0
+started_at=2026-06-03T20:25:38+00:00
+completed_at=2026-06-03T20:25:45+00:00
+latency_ms=6770
+stats={"Predicted Tokens": "573", "Prompt Tokens": "310", "Stop Reason": "eosFound", "Time to First Token": "0.401s", "Tokens/Second": "92.28", "Total Tokens": "883"}
+
+## LLMCORE-v0.1-002
+
+returncode=0
+started_at=2026-06-03T20:25:45+00:00
+completed_at=2026-06-03T20:25:47+00:00
+latency_ms=2739
+stats={"Predicted Tokens": "229", "Prompt Tokens": "141", "Stop Reason": "eosFound", "Time to First Token": "0.196s", "Tokens/Second": "96.39", "Total Tokens": "370"}
+
+## LLMCORE-v0.1-003
+
+returncode=0
+started_at=2026-06-03T20:25:47+00:00
+completed_at=2026-06-03T20:25:50+00:00
+latency_ms=2199
+stats={"Predicted Tokens": "178", "Prompt Tokens": "139", "Stop Reason": "eosFound", "Time to First Token": "0.194s", "Tokens/Second": "96.86", "Total Tokens": "317"}
+
+## LLMCORE-v0.1-004
+
+returncode=0
+started_at=2026-06-03T20:25:50+00:00
+completed_at=2026-06-03T20:25:56+00:00
+latency_ms=6655
+stats={"Predicted Tokens": "598", "Prompt Tokens": "118", "Stop Reason": "eosFound", "Time to First Token": "0.187s", "Tokens/Second": "94.87", "Total Tokens": "716"}
+
+## LLMCORE-v0.1-005
+
+returncode=0
+started_at=2026-06-03T20:25:56+00:00
+completed_at=2026-06-03T20:26:00+00:00
+latency_ms=3474
+stats={"Predicted Tokens": "301", "Prompt Tokens": "118", "Stop Reason": "eosFound", "Time to First Token": "0.191s", "Tokens/Second": "96.53", "Total Tokens": "419"}
+
+## LLMCORE-v0.1-006
+
+returncode=0
+started_at=2026-06-03T20:26:00+00:00
+completed_at=2026-06-03T20:26:02+00:00
+latency_ms=2452
+stats={"Predicted Tokens": "202", "Prompt Tokens": "114", "Stop Reason": "eosFound", "Time to First Token": "0.188s", "Tokens/Second": "96.15", "Total Tokens": "316"}
+
+## LLMCORE-v0.1-007
+
+returncode=0
+started_at=2026-06-03T20:26:02+00:00
+completed_at=2026-06-03T20:26:10+00:00
+latency_ms=7568
+stats={"Predicted Tokens": "679", "Prompt Tokens": "108", "Stop Reason": "eosFound", "Time to First Token": "0.185s", "Tokens/Second": "94.08", "Total Tokens": "787"}
+
+## LLMCORE-v0.1-008
+
+returncode=0
+started_at=2026-06-03T20:26:10+00:00
+completed_at=2026-06-03T20:26:13+00:00
+latency_ms=2972
+stats={"Predicted Tokens": "243", "Prompt Tokens": "181", "Stop Reason": "eosFound", "Time to First Token": "0.260s", "Tokens/Second": "95.25", "Total Tokens": "424"}
+
+## LLMCORE-v0.1-009
+
+returncode=0
+started_at=2026-06-03T20:26:13+00:00
+completed_at=2026-06-03T20:26:17+00:00
+latency_ms=4044
+stats={"Predicted Tokens": "351", "Prompt Tokens": "133", "Stop Reason": "eosFound", "Time to First Token": "0.192s", "Tokens/Second": "94.91", "Total Tokens": "484"}
+
+## LLMCORE-v0.1-010
+
+returncode=0
+started_at=2026-06-03T20:26:17+00:00
+completed_at=2026-06-03T20:26:22+00:00
+latency_ms=4870
+stats={"Predicted Tokens": "421", "Prompt Tokens": "300", "Stop Reason": "eosFound", "Time to First Token": "0.239s", "Tokens/Second": "94.31", "Total Tokens": "721"}
+
+## LLMCORE-v0.1-011
+
+returncode=0
+started_at=2026-06-03T20:26:22+00:00
+completed_at=2026-06-03T20:26:24+00:00
+latency_ms=1865
+stats={"Predicted Tokens": "142", "Prompt Tokens": "92", "Stop Reason": "eosFound", "Time to First Token": "0.247s", "Tokens/Second": "97.36", "Total Tokens": "234"}
+
+## LLMCORE-v0.1-012
+
+returncode=0
+started_at=2026-06-03T20:26:24+00:00
+completed_at=2026-06-03T20:26:26+00:00
+latency_ms=2664
+stats={"Predicted Tokens": "224", "Prompt Tokens": "78", "Stop Reason": "eosFound", "Time to First Token": "0.174s", "Tokens/Second": "96.36", "Total Tokens": "302"}

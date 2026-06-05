@@ -106,8 +106,15 @@ def _insert_row(conn, table_name, row):
     fields = TABLE_FIELDS[table_name]
     placeholders = ", ".join("?" for _ in fields)
     field_list = ", ".join(fields)
-    sql = "INSERT OR REPLACE INTO {} ({}) VALUES ({})".format(
-        table_name, field_list, placeholders
+    update_fields = [field for field in fields if field != "id"]
+    update_list = ", ".join(
+        "{} = excluded.{}".format(field, field) for field in update_fields
+    )
+    sql = (
+        "INSERT INTO {} ({}) VALUES ({}) "
+        "ON CONFLICT(id) DO UPDATE SET {}".format(
+            table_name, field_list, placeholders, update_list
+        )
     )
     conn.execute(sql, [row.get(field) for field in fields])
 

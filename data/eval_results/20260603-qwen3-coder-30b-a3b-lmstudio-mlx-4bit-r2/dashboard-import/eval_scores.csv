@@ -1,0 +1,2 @@
+id,run_id,instruction_following,truthfulness_uncertainty,reasoning,coding_debugging,agent_planning,local_ai_lab_usefulness,research_synthesis,business_seo_strategy,long_context,creativity,speed_practicality,total_score,final_label
+1,2,72.0,70.0,66.0,88.0,72.0,60.0,62.0,80.0,82.0,74.0,84.0,73.64,CODING_SPECIALIST
