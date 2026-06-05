@@ -1,27 +1,66 @@
-[build-system]
-requires = ["setuptools>=61"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "ai-lab-os"
+name = "local-ai-lab"
 version = "0.1.0"
-description = "Local-first workspace for testing and documenting local AI model workflows."
+description = "Apple Silicon local AI engineering lab with local RAG, model evaluation, radar, and dashboard workflows."
 readme = "README.md"
-requires-python = ">=3.9"
-authors = [
-  { name = "AI Lab OS maintainers" }
+requires-python = ">=3.12"
+authors = [{ name = "Local AI Lab" }]
+dependencies = [
+    "fastapi>=0.115.0",
+    "httpx>=0.27.2",
+    "pydantic-settings>=2.5.2",
+    "qdrant-client>=1.11.3",
+    "uvicorn[standard]>=0.30.6",
 ]
-dependencies = []
+
+[project.scripts]
+local-ai-lab = "local_ai_lab.cli.app:main"
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=8,<9"
+    "pytest>=8.3.3,<9",
+    "ruff>=0.6.8",
 ]
 
-[tool.setuptools.packages.find]
-where = ["apps/model-dashboard"]
-include = ["model_dashboard*"]
+[dependency-groups]
+dev = [
+    "pytest>=8.3.3,<9",
+    "ruff>=0.6.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "src/local_ai_lab",
+    "apps/model-dashboard/model_dashboard",
+]
 
 [tool.pytest.ini_options]
-testpaths = ["apps/model-dashboard/tests", "evals/local-llm-benchmark/tests"]
-pythonpath = ["apps/model-dashboard"]
+testpaths = [
+    "tests",
+    "apps/model-dashboard/tests",
+    "evals/local-llm-benchmark/tests",
+]
+pythonpath = [
+    "src",
+    "apps/model-dashboard",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = [
+    "apps/model-dashboard",
+    "evals/local-llm-benchmark",
+    "scripts/model_dashboard_smoke.py",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

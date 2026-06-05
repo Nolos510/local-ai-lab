@@ -1,42 +1,72 @@
-# AI Lab OS Roadmap
+# Roadmap
 
-## Completed MVP Baseline
+## Completed Baseline
 
-- Created the AI Lab OS monorepo structure.
-- Added a dependency-free Python dashboard for local model performance tracking.
-- Added SQLite persistence, CSV import/export, fixture data, scoring helpers, report generation, and unit tests.
-- Added local-first docs and a task record for the dashboard MVP.
+- [x] AI Lab OS monorepo structure.
+- [x] Local model performance dashboard with SQLite, CSV import/export,
+  fixtures, scoring helpers, reports, and smoke tests.
+- [x] Local RAG/provider app scaffold with CLI, FastAPI, deterministic test
+  providers, Qdrant integration, and doctor checks.
+- [x] AI Lab Radar candidate intake, source packets, reports, and local-first
+  guardrails.
+- [x] Local LLM benchmark harness skeleton.
+- [x] First scored local Qwen benchmark artifact.
+- [x] Radar candidate dashboard view.
+- [x] GitHub project radar view.
 
-## Phase 1: Local Model Tracking
+## v0: Runnable Local RAG Baseline
 
-- Expand the Local Model Performance Dashboard with richer filters and model detail history.
-- Add import scripts for benchmark output from LM Studio, Ollama, MLX, llama.cpp/GGUF, whisper.cpp, and ComfyUI where practical.
-- Standardize the local model registry under `data/model_registry`.
+- [x] uv Python project layout.
+- [x] Qdrant and Open WebUI Docker Compose services.
+- [x] CLI ingestion and ask commands.
+- [x] FastAPI `/ask` endpoint.
+- [x] Deterministic local embedding provider.
+- [x] Ollama and LM Studio provider abstractions.
+- [x] Starter docs and tests.
 
-## Phase 2: Evaluation Harness
+## v1: Local AI Lab Product Loop
 
-- Build `evals/local-llm-benchmark` around repeatable local prompts and rubric scoring.
-- Capture speed, RAM use, context handling, instruction following, coding, research synthesis, and agent planning.
-- Keep raw runs and summarized results importable into the dashboard.
-- Keep the v0.3 harness stdlib-only unless a dependency passes the documented dependency review gate.
+- [ ] Approve one radar candidate from source packet to registry.
+- [ ] Run one additional real scored local benchmark.
+- [ ] Capture all prompt responses with source evidence.
+- [ ] Add local-judge draft score suggestions without overwriting confirmed
+  scores.
+- [ ] Import confirmed benchmark CSVs into the dashboard.
+- [ ] Compare at least two models in the dashboard.
+- [ ] Link candidate -> source packet/report -> benchmark artifact -> dashboard
+  result.
+- [ ] Keep candidate-only records visually separate from eval scores.
+- [ ] Tag a pushed v1 release with validation evidence.
 
-## Phase 3: AI Lab Radar
+## v2: Retrieval Quality
 
-- Use `automations/ai-lab-radar` to track newly interesting local and open-weight models.
-- Store radar findings as review candidates instead of auto-downloading anything.
-- Connect radar output to the model registry and task queue.
-- Current scaffold defines candidate schema, report template, and local-first boundaries.
+- [ ] Add a real local embedding backend, likely BGE-M3.
+- [ ] Add sparse or hybrid retrieval in Qdrant.
+- [ ] Add reranker abstraction and BGE/Jina reranker integrations.
+- [ ] Add source-aware citation rendering and retrieval inspection reports.
+- [ ] Add RAG evaluation set format and scoring scripts.
 
-## Phase 4: Workflow Skills and Briefs
+## v3: Benchmarking Lab
 
-- Flesh out the skill library for local LLM evals, research briefs, code review, PRD-to-task conversion, resume bullets, and SEO audits.
-- Test each skill on one real repo, research, or writing task.
-- Add examples from successful runs once the workflows prove useful.
-- Refine the templates after repeated use.
-- Consider metadata polish if the skill library becomes shared outside this repo.
-- Add weekly briefs for lab, finance, technology, and geopolitics once the local data model is stable.
+- [ ] Benchmark Ollama, MLX-LM, LM Studio, and llama.cpp where practical.
+- [ ] Track TTFT, tokens/sec, total latency, memory pressure, and swap behavior.
+- [ ] Add benchmark report templates and plotting utilities.
+- [ ] Publish reproducible benchmark methodology.
+- [ ] Expand the model registry for large 24B, 30B, 70B-class, and specialty
+  abliterated/Dolphin candidates that fit the 256 GB RAM environment.
 
-## Phase 5: Evidence and Portfolio
+## v4: MLX-LM Fine-Tuning Experiments
 
-- Turn completed tasks into docs under `docs/portfolio` and `docs/resume-evidence`.
-- Export concise project evidence from benchmark results, dashboard reports, and implementation notes.
+- [ ] Add dataset manifest format.
+- [ ] Add LoRA/QLoRA experiment templates.
+- [ ] Track dataset hash, base model, adapter config, prompt template, and eval
+  results.
+- [ ] Document adapter export and serving options.
+
+## Later
+
+- [ ] Add cloud portability profiles for Qdrant, API, and hosted model
+  endpoints.
+- [ ] Add optional observability stack.
+- [ ] Add LangGraph/DSPy only after stable eval targets exist.
+- [ ] Turn completed tasks into portfolio and resume evidence.

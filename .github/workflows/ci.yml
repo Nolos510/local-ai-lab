@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Lint and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python from .python-version
+        if: ${{ hashFiles('.python-version') != '' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Set up default Python
+        if: ${{ hashFiles('.python-version') == '' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sync dependencies
+        run: |
+          if [ -f pyproject.toml ]; then
+            uv sync
+          else
+            echo "No pyproject.toml found; skipping uv sync."
+          fi
+
+      - name: Validate Docker Compose
+        run: |
+          if [ -f compose.yaml ] || [ -f docker-compose.yml ] || [ -f docker-compose.yaml ]; then
+            docker compose config
+          else
+            echo "No compose file found; skipping Docker Compose validation."
+          fi
+
+      - name: Ruff
+        run: |
+          if [ -f pyproject.toml ] && grep -q "ruff" pyproject.toml; then
+            uv run ruff check .
+          else
+            echo "Ruff is not configured; skipping lint."
+          fi
+
+      - name: Pytest
+        run: |
+          if [ -d tests ]; then
+            uv run pytest
+          else
+            echo "No tests directory found; skipping pytest."
+          fi

@@ -1,81 +1,195 @@
-# AI Lab OS
+# local-ai-lab / AI Lab OS
 
-AI Lab OS is a local-first workspace for testing open, local, and open-weight AI models on Apple Silicon hardware. It keeps model discovery, evaluations, dashboards, reusable workflows, project notes, and resume evidence in one shared source of truth while the system is still evolving.
+`local-ai-lab` is a local-first Apple Silicon AI engineering lab for private
+local inference, local RAG, model/provider experimentation, evaluation,
+benchmarking, and decision tracking.
 
-The first working application is the Local Model Performance Dashboard in `apps/model-dashboard`.
+AI Lab OS is the product loop inside the repo: approve a radar candidate, run a
+local benchmark, capture responses, score and confirm results, import them into
+the dashboard, compare models, and make a keep/watchlist/retest/skip decision.
 
-## Goals
+The target machine is an Apple Silicon Mac Studio with 256 GB unified memory,
+large local storage, and a local-first operating model.
 
-- Track which local models are actually useful, not just which models are currently hyped.
-- Record model metadata, backend settings, quantization, speed, memory use, eval scores, stability notes, and keep/delete decisions.
-- Keep data local in SQLite and CSV files.
-- Build toward radar automation, benchmark harnesses, reusable skills, weekly briefs, QA workflows, local RAG, and portfolio evidence.
+## Current Product Lines
+
+### Local RAG Backbone + Provider Harness
+
+```text
+CLI / FastAPI
+  -> ingestion
+  -> chunking
+  -> Qdrant retrieval
+  -> prompt assembly
+  -> local model provider
+  -> answer + citations
+```
+
+This lane provides the local app scaffold, provider abstractions, CLI, FastAPI
+entry point, deterministic test providers, Qdrant integration, and doctor
+checks.
+
+### AI Lab OS Dashboard Loop
+
+```text
+radar candidate
+  -> benchmark artifact
+  -> raw responses
+  -> draft/confirmed scores
+  -> dashboard import
+  -> compare models
+  -> decision
+```
+
+This lane provides the local model dashboard, candidate registry, project
+radar, benchmark harness, scoring artifacts, and lab workflow views.
 
 ## Repository Map
 
 ```text
-apps/model-dashboard/          Local model performance dashboard MVP
-automations/                   Future model radar and weekly brief jobs
-evals/local-llm-benchmark/     Personal benchmark suite
+apps/model-dashboard/          Local model performance dashboard
+src/local_ai_lab/              Local RAG/provider app
+automations/ai-lab-radar/      Radar inputs, reports, and guardrails
+evals/local-llm-benchmark/     Personal local LLM benchmark suite
+data/model_registry/           Approved model candidate registry
+data/project_registry/         GitHub/project opportunity registry
+data/eval_results/             Benchmark artifacts and dashboard CSV exports
 skills/                        Reusable AI workflow skills
-data/                          Local registry, eval results, dashboard DB, fixtures
-tasks/                         PRDs, active work, completed tasks
-agents/                        Role prompts and review checklists
-scripts/                       Import, audit, and evidence automation
-docs/                          Portfolio, resume evidence, and lab notes
+docs/                          Architecture, roadmap, lab notes, evidence
+tests/                         Local RAG/provider app tests
+scripts/                       Smoke checks and utility scripts
 ```
 
-## Skill Library
+## Local-First Architecture
 
-The `skills/` directory contains reusable Codex workflows for local LLM evaluation, research briefs, code review, PRD-to-task planning, resume bullets, and SEO audits. Each skill is a lightweight folder with invocation instructions and a small output template for future threads to reuse.
+Docker is used only for local infrastructure services in v0:
 
-## Quick Start
+- Qdrant
+- optional Open WebUI
 
-Create a local virtual environment and install the repo with developer tools:
+Model runtimes stay native on macOS:
+
+- Ollama
+- LM Studio OpenAI-compatible server
+- MLX / MLX-LM
+- llama.cpp
+
+Open WebUI is optional and parallel. The FastAPI RAG harness must not depend on
+Open WebUI.
+
+## Python Environment
+
+The default project workflow uses:
+
+- `uv`
+- `pyproject.toml`
+- `uv.lock`
+- `.python-version`
+- `.env.example`
+
+Do not introduce Conda/Mamba or a primary `requirements.txt` workflow.
+
+For dashboard-only work, the dashboard still runs with Python stdlib modules;
+developer validation can use `python3 -m unittest` and the smoke script without
+starting Qdrant or a model runtime.
+
+## RAG App Quick Start
+
+Always-runnable local/code checks:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python --version
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
+uv sync
+docker compose config
+uv run ruff check .
+uv run pytest
 ```
 
-Use `python3` to create the virtual environment on macOS. After activation, use
-`python` so every command runs through `.venv/bin/python`. If `python` does not
-resolve to the virtualenv, reactivate it with `source .venv/bin/activate`.
-
-Run the test suite:
+Local RAG smoke checks requiring Qdrant and indexed docs, but not a real model:
 
 ```bash
-python -m pytest -q
+docker compose up -d qdrant
+uv run local-ai-lab ingest --path data/sample_docs
+LOCAL_AI_LAB_LLM_PROVIDER=mock uv run local-ai-lab ask "What is this lab for?"
 ```
 
-Run the dashboard smoke check:
+Live local-model checks:
+
+```bash
+uv run local-ai-lab doctor
+uv run local-ai-lab ask "What is this lab for?"
+```
+
+The mock provider means "no real LLM call." It does not remove the Qdrant,
+retrieval, settings, embedding, or indexed-document dependencies from the ask
+path. Live local-model checks may fail if Ollama, LM Studio, Qdrant, or the
+configured local model is missing; document the exact reason instead of treating
+it as passed.
+
+## Dashboard Quick Start
+
+From the repository root:
 
 ```bash
 python3 scripts/model_dashboard_smoke.py
-```
-
-The editable install exposes the dashboard package from `apps/model-dashboard`.
-The dashboard runtime currently uses only Python standard library modules; the
-`dev` extra installs `pytest` for local validation.
-
-If `python -m pytest -q` fails with `No module named pytest`, the `dev` extra is
-not installed in the active environment. Rerun `python -m pip install -e ".[dev]"`
-after activating `.venv`.
-
-In sandboxed Codex runs, pip may need network approval to download build tooling
-or `pytest` from PyPI. That network access is only for installing developer
-dependencies; running the dashboard and tests does not call cloud APIs, download
-models, or require secrets.
-
-```bash
-python3 apps/model-dashboard/run_dashboard.py init-db --reset --with-fixtures
-python3 apps/model-dashboard/run_dashboard.py report
 python3 apps/model-dashboard/run_dashboard.py serve --demo
 ```
 
-Then open `http://127.0.0.1:8765`.
+Then open:
 
-The MVP uses only Python standard library modules. It does not download models, call APIs, or touch cloud services.
+```text
+http://127.0.0.1:8765/lab
+```
+
+Useful dashboard pages:
+
+- `/lab` - workflow cockpit
+- `/radar` - model candidates
+- `/projects` - GitHub project opportunities
+- `/compare` - model comparison
+- `/reports` - dashboard report view
+
+The dashboard MVP uses local SQLite/CSV artifacts. It does not download models,
+call cloud APIs, or require secrets.
+
+## Benchmark Harness
+
+The local benchmark harness lives under `evals/local-llm-benchmark/`.
+
+Useful checks:
+
+```bash
+python3 -m unittest discover -s evals/local-llm-benchmark/tests
+python3 evals/local-llm-benchmark/harness.py list-prompts
+```
+
+Benchmark runs should preserve raw responses and evidence notes before any
+dashboard import. Draft local-judge scores must remain separate from confirmed
+human-approved `scores.json` files.
+
+## Radar And Project Discovery
+
+Radar has two lanes:
+
+- **Local Radar:** repo-local/user-approved source packets only.
+- **External Radar:** on-demand public metadata scan, metadata only.
+
+External Radar must not download models, run models, call model APIs, add API
+clients, or register candidates without explicit user approval.
+
+GitHub project opportunities live in `data/project_registry` and are displayed
+in the dashboard separately from model candidates and eval scores.
+
+## Privacy-First Assumptions
+
+- No hidden cloud calls.
+- No secrets committed.
+- `.env.example` contains safe placeholder values only.
+- Logs should not dump user documents, prompts, retrieved chunks, API keys, or
+  private paths by default.
+- Telemetry must be opt-in or disabled by default.
+- Local-first behavior is the default unless an ADR explicitly changes that
+  direction.
+
+## Roadmap
+
+See `ROADMAP.md` and `docs/roadmap.md` for the staged plan.
