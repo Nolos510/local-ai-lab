@@ -43,6 +43,8 @@ PROJECT_FIELDS = [
     "repo_url",
     "category",
     "status",
+    "priority_score",
+    "priority_rationale",
     "stars_observed",
     "license",
     "source_packet_path",
@@ -119,6 +121,8 @@ def write_project_registry(path):
             "repo_url": "https://github.com/example/local-runtime",
             "category": "local inference",
             "status": "ready_for_review",
+            "priority_score": "5",
+            "priority_rationale": "Core local runtime for larger models.",
             "stars_observed": "100k",
             "license": "MIT",
             "source_packet_path": "automations/ai-lab-radar/inputs/projects.md",
@@ -136,6 +140,8 @@ def write_project_registry(path):
             "repo_url": "https://github.com/example/agent-watch",
             "category": "multi-agent framework",
             "status": "watchlist",
+            "priority_score": "2",
+            "priority_rationale": "Interesting reference but less urgent.",
             "stars_observed": "50k",
             "license": "MIT",
             "source_packet_path": "automations/ai-lab-radar/inputs/projects.md",
@@ -259,44 +265,57 @@ class ModelDashboardQaTests(unittest.TestCase):
                 },
             )
 
-    def test_markdown_report_uses_fixture_data(self):
+    def test_markdown_report_hides_fixture_data_by_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "dashboard.sqlite"
             csv_io.import_fixture_set(db_path, FIXTURE_DIR)
 
             report = reports.generate_markdown_report(db_path)
 
+            self.assertIn("Models tracked: 0", report)
+            self.assertIn("Demo fixture models hidden: 4", report)
+            self.assertIn("No real benchmark imports yet.", report)
+            self.assertNotIn("ResearchLite Local 7B", report)
+            self.assertNotIn("TinyCoder Local 1.1B", report)
+            self.assertNotIn("Qwen2.5-Coder 14B Instruct", report)
+
+    def test_markdown_report_can_include_demo_data_explicitly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            csv_io.import_fixture_set(db_path, FIXTURE_DIR)
+
+            report = reports.generate_markdown_report(db_path, include_demo=True)
+
             self.assertIn("Models tracked: 4", report)
             self.assertIn("ResearchLite Local 7B", report)
             self.assertIn("TinyCoder Local 1.1B", report)
             self.assertIn("Qwen2.5-Coder 14B Instruct", report)
 
-    def test_overview_filters_by_label(self):
+    def test_overview_hides_fixture_data_by_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "dashboard.sqlite"
             csv_io.import_fixture_set(db_path, FIXTURE_DIR)
 
             with db.connect(db_path) as conn:
-                html = server._overview(conn, {"label": ["RESEARCH_SPECIALIST"]})
+                html = server._overview(conn)
 
-            self.assertIn("Ranked Local Models (1 of 4)", html)
-            self.assertIn("CONFIRMED", html)
-            self.assertIn("ResearchLite Local 7B", html)
+            self.assertIn("Real Data View", html)
+            self.assertIn("This page hides 4 demo fixture model rows", html)
+            self.assertIn("No real benchmark imports yet.", html)
             self.assertNotIn("TinyCoder Local 1.1B</a>", html)
             self.assertNotIn("Qwen2.5-Coder 14B Instruct</a>", html)
 
-    def test_overview_filters_by_search_and_install_status(self):
+    def test_demo_page_shows_fixture_data_explicitly(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "dashboard.sqlite"
             csv_io.import_fixture_set(db_path, FIXTURE_DIR)
 
             with db.connect(db_path) as conn:
-                html = server._overview(conn, {"q": ["coding"], "keep": ["yes"]})
+                html = server._demo(conn)
 
-            self.assertIn("Ranked Local Models (2 of 4)", html)
+            self.assertIn("Demo Data", html)
             self.assertIn("TinyCoder Local 1.1B", html)
             self.assertIn("Qwen2.5-Coder 14B Instruct", html)
-            self.assertNotIn("ResearchLite Local 7B</a>", html)
 
     def test_radar_filters_candidate_registry_by_status(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -568,6 +587,56 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertTrue(server._is_loopback_host("127.0.0.1"))
         self.assertFalse(server._is_loopback_host("192.168.1.10"))
 
+    def test_inventory_renders_manual_refresh_empty_state(self):
+        html = server._inventory(action_token="fixture-token")
+
+        self.assertIn("Installed Models", html)
+        self.assertIn('action="/actions/refresh-inventory"', html)
+        self.assertIn("Last refresh: not checked yet", html)
+        self.assertIn("No inventory refresh has run yet.", html)
+
+    def test_inventory_parses_lmstudio_models_and_loaded_status(self):
+        models = server._parse_lmstudio_inventory(
+            """
+            {
+              "models": [
+                {
+                  "modelKey": "qwen3-coder-30b-a3b-instruct-mlx",
+                  "displayName": "Qwen3 Coder 30B",
+                  "quantization": {"name": "4bit", "bits": 4}
+                }
+              ]
+            }
+            """,
+            """
+            {"loaded": [{"identifier": "qwen3-coder-30b-a3b-instruct-mlx"}]}
+            """,
+        )
+
+        self.assertEqual(len(models), 1)
+        self.assertEqual(models[0]["runtime"], "LM Studio")
+        self.assertEqual(models[0]["model_id"], "qwen3-coder-30b-a3b-instruct-mlx")
+        self.assertEqual(models[0]["status"], "loaded")
+        self.assertNotIn("4bit", {row["model_id"] for row in models})
+
+    def test_inventory_parsers_handle_malformed_or_crash_output(self):
+        self.assertEqual(server._parse_lmstudio_inventory("not json"), [])
+        self.assertEqual(
+            server._parse_ollama_inventory(
+                "libc++abi: terminating due to uncaught exception"
+            ),
+            [],
+        )
+
+    def test_inventory_parses_ollama_list_table(self):
+        models = server._parse_ollama_inventory(
+            "NAME                            ID              SIZE      MODIFIED\n"
+            "qwen3:30b                       abc123          18 GB     2 days ago\n"
+        )
+
+        self.assertEqual(models[0]["runtime"], "Ollama")
+        self.assertEqual(models[0]["model_id"], "qwen3:30b")
+
     def test_lab_dashboard_shows_abliterated_dolphin_lane(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -615,12 +684,17 @@ class ModelDashboardQaTests(unittest.TestCase):
                     eval_results_dir=tmp_path / "eval_results",
                     project_registry_path=tmp_path / "missing-projects.csv",
                 )
+                specialty_html = server._specialty(conn, registry_path=registry_path)
 
             self.assertIn("Abliterated / Dolphin Lane", html)
             self.assertIn("Qwen3-8B-Abliterated-GGUF", html)
             self.assertIn("Dolphin3.0-Llama3.1-8B-GGUF", html)
             self.assertIn("Abliterated", html)
             self.assertIn("Dolphin", html)
+            self.assertIn("Specialty Models", specialty_html)
+            self.assertIn("Qwen3-8B-Abliterated-GGUF", specialty_html)
+            self.assertIn("Dolphin3.0-Llama3.1-8B-GGUF", specialty_html)
+            self.assertNotIn("Ready Local 7B", specialty_html)
 
     def test_projects_filters_project_registry_by_category(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -633,10 +707,23 @@ class ModelDashboardQaTests(unittest.TestCase):
                 registry_path=registry_path,
             )
 
-            self.assertIn("GitHub Project Radar (1 of 2)", html)
+            self.assertIn("Project Radar (1 of 2)", html)
             self.assertIn("Local Runtime", html)
+            self.assertIn("P5", html)
+            self.assertIn("Core local runtime for larger models.", html)
             self.assertIn("100k", html)
             self.assertNotIn("Agent Watch", html)
+
+    def test_projects_sort_by_priority_before_stars(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "github_repos.csv"
+            write_project_registry(registry_path)
+
+            html = server._projects(registry_path=registry_path)
+
+            self.assertLess(html.index("Local Runtime"), html.index("Agent Watch"))
+            self.assertIn("Priority 5", html)
 
     def test_lab_dashboard_shows_github_project_radar(self):
         with tempfile.TemporaryDirectory() as tmp:

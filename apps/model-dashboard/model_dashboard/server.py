@@ -2,13 +2,15 @@
 
 import csv
 import ipaddress
+import json
+import shutil
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import secrets
 import subprocess
 import sys
-from datetime import date
+from datetime import date, datetime
 from urllib.parse import parse_qs, urlparse
 
 from . import db
@@ -31,8 +33,10 @@ NAV_ITEMS = (
     ("/", "Overview"),
     ("/runs", "Model Runs"),
     ("/compare", "Compare Models"),
+    ("/inventory", "Installed Models"),
     ("/radar", "Radar Candidates"),
-    ("/projects", "GitHub Projects"),
+    ("/specialty", "Specialty Models"),
+    ("/projects", "Project Radar"),
     ("/storage", "Storage / Install Status"),
     ("/reports", "Reports"),
 )
@@ -120,6 +124,48 @@ def _matches_search(row, search):
         )
     )
     return search.lower() in haystack.lower()
+
+
+def _is_demo_row(row):
+    provider = str(row["provider"] if "provider" in row.keys() else row.get("provider", "") or "")
+    source_url = str(
+        row["source_url"] if "source_url" in row.keys() else row.get("source_url", "") or ""
+    )
+    return provider == "Local Fixture" or source_url.startswith("local-registry://")
+
+
+def _real_rows(rows):
+    return [row for row in rows if not _is_demo_row(row)]
+
+
+def _demo_rows(rows):
+    return [row for row in rows if _is_demo_row(row)]
+
+
+def _real_counts(conn):
+    summaries = db.list_model_summaries(conn)
+    runs = db.list_runs(conn)
+    scores = db.list_score_details(conn)
+    decisions = db.list_decisions(conn)
+    return {
+        "models": len(_real_rows(summaries)),
+        "model_runs": len(_real_rows(runs)),
+        "eval_scores": len(_real_rows(scores)),
+        "decisions": len(_real_rows(decisions)),
+        "demo_models": len(_demo_rows(summaries)),
+    }
+
+
+def _real_data_notice(demo_count):
+    if demo_count <= 0:
+        return ""
+    return """
+    <section class="panel" style="margin-bottom:16px">
+      <h2>Real Data View</h2>
+      <p>This page hides {count} demo fixture model rows. Demo rows are examples for dashboard testing, not installed models.</p>
+      <p><a href="/demo">View demo data</a> when you want to inspect fixture examples.</p>
+    </section>
+    """.format(count=demo_count)
 
 
 def _load_radar_candidates(path=CANDIDATE_REGISTRY_PATH):
@@ -219,10 +265,56 @@ def _matches_project_search(row, search):
             "business_tie_in",
             "local_fit",
             "risk_notes",
+            "priority_score",
+            "priority_rationale",
             "recommended_next_step",
         )
     )
     return search.lower() in haystack.lower()
+
+
+def _project_priority_score(row):
+    try:
+        return max(1, min(5, int(row.get("priority_score", "0") or 0)))
+    except ValueError:
+        return 0
+
+
+def _project_status_rank(row):
+    ranks = {
+        "ready_for_review": 0,
+        "ready_for_eval": 1,
+        "watchlist": 2,
+        "needs_more_info": 3,
+        "skip": 4,
+    }
+    return ranks.get(row.get("status", ""), 9)
+
+
+def _project_stars_value(row):
+    raw = str(row.get("stars_observed", "")).strip().lower().replace(",", "")
+    if not raw:
+        return 0.0
+    multiplier = 1.0
+    if raw.endswith("k"):
+        multiplier = 1000.0
+        raw = raw[:-1]
+    elif raw.endswith("m"):
+        multiplier = 1000000.0
+        raw = raw[:-1]
+    try:
+        return float(raw) * multiplier
+    except ValueError:
+        return 0.0
+
+
+def _project_sort_key(row):
+    return (
+        -_project_priority_score(row),
+        _project_status_rank(row),
+        -_project_stars_value(row),
+        row.get("repo_name", "").lower(),
+    )
 
 
 def _filter_projects(projects, filters):
@@ -235,7 +327,7 @@ def _filter_projects(projects, filters):
         if not _matches_project_search(row, filters["q"]):
             continue
         filtered.append(row)
-    return filtered
+    return sorted(filtered, key=_project_sort_key)
 
 
 def _is_specialty_candidate(row):
@@ -508,6 +600,331 @@ def _run_subprocess(command, timeout):
     )
 
 
+def _command_result(name, command, timeout):
+    try:
+        result = _run_subprocess(command, timeout)
+        status = "ok" if result.returncode == 0 else "error"
+        return {
+            "name": name,
+            "command": " ".join(command),
+            "status": status,
+            "exit_code": result.returncode,
+            "stdout": result.stdout or "",
+            "stderr": result.stderr or "",
+        }
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "name": name,
+            "command": " ".join(command),
+            "status": "timeout",
+            "exit_code": "",
+            "stdout": exc.stdout or "",
+            "stderr": exc.stderr or "",
+        }
+    except Exception as exc:
+        return {
+            "name": name,
+            "command": " ".join(command),
+            "status": "error",
+            "exit_code": "",
+            "stdout": "",
+            "stderr": str(exc),
+        }
+
+
+def _lmstudio_cli_path():
+    bundled = Path.home() / ".lmstudio" / "bin" / "lms"
+    if bundled.exists() and bundled.is_file():
+        return str(bundled)
+    return shutil.which("lms")
+
+
+def _collect_json_objects(value):
+    objects = []
+    if isinstance(value, dict):
+        objects.append(value)
+        for item in value.values():
+            objects.extend(_collect_json_objects(item))
+    elif isinstance(value, list):
+        for item in value:
+            objects.extend(_collect_json_objects(item))
+    return objects
+
+
+def _first_value(row, fields):
+    for field in fields:
+        value = row.get(field)
+        if value not in (None, ""):
+            return str(value)
+    return ""
+
+
+def _looks_like_lmstudio_model(row):
+    model_keys = (
+        "modelKey",
+        "identifier",
+        "indexedModelIdentifier",
+        "model_id",
+        "modelId",
+    )
+    if any(row.get(field) for field in model_keys):
+        return True
+    return bool(row.get("type") in ("llm", "embedding") and row.get("path"))
+
+
+def _parse_lmstudio_inventory(ls_stdout, ps_stdout=""):
+    loaded_ids = set()
+    try:
+        ps_data = json.loads(ps_stdout) if ps_stdout.strip() else []
+    except json.JSONDecodeError:
+        ps_data = []
+    for row in _collect_json_objects(ps_data):
+        if not _looks_like_lmstudio_model(row):
+            continue
+        value = _first_value(
+            row,
+            (
+                "modelKey",
+                "identifier",
+                "indexedModelIdentifier",
+                "model_id",
+                "modelId",
+                "id",
+                "path",
+                "name",
+                "displayName",
+            ),
+        )
+        if value:
+            loaded_ids.add(value.lower())
+
+    try:
+        data = json.loads(ls_stdout) if ls_stdout.strip() else []
+    except json.JSONDecodeError:
+        return []
+    seen = set()
+    models = []
+    for row in _collect_json_objects(data):
+        if not _looks_like_lmstudio_model(row):
+            continue
+        model_id = _first_value(
+            row,
+            (
+                "modelKey",
+                "identifier",
+                "indexedModelIdentifier",
+                "model_id",
+                "modelId",
+                "id",
+                "path",
+                "name",
+                "displayName",
+            ),
+        )
+        display_name = _first_value(
+            row,
+            (
+                "displayName",
+                "display_name",
+                "modelName",
+                "model_name",
+                "name",
+                "modelKey",
+                "identifier",
+                "id",
+            ),
+        )
+        if not model_id or model_id.lower() in seen:
+            continue
+        seen.add(model_id.lower())
+        path_id = str(row.get("path") or "").lower()
+        status = (
+            "loaded"
+            if model_id.lower() in loaded_ids
+            or display_name.lower() in loaded_ids
+            or (path_id and path_id in loaded_ids)
+            else "installed"
+        )
+        models.append(
+            {
+                "runtime": "LM Studio",
+                "model_id": model_id,
+                "display_name": display_name or model_id,
+                "status": status,
+            }
+        )
+    return models
+
+
+def _parse_ollama_inventory(stdout):
+    lines = [line for line in stdout.splitlines() if line.strip()]
+    if not lines or not lines[0].lower().startswith("name"):
+        return []
+    models = []
+    for line in lines[1:]:
+        parts = line.split()
+        model_id = parts[0] if parts else ""
+        if model_id:
+            models.append(
+                {
+                    "runtime": "Ollama",
+                    "model_id": model_id,
+                    "display_name": model_id,
+                    "status": "installed",
+                }
+            )
+    return models
+
+
+def _refresh_inventory(timeout=5):
+    checks = []
+    models = []
+    lms_path = _lmstudio_cli_path()
+    if lms_path:
+        lm_ls = _command_result("LM Studio models", [lms_path, "ls", "--json"], timeout)
+        lm_ps = _command_result("LM Studio loaded models", [lms_path, "ps", "--json"], timeout)
+        checks.extend([lm_ls, lm_ps])
+        if lm_ls["status"] == "ok":
+            models.extend(_parse_lmstudio_inventory(lm_ls["stdout"], lm_ps["stdout"]))
+    else:
+        checks.append(
+            {
+                "name": "LM Studio models",
+                "command": "lms ls --json",
+                "status": "unavailable",
+                "exit_code": "",
+                "stdout": "",
+                "stderr": "LM Studio CLI not found at ~/.lmstudio/bin/lms or on PATH.",
+            }
+        )
+
+    ollama_path = shutil.which("ollama")
+    if ollama_path:
+        ollama = _command_result("Ollama models", [ollama_path, "list"], timeout)
+        checks.append(ollama)
+        if ollama["status"] == "ok":
+            models.extend(_parse_ollama_inventory(ollama["stdout"]))
+    else:
+        checks.append(
+            {
+                "name": "Ollama models",
+                "command": "ollama list",
+                "status": "unavailable",
+                "exit_code": "",
+                "stdout": "",
+                "stderr": "Ollama CLI not found on PATH.",
+            }
+        )
+    return {
+        "checked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "models": models,
+        "checks": checks,
+    }
+
+
+def _match_inventory_model(model, candidates):
+    model_id = model["model_id"].lower()
+    matches = [
+        row
+        for row in candidates
+        if row.get("local_model_id", "").lower() == model_id
+        or row.get("model_name", "").lower() == model_id
+    ]
+    if len(matches) == 1:
+        return "registered", matches[0]
+    if len(matches) > 1:
+        return "ambiguous", None
+    return "unregistered", None
+
+
+def _inventory(
+    query=None,
+    inventory_result=None,
+    action_token="",
+    enable_run_tests=False,
+    enable_refresh=True,
+):
+    candidates = _load_radar_candidates()
+    result = inventory_result
+    check_rows = []
+    model_rows = []
+    if result:
+        for check in result["checks"]:
+            output = check.get("stderr") or check.get("stdout") or ""
+            check_rows.append(
+                [
+                    _text(check["name"]),
+                    _pill(check["status"]),
+                    _text(check.get("exit_code")),
+                    "<code>{}</code>".format(_text(check["command"])),
+                    _text(output[:500]),
+                ]
+            )
+        for model in result["models"]:
+            match_state, candidate = _match_inventory_model(model, candidates)
+            candidate_cell = (
+                '<a href="/radar?q={id}">{id}</a>'.format(id=_text(candidate["candidate_id"]))
+                if candidate
+                else _pill(match_state)
+            )
+            action_cell = (
+                _run_test_control(candidate, enable_run_tests, action_token)
+                if candidate and _candidate_run_ready(candidate)
+                else '<span class="empty">Register exact local model id first</span>'
+            )
+            model_rows.append(
+                [
+                    _text(model["runtime"]),
+                    "<code>{}</code>".format(_text(model["model_id"])),
+                    _text(model["display_name"]),
+                    _pill(model["status"]),
+                    candidate_cell,
+                    action_cell,
+                ]
+            )
+
+    body = """
+    <section class="panel" style="margin-bottom:16px">
+      <h2>Installed Models</h2>
+      <p>This page checks local runtime inventory on demand. It does not download, install, benchmark, score, or import models.</p>
+      <form class="inline-form" method="post" action="/actions/refresh-inventory">
+        <input type="hidden" name="token" value="{token}">
+        <button type="submit"{disabled}>Refresh Inventory</button>
+      </form>
+      {disabled_note}
+      <p class="empty">Last refresh: {checked_at}</p>
+    </section>
+    <section>
+      <h2>Detected Models</h2>
+      {models}
+    </section>
+    <section style="margin-top:16px">
+      <h2>Runtime Checks</h2>
+      {checks}
+    </section>
+    """.format(
+        token=_text(action_token),
+        disabled="" if enable_refresh else " disabled",
+        disabled_note=(
+            ""
+            if enable_refresh
+            else '<p class="empty">Inventory refresh is available only on a localhost or loopback dashboard bind.</p>'
+        ),
+        checked_at=_text(result["checked_at"] if result else "not checked yet"),
+        models=_table(
+            ["Runtime", "Model id", "Display name", "Status", "Registry match", "Action"],
+            model_rows,
+            empty_message="No inventory refresh has run yet.",
+        ),
+        checks=_table(
+            ["Check", "Status", "Exit", "Command", "Output"],
+            check_rows,
+            empty_message="No runtime checks have run yet.",
+        ),
+    )
+    return _layout("Installed Models", "/inventory", body)
+
+
 def _build_candidate_commands(row, run_id, eval_results_dir):
     run_dir = Path(eval_results_dir) / run_id
     init_command = [
@@ -707,22 +1124,15 @@ def _artifact_summaries(eval_results_dir=EVAL_RESULTS_DIR):
 
 
 def _score_status_counts(conn):
-    rows = conn.execute(
-        """
-        SELECT score_status, COUNT(*) AS count
-        FROM eval_scores
-        GROUP BY score_status
-        """
-    ).fetchall()
     counts = {"confirmed": 0, "draft": 0}
-    for row in rows:
-        counts[row["score_status"]] = row["count"]
+    for row in _real_rows(db.list_score_details(conn)):
+        counts[row["score_status"]] = counts.get(row["score_status"], 0) + 1
     return counts
 
 
 def _dashboard_model_links(conn):
     links = {}
-    for row in db.list_model_summaries(conn):
+    for row in _real_rows(db.list_model_summaries(conn)):
         model_name = str(row["model_name"] or "")
         if model_name:
             links[model_name.lower()] = row["id"]
@@ -731,7 +1141,7 @@ def _dashboard_model_links(conn):
 
 def _dashboard_run_ids(conn):
     run_ids = set()
-    for row in db.list_runs(conn):
+    for row in _real_rows(db.list_runs(conn)):
         run_id = _benchmark_run_id_from_notes(row["run_notes"])
         if run_id:
             run_ids.add(run_id)
@@ -740,7 +1150,7 @@ def _dashboard_run_ids(conn):
 
 def _dashboard_runs_by_benchmark_id(conn):
     runs = {}
-    for row in db.list_runs(conn):
+    for row in _real_rows(db.list_runs(conn)):
         run_id = _benchmark_run_id_from_notes(row["run_notes"])
         if run_id:
             runs[run_id] = row
@@ -749,7 +1159,7 @@ def _dashboard_runs_by_benchmark_id(conn):
 
 def _latest_decisions_by_model_id(conn):
     decisions = {}
-    for row in db.list_decisions(conn):
+    for row in _real_rows(db.list_decisions(conn)):
         if row["model_id"] not in decisions:
             decisions[row["model_id"]] = row
     return decisions
@@ -1155,16 +1565,18 @@ def _layout(title, current_path, body):
 
 
 def _overview(conn, query=None):
-    counts = {table: db.table_count(conn, table) for table in db.TABLES}
-    summaries = db.list_model_summaries(conn)
+    counts = _real_counts(conn)
+    all_summaries = db.list_model_summaries(conn)
+    summaries = _real_rows(all_summaries)
     filters = _filter_values(query or {})
     filtered_summaries = _filter_summaries(summaries, filters)
-    avg_score = conn.execute("SELECT AVG(total_score) AS avg_score FROM eval_scores").fetchone()[
-        "avg_score"
+    score_values = [
+        float(row["total_score"])
+        for row in summaries
+        if row["total_score"] not in (None, "")
     ]
-    keep_count = conn.execute(
-        "SELECT COUNT(*) AS count FROM decisions WHERE keep_installed = 1"
-    ).fetchone()["count"]
+    avg_score = sum(score_values) / len(score_values) if score_values else None
+    keep_count = sum(1 for row in summaries if row["keep_installed"] == 1)
     rows = []
     for row in filtered_summaries:
         rows.append(
@@ -1184,6 +1596,7 @@ def _overview(conn, query=None):
             ]
         )
     body = """
+    {notice}
     <section class="grid">
       <div class="stat"><div class="label">Models</div><div class="value">{models}</div></div>
       <div class="stat"><div class="label">Runs</div><div class="value">{runs}</div></div>
@@ -1196,6 +1609,7 @@ def _overview(conn, query=None):
       {table}
     </section>
     """.format(
+        notice=_real_data_notice(counts["demo_models"]),
         models=counts["models"],
         runs=counts["model_runs"],
         avg=_number(avg_score, 1, "0.0"),
@@ -1220,7 +1634,7 @@ def _overview(conn, query=None):
                 "Decision",
             ],
             rows,
-            empty_message="No models match these filters.",
+            empty_message="No real benchmark imports yet.",
         ),
     )
     return _layout("Overview", "/", body)
@@ -1242,6 +1656,7 @@ def _lab(
     dashboard_runs = _dashboard_runs_by_benchmark_id(conn)
     decisions_by_model = _latest_decisions_by_model_id(conn)
     score_counts = _score_status_counts(conn)
+    real_counts = _real_counts(conn)
     ready_candidates = [
         row for row in candidates if row.get("status") == "ready_for_eval"
     ]
@@ -1286,7 +1701,7 @@ def _lab(
         [
             "Decision",
             _pill("local"),
-            "{} decisions logged".format(db.table_count(conn, "decisions")),
+            "{} real decisions logged".format(real_counts["decisions"]),
             '<a href="/storage">Review keep/watch/retest state</a>',
         ],
     ]
@@ -1502,7 +1917,8 @@ def _lab(
 
 def _runs(conn):
     rows = []
-    for row in db.list_runs(conn):
+    all_runs = db.list_runs(conn)
+    for row in _real_rows(all_runs):
         rows.append(
             [
                 _text(row["date_tested"]),
@@ -1522,7 +1938,8 @@ def _runs(conn):
                 _text(row["stability_notes"]),
             ]
         )
-    body = "<h2>Model Runs</h2>{}".format(
+    body = "{}<h2>Model Runs</h2>{}".format(
+        _real_data_notice(len(_demo_rows(all_runs))),
         _table(
             [
                 "Date",
@@ -1540,6 +1957,7 @@ def _runs(conn):
                 "Stability",
             ],
             rows,
+            empty_message="No real benchmark runs imported yet.",
         )
     )
     return _layout("Model Runs", "/runs", body)
@@ -1550,7 +1968,8 @@ def _compare(conn):
         field.replace("_", " ").title() for field in METRIC_FIELDS
     ]
     rows = []
-    for row in db.list_score_details(conn):
+    all_scores = db.list_score_details(conn)
+    for row in _real_rows(all_scores):
         cells = [
             '<a href="/models/{id}">{name}</a>'.format(
                 id=row["model_id"], name=_text(row["model_name"])
@@ -1561,7 +1980,10 @@ def _compare(conn):
         ]
         cells.extend(_number(row[field], 0) for field in METRIC_FIELDS)
         rows.append(cells)
-    body = "<h2>Compare Models</h2>{}".format(_table(headers, rows))
+    body = "{}<h2>Compare Models</h2>{}".format(
+        _real_data_notice(len(_demo_rows(all_scores))),
+        _table(headers, rows, empty_message="No real confirmed or draft score rows imported yet."),
+    )
     return _layout("Compare Models", "/compare", body)
 
 
@@ -1670,6 +2092,82 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
     return _layout("Radar Candidates", "/radar", body)
 
 
+def _specialty(conn, registry_path=CANDIDATE_REGISTRY_PATH):
+    candidates = [
+        row
+        for row in _load_radar_candidates(registry_path)
+        if _is_specialty_candidate(row)
+    ]
+    model_links = _dashboard_model_links(conn)
+    ready_count = sum(1 for row in candidates if row.get("status") == "ready_for_eval")
+    watchlist_count = sum(1 for row in candidates if row.get("status") == "watchlist")
+
+    rows = []
+    for row in candidates:
+        model_id = model_links.get(row.get("model_name", "").lower())
+        model_name = _text(row.get("model_name"))
+        if model_id:
+            model_name = '<a href="/models/{id}">{name}</a>'.format(
+                id=model_id, name=model_name
+            )
+        rows.append(
+            [
+                '<div class="cell-stack"><div>{name}</div><code>{id}</code></div>'.format(
+                    name=model_name,
+                    id=_text(row.get("candidate_id")),
+                ),
+                '<div class="cell-stack"><div>{lane}</div>{status}</div>'.format(
+                    lane=_text(_specialty_lane_label(row)),
+                    status=_pill(row.get("status")),
+                ),
+                _candidate_availability(row),
+                """
+                <div class="cell-stack">
+                  <div><strong>Why</strong><br>{why}</div>
+                  <div><strong>Risk</strong><br>{risk}</div>
+                </div>
+                """.format(
+                    why=_text(row.get("why_interesting")),
+                    risk=_text(row.get("risk_notes")),
+                ),
+                _text(row.get("proposed_eval")),
+                _artifact_link(row.get("benchmark_run_id")),
+            ]
+        )
+
+    body = """
+    <section class="grid">
+      <div class="stat"><div class="label">Specialty candidates</div><div class="value">{total}</div></div>
+      <div class="stat"><div class="label">Ready for eval</div><div class="value">{ready}</div></div>
+      <div class="stat"><div class="label">Watchlist</div><div class="value">{watchlist}</div></div>
+    </section>
+    <section class="panel" style="margin-bottom:16px">
+      <h2>Abliterated / Dolphin Models</h2>
+      <p>This tab collects specialty radar candidates for refusal-boundary and Dolphin-style model testing. They remain candidates until local evidence, scores, and decisions exist.</p>
+      <p>The same rows remain searchable in <a href="/radar?q=abliterated">Radar Candidates</a>.</p>
+    </section>
+    {table}
+    """.format(
+        total=len(candidates),
+        ready=ready_count,
+        watchlist=watchlist_count,
+        table=_table(
+            [
+                "Candidate",
+                "Lane",
+                "Availability",
+                "Review notes",
+                "Proposed eval",
+                "Artifact",
+            ],
+            rows,
+            empty_message="No abliterated or Dolphin candidates are registered yet.",
+            table_class="radar-table",
+        ),
+    )
+    return _layout("Specialty Models", "/specialty", body)
+
+
 def _projects(query=None, registry_path=PROJECT_REGISTRY_PATH):
     projects = _load_project_repos(registry_path)
     filters = _project_filter_values(query or {})
@@ -1706,12 +2204,14 @@ def _projects(query=None, registry_path=PROJECT_REGISTRY_PATH):
         )
         review = """
         <div class="cell-stack">
+          <div><strong>Why learn/use this</strong><br>{priority}</div>
           <div><strong>Why</strong><br>{why}</div>
           <div><strong>Business</strong><br>{business}</div>
           <div><strong>Local fit</strong><br>{local_fit}</div>
           <div><strong>Risk</strong><br>{risk}</div>
         </div>
         """.format(
+            priority=_text(row.get("priority_rationale")),
             why=_text(row.get("why_interesting")),
             business=_text(row.get("business_tie_in")),
             local_fit=_text(row.get("local_fit")),
@@ -1729,6 +2229,7 @@ def _projects(query=None, registry_path=PROJECT_REGISTRY_PATH):
         rows.append(
             [
                 identity,
+                _pill("P{}".format(_project_priority_score(row) or "?")),
                 _pill(row.get("status")),
                 signal,
                 review,
@@ -1743,10 +2244,11 @@ def _projects(query=None, registry_path=PROJECT_REGISTRY_PATH):
       <div class="stat"><div class="label">Ready for review</div><div class="value">{ready}</div></div>
       <div class="stat"><div class="label">Watchlist</div><div class="value">{watchlist}</div></div>
       <div class="stat"><div class="label">Local/self-host signal</div><div class="value">{local_count}</div></div>
+      <div class="stat"><div class="label">Priority 5</div><div class="value">{priority_five}</div></div>
     </section>
     <section>
       {filters}
-      <h2>GitHub Project Radar{filtered_count}</h2>
+      <h2>Project Radar{filtered_count}</h2>
       {table}
     </section>
     """.format(
@@ -1754,6 +2256,7 @@ def _projects(query=None, registry_path=PROJECT_REGISTRY_PATH):
         ready=ready_count,
         watchlist=watchlist_count,
         local_count=local_count,
+        priority_five=sum(1 for row in projects if _project_priority_score(row) == 5),
         filters=_project_filters(projects, filters),
         filtered_count=(
             " ({} of {})".format(len(filtered_projects), len(projects))
@@ -1763,18 +2266,19 @@ def _projects(query=None, registry_path=PROJECT_REGISTRY_PATH):
         table=_table(
             [
                 "Project",
+                "Priority",
                 "Status",
                 "Signal",
-                "Review notes",
+                "Why learn / use this",
                 "Next step",
                 "Links",
             ],
             rows,
-            empty_message="No GitHub projects match these filters.",
+            empty_message="No projects match these filters.",
             table_class="project-table",
         ),
     )
-    return _layout("GitHub Projects", "/projects", body)
+    return _layout("Project Radar", "/projects", body)
 
 
 def _artifact_detail(conn, benchmark_run_id, registry_path=CANDIDATE_REGISTRY_PATH):
@@ -1840,6 +2344,18 @@ def _model_detail(conn, model_id):
     if detail is None:
         return _layout("Model Detail", "", "<h2>Model not found</h2>")
     model = detail["model"]
+    if _is_demo_row(model):
+        return _layout(
+            "Demo Model Detail",
+            "",
+            """
+            <section class="panel">
+              <h2>Demo Fixture Model</h2>
+              <p><strong>{name}</strong> is bundled demo data for dashboard testing, not an installed model.</p>
+              <p><a href="/demo">View demo data</a> or return to <a href="/">real benchmark results</a>.</p>
+            </section>
+            """.format(name=_text(model["model_name"])),
+        )
     run_rows = []
     for row in detail["runs"]:
         run_rows.append(
@@ -1924,7 +2440,8 @@ def _model_detail(conn, model_id):
 
 def _storage(conn):
     rows = []
-    for row in db.list_decisions(conn):
+    all_decisions = db.list_decisions(conn)
+    for row in _real_rows(all_decisions):
         rows.append(
             [
                 '<a href="/models/{id}">{name}</a>'.format(
@@ -1937,19 +2454,72 @@ def _storage(conn):
                 _text(row["retest_condition"]),
             ]
         )
-    body = "<h2>Storage / Install Status</h2>{}".format(
+    body = """
+    {notice}
+    <section class="panel" style="margin-bottom:16px">
+      <h2>Storage / Install Status</h2>
+      <p>This is a benchmark decision log. It is not an installed-model inventory scanner.</p>
+      <p>Use <a href="/inventory">Installed Models</a> to check local LM Studio and Ollama inventory.</p>
+    </section>
+    {table}
+    """.format(
+        notice=_real_data_notice(len(_demo_rows(all_decisions))),
+        table=
         _table(
             ["Model", "Decision", "Keep installed", "Best use case", "Weakness", "Retest"],
             rows,
-        )
+            empty_message="No real storage/install decisions logged yet.",
+        ),
     )
     return _layout("Storage / Install Status", "/storage", body)
 
 
 def _reports(conn, database_path):
     report = generate_markdown_report(database_path)
-    body = '<h2>Reports</h2><pre class="report">{}</pre>'.format(escape(report))
+    body = """
+    <section class="panel" style="margin-bottom:16px">
+      <h2>What This Means</h2>
+      <p>Ranked models are imported benchmark results, not installed-model inventory.</p>
+      <p>Radar candidates are possible models to evaluate, not scored models.</p>
+      <p>Installed Models checks local LM Studio and Ollama inventory on demand.</p>
+      <p>Scores are valid only after raw responses, confirmed scores, and decisions exist.</p>
+      <p>Demo rows are examples only and are hidden from real dashboard views by default.</p>
+    </section>
+    <h2>Reports</h2><pre class="report">{report}</pre>
+    """.format(report=escape(report))
     return _layout("Reports", "/reports", body)
+
+
+def _demo(conn):
+    summaries = _demo_rows(db.list_model_summaries(conn))
+    rows = []
+    for row in summaries:
+        rows.append(
+            [
+                '<a href="/models/{id}">{name}</a>'.format(
+                    id=row["id"], name=_text(row["model_name"])
+                ),
+                _text(row["provider"]),
+                _text(row["backend"]),
+                _number(row["total_score"], 2),
+                _pill(row["final_label"]),
+                _text(row["decision"]),
+            ]
+        )
+    body = """
+    <section class="panel" style="margin-bottom:16px">
+      <h2>Demo Data</h2>
+      <p>These fixture rows are bundled examples for dashboard QA. They are not installed on this machine and are hidden from real dashboard views.</p>
+    </section>
+    {table}
+    """.format(
+        table=_table(
+            ["Model", "Provider", "Backend", "Score", "Label", "Decision"],
+            rows,
+            empty_message="No demo fixture rows found.",
+        )
+    )
+    return _layout("Demo Data", "", body)
 
 
 def make_handler(
@@ -1957,7 +2527,11 @@ def make_handler(
     enable_run_tests=False,
     action_token="",
     run_test_timeout=3600,
+    inventory_timeout=5,
+    enable_inventory_refresh=True,
 ):
+    inventory_cache = {"result": None}
+
     class DashboardHandler(BaseHTTPRequestHandler):
         def do_GET(self):
             parsed = urlparse(self.path)
@@ -1976,16 +2550,9 @@ def make_handler(
         def do_POST(self):
             parsed = urlparse(self.path)
             try:
-                if parsed.path != "/actions/run-test":
+                if parsed.path not in ("/actions/run-test", "/actions/refresh-inventory"):
                     html = _layout("Not Found", "", "<h2>Page not found</h2>")
                     self.send_response(404)
-                elif not enable_run_tests:
-                    html = _layout(
-                        "Run Tests Disabled",
-                        "",
-                        "<h2>Run tests disabled</h2><p>Restart the dashboard with <code>--enable-run-tests</code>.</p>",
-                    )
-                    self.send_response(403)
                 else:
                     length = int(self.headers.get("Content-Length", "0"))
                     if length > 4096:
@@ -1993,16 +2560,41 @@ def make_handler(
                     form = parse_qs(self.rfile.read(length).decode("utf-8"))
                     token = _query_value(form, "token")
                     if token != action_token:
-                        raise ValueError("Invalid run-test token.")
-                    candidate_id = _query_value(form, "candidate_id")
-                    result = _run_candidate_test(
-                        candidate_id,
-                        CANDIDATE_REGISTRY_PATH,
-                        EVAL_RESULTS_DIR,
-                        run_test_timeout,
-                    )
-                    html = _run_action_page(result)
-                    self.send_response(200)
+                        raise ValueError("Invalid action token.")
+                    if parsed.path == "/actions/refresh-inventory":
+                        if not enable_inventory_refresh:
+                            html = _layout(
+                                "Inventory Refresh Disabled",
+                                "",
+                                "<h2>Inventory refresh disabled</h2><p>Refresh is available only on a localhost or loopback dashboard bind.</p>",
+                            )
+                            self.send_response(403)
+                        else:
+                            inventory_cache["result"] = _refresh_inventory(inventory_timeout)
+                            html = _inventory(
+                                inventory_result=inventory_cache["result"],
+                                action_token=action_token,
+                                enable_run_tests=enable_run_tests,
+                                enable_refresh=enable_inventory_refresh,
+                            )
+                            self.send_response(200)
+                    elif not enable_run_tests:
+                        html = _layout(
+                            "Run Tests Disabled",
+                            "",
+                            "<h2>Run tests disabled</h2><p>Restart the dashboard with <code>--enable-run-tests</code>.</p>",
+                        )
+                        self.send_response(403)
+                    else:
+                        candidate_id = _query_value(form, "candidate_id")
+                        result = _run_candidate_test(
+                            candidate_id,
+                            CANDIDATE_REGISTRY_PATH,
+                            EVAL_RESULTS_DIR,
+                            run_test_timeout,
+                        )
+                        html = _run_action_page(result)
+                        self.send_response(200)
             except Exception as exc:
                 html = _layout("Run Test Error", "", "<h2>Run Test Error</h2><p>{}</p>".format(_text(exc)))
                 self.send_response(400)
@@ -2026,14 +2618,25 @@ def make_handler(
                 return _runs(conn)
             if path == "/compare":
                 return _compare(conn)
+            if path == "/inventory":
+                return _inventory(
+                    inventory_result=inventory_cache["result"],
+                    action_token=action_token,
+                    enable_run_tests=enable_run_tests,
+                    enable_refresh=enable_inventory_refresh,
+                )
             if path == "/radar":
                 return _radar(conn, query)
+            if path == "/specialty":
+                return _specialty(conn)
             if path == "/projects":
                 return _projects(query)
             if path == "/storage":
                 return _storage(conn)
             if path == "/reports":
                 return _reports(conn, database_path)
+            if path == "/demo":
+                return _demo(conn)
             if path.startswith("/artifacts/"):
                 benchmark_run_id = path.rsplit("/", 1)[-1]
                 return _artifact_detail(conn, benchmark_run_id)
@@ -2051,10 +2654,12 @@ def serve(
     port=8765,
     enable_run_tests=False,
     run_test_timeout=3600,
+    inventory_timeout=5,
 ):
     if enable_run_tests and not _is_loopback_host(host):
         raise ValueError("Run-test actions require a localhost or loopback bind host.")
-    action_token = secrets.token_urlsafe(24) if enable_run_tests else ""
+    enable_inventory_refresh = _is_loopback_host(host)
+    action_token = secrets.token_urlsafe(24)
     server = ThreadingHTTPServer(
         (host, port),
         make_handler(
@@ -2062,11 +2667,15 @@ def serve(
             enable_run_tests=enable_run_tests,
             action_token=action_token,
             run_test_timeout=run_test_timeout,
+            inventory_timeout=inventory_timeout,
+            enable_inventory_refresh=enable_inventory_refresh,
         ),
     )
     print("Serving Local Model Dashboard at http://{}:{}".format(host, port), flush=True)
     if enable_run_tests:
         print("Dashboard run-test actions enabled for local candidates.", flush=True)
+    if enable_inventory_refresh:
+        print("Installed-model inventory refresh enabled for local runtimes.", flush=True)
     try:
         server.serve_forever()
     finally:

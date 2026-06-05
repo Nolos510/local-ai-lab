@@ -22,6 +22,15 @@ Then open `http://127.0.0.1:8765`.
 
 The default database path is `data/dashboard/model_dashboard.sqlite`. This runtime file is local state and is ignored by git.
 
+Normal dashboard pages show real imported benchmark data only. Bundled fixture
+rows are hidden from Overview, Runs, Compare, Storage, Reports, and model detail
+rankings so they cannot be mistaken for installed models. Fixture examples live
+behind the explicit Demo Data page:
+
+```text
+http://127.0.0.1:8765/demo
+```
+
 If port `8765` is already in use, pass another local port:
 
 ```bash
@@ -64,6 +73,14 @@ Generate a Markdown report:
 python3 apps/model-dashboard/run_dashboard.py report
 ```
 
+Reports hide fixture rows by default and include a plain-English explanation of
+what model rankings, radar candidates, installed inventory, and score validity
+mean. To include fixture rows for QA/debugging only:
+
+```bash
+python3 apps/model-dashboard/run_dashboard.py report --include-demo
+```
+
 Run the local web dashboard:
 
 ```bash
@@ -82,6 +99,24 @@ It is the read-only v1 command center for the local product loop. It shows ready
 radar candidates, benchmark artifact state, draft/confirmed score counts, import
 linkage, decisions, an abliterated/Dolphin specialty candidate lane, GitHub
 project radar, and the next benchmark commands to run locally.
+
+The Installed Models page is available at:
+
+```text
+http://127.0.0.1:8765/inventory
+```
+
+It is the source of truth for what the dashboard detects locally. Inventory is
+manual-refresh only and runs fixed local checks with short timeouts:
+
+- `lms ls --json`
+- `lms ps --json`
+- `ollama list`
+
+The inventory page does not scan on page load. It does not download, install,
+benchmark, score, import, or call cloud/model APIs. It only shows runtime,
+model id, installed/loaded status when available, registry match status, and a
+run-test action when an exact local runner and model id are configured.
 
 By default, the dashboard is read-only. To enable local run-test buttons for
 already-downloaded candidates with exact `local_runner` and `local_model_id`
@@ -124,6 +159,15 @@ candidate registry rows whose names or families include abliterated or Dolphin
 terms. This is a benchmark queue signal only; low-refusal or uncensored source
 claims remain risk notes until local evidence exists.
 
+The Specialty Models page is available at:
+
+```text
+http://127.0.0.1:8765/specialty
+```
+
+It shows the same abliterated/Dolphin candidate rows as a dedicated lane while
+keeping them searchable in Radar Candidates.
+
 The GitHub Projects page is available at:
 
 ```text
@@ -135,6 +179,10 @@ opportunities such as local inference runtimes, workflow automation tools, RAG
 systems, AI coding agents, and business workflow integrations. These records are
 not model candidates and never become eval scores. GitHub stars are treated as
 adoption signals, not quality scores.
+
+Project Radar sorts by `priority_score` first, then status and observed stars.
+Use `priority_rationale` to explain why a project is worth learning, testing,
+or tying into the business/product loop.
 
 Scored eval rows now include `score_status`. Existing and manually confirmed
 scores default to `confirmed`; local-judge suggestions may be imported as

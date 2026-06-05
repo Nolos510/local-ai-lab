@@ -20,9 +20,14 @@ TEST_DIR = REPO_ROOT / "apps" / "model-dashboard" / "tests"
 SERVER_PATHS = (
     "/",
     "/?label=CODING_SPECIALIST&keep=yes",
+    "/runs",
+    "/inventory",
     "/radar",
+    "/specialty",
     "/projects",
+    "/storage",
     "/reports",
+    "/demo",
     "/models/3",
 )
 

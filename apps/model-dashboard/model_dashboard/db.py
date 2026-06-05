@@ -138,6 +138,7 @@ def list_model_summaries(conn):
             m.model_name,
             m.model_family,
             m.provider,
+            m.source_url,
             m.params_b,
             r.backend,
             r.quantization,
@@ -203,6 +204,8 @@ def list_runs(conn):
             r.*,
             m.model_name,
             m.model_family,
+            m.provider,
+            m.source_url,
             s.total_score,
             s.final_label,
             s.score_status
@@ -220,6 +223,8 @@ def list_score_details(conn):
         SELECT
             m.id AS model_id,
             m.model_name,
+            m.provider,
+            m.source_url,
             r.backend,
             r.quantization,
             s.*
@@ -234,7 +239,7 @@ def list_score_details(conn):
 def list_decisions(conn):
     return conn.execute(
         """
-        SELECT d.*, m.model_name, m.model_family
+        SELECT d.*, m.model_name, m.model_family, m.provider, m.source_url
         FROM decisions d
         JOIN models m ON m.id = d.model_id
         ORDER BY d.keep_installed DESC, d.created_at DESC, m.model_name ASC

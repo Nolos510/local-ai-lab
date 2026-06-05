@@ -45,7 +45,7 @@ def command_export_csv(args):
 
 
 def command_report(args):
-    path = reports.write_report(args.db, args.out)
+    path = reports.write_report(args.db, args.out, include_demo=args.include_demo)
     print("Report written: {}".format(path))
     return 0
 
@@ -60,6 +60,7 @@ def command_serve(args):
         port=args.port,
         enable_run_tests=args.enable_run_tests,
         run_test_timeout=args.run_test_timeout,
+        inventory_timeout=args.inventory_timeout,
     )
     return 0
 
@@ -93,6 +94,12 @@ def build_parser():
         default=3600,
         help="Maximum seconds allowed for each dashboard-triggered harness command.",
     )
+    serve_parser.add_argument(
+        "--inventory-timeout",
+        type=int,
+        default=5,
+        help="Maximum seconds allowed for each local inventory command.",
+    )
     serve_parser.set_defaults(func=command_serve)
 
     import_parser = subparsers.add_parser("import-csv", help="Import table-shaped CSV files.")
@@ -114,6 +121,11 @@ def build_parser():
         "--out",
         type=Path,
         default=REPO_ROOT / "data" / "dashboard" / "reports" / "fixture-model-report.md",
+    )
+    report_parser.add_argument(
+        "--include-demo",
+        action="store_true",
+        help="Include bundled fixture rows in the generated report.",
     )
     report_parser.set_defaults(func=command_report)
 

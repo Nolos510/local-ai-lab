@@ -14,7 +14,21 @@ def _score(value):
     return "" if value is None else "{:.2f}".format(float(value))
 
 
-def generate_markdown_report(db_path):
+def _is_demo_row(row):
+    provider = str(row["provider"] if "provider" in row.keys() else "")
+    source_url = str(row["source_url"] if "source_url" in row.keys() else "")
+    return provider == "Local Fixture" or source_url.startswith("local-registry://")
+
+
+def _real_rows(rows):
+    return [row for row in rows if not _is_demo_row(row)]
+
+
+def _demo_rows(rows):
+    return [row for row in rows if _is_demo_row(row)]
+
+
+def generate_markdown_report(db_path, include_demo=False):
     generated_at = datetime.now().astimezone().isoformat(timespec="seconds")
     lines = [
         "# Local Model Performance Report",
@@ -25,18 +39,37 @@ def generate_markdown_report(db_path):
 
     with db.connect(db_path) as conn:
         db.create_schema(conn)
-        counts = {table: db.table_count(conn, table) for table in db.TABLES}
-        summaries = db.list_model_summaries(conn)
-        decisions = db.list_decisions(conn)
+        all_summaries = db.list_model_summaries(conn)
+        all_runs = db.list_runs(conn)
+        all_scores = db.list_score_details(conn)
+        all_decisions = db.list_decisions(conn)
+        summaries = all_summaries if include_demo else _real_rows(all_summaries)
+        decisions = all_decisions if include_demo else _real_rows(all_decisions)
+        demo_count = len(_demo_rows(all_summaries))
+        counts = {
+            "models": len(summaries),
+            "model_runs": len(all_runs if include_demo else _real_rows(all_runs)),
+            "eval_scores": len(all_scores if include_demo else _real_rows(all_scores)),
+            "decisions": len(decisions),
+        }
 
         lines.extend(
             [
+                "## What this means",
+                "",
+                "- Ranked models are imported benchmark results, not installed-model inventory.",
+                "- Radar candidates are possible models to evaluate, not scored models.",
+                "- Installed Models is the source of truth for what the dashboard detects locally.",
+                "- Scores are only valid after raw responses, confirmed scores, and decisions exist.",
+                "- Demo rows are examples only and are hidden from this report by default.",
+                "",
                 "## Summary",
                 "",
                 "- Models tracked: {}".format(counts["models"]),
                 "- Runs tracked: {}".format(counts["model_runs"]),
                 "- Eval score rows: {}".format(counts["eval_scores"]),
                 "- Decisions logged: {}".format(counts["decisions"]),
+                "- Demo fixture models hidden: {}".format(0 if include_demo else demo_count),
                 "",
                 "## Ranked Models",
                 "",
@@ -44,6 +77,8 @@ def generate_markdown_report(db_path):
                 "| --- | --- | --- | ---: | --- | --- | --- | --- |",
             ]
         )
+        if not summaries:
+            lines.append("| No real benchmark imports yet. |  |  |  |  |  |  |  |")
         for row in summaries:
             lines.append(
                 "| {model} | {backend} | {quant} | {score} | {status} | {label} | {decision} | {use} |".format(
@@ -65,6 +100,8 @@ def generate_markdown_report(db_path):
                 "| --- | --- | --- | --- |",
             ]
         )
+        if not decisions:
+            lines.append("| No real install/storage decisions yet. |  |  |  |")
         for row in decisions:
             lines.append(
                 "| {model} | {keep} | {weakness} | {retest} |".format(
@@ -79,9 +116,9 @@ def generate_markdown_report(db_path):
     return "\n".join(lines)
 
 
-def write_report(db_path, output_path):
+def write_report(db_path, output_path, include_demo=False):
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    report = generate_markdown_report(db_path)
+    report = generate_markdown_report(db_path, include_demo=include_demo)
     output_path.write_text(report, encoding="utf-8")
     return output_path
