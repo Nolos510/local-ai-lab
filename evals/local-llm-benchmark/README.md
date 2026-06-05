@@ -17,9 +17,11 @@ Harness-ready format proposals:
 - `rubrics/rubric-scorecard-v0.1.json`
 - `HARNESS_ASSETS.md`
 
-The checked-in harness scaffolds local artifacts, records human-supplied raw
-responses, and writes dashboard-compatible CSV files. It does not download,
-install, run, or call any model.
+The checked-in harness scaffolds local artifacts, records raw responses from
+manual input or approved local endpoints, asks a separate local judge for draft
+score suggestions, and writes dashboard-compatible CSV files. It does not
+download models, install models, call cloud APIs, use secrets, or add API
+clients.
 
 ## Local Files
 
@@ -63,6 +65,21 @@ Run prompts manually in the chosen local backend, then create a filled response
 JSONL using `response-template.jsonl` as the starting schema. Capture the raw
 model text in `raw_response`; do not summarize or edit it.
 
+For a local OpenAI-compatible backend such as LM Studio or Ollama, the harness
+can capture the prompt set directly:
+
+```bash
+python3 evals/local-llm-benchmark/harness.py run-local \
+  --run-dir data/eval_results/20260603-example-model-llamacpp-q4 \
+  --endpoint http://127.0.0.1:1234/v1 \
+  --model "Example Local Model" \
+  --force
+```
+
+Allowed endpoints are `localhost`, loopback IPs, and literal private LAN IPs.
+Public hosts and public IP addresses are rejected. Runtime errors are preserved
+as raw benchmark evidence instead of being turned into scores.
+
 Normalize human-supplied responses into the run artifact:
 
 ```bash
@@ -71,8 +88,19 @@ python3 evals/local-llm-benchmark/harness.py record-responses \
   --responses-jsonl data/eval_results/20260603-example-model-llamacpp-q4/manual-responses.jsonl
 ```
 
-After manual scoring, create filled score and decision JSON files from the
-templates, then export dashboard CSVs:
+For assisted scoring, point a separate local judge endpoint at the completed run.
+This writes `draft-scores.json` with `score_status: draft`; it does not overwrite
+the official `scores.json` template.
+
+```bash
+python3 evals/local-llm-benchmark/harness.py suggest-scores \
+  --run-dir data/eval_results/20260603-example-model-llamacpp-q4 \
+  --endpoint http://127.0.0.1:1234/v1 \
+  --judge-model "Local Judge Model"
+```
+
+After human review, create filled score and decision JSON files from the
+templates, then export confirmed dashboard CSVs:
 
 ```bash
 python3 evals/local-llm-benchmark/harness.py export-dashboard \
@@ -81,16 +109,25 @@ python3 evals/local-llm-benchmark/harness.py export-dashboard \
   --decision-json data/eval_results/20260603-example-model-llamacpp-q4/decision.json
 ```
 
+To inspect unconfirmed judge suggestions in the dashboard, export the draft
+scores instead:
+
+```bash
+python3 evals/local-llm-benchmark/harness.py export-dashboard \
+  --run-dir data/eval_results/20260603-example-model-llamacpp-q4 \
+  --scores-json data/eval_results/20260603-example-model-llamacpp-q4/draft-scores.json
+```
+
 `eval_scores.csv` and `decisions.csv` are header-only until filled score and
 decision files are provided. This avoids importing placeholder zero scores as
 real benchmark results.
 
 ## Dependency Posture
 
-The harness should stay Python stdlib-only. JSON Lines, CSV export,
-Markdown reports, subprocess capture, file layout, and timing can all be handled
-with standard library modules. If Harness Builder proposes a package, challenge
-it against `AGENTS.md` before adding anything to `pyproject.toml`.
+The harness should stay Python stdlib-only. JSON Lines, CSV export, Markdown
+reports, local HTTP capture, file layout, and timing can all be handled with
+standard library modules. If Harness Builder proposes a package, challenge it
+against `AGENTS.md` before adding anything to `pyproject.toml`.
 
 ## Validation
 

@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
 """Local-only benchmark artifact harness.
 
-This harness scaffolds benchmark artifacts, records human-supplied raw
-responses, and exports dashboard-compatible CSVs. It intentionally contains no
-model runner, downloader, network client, or cloud API integration.
+This harness scaffolds benchmark artifacts, records human-supplied or
+local-endpoint raw responses, asks local judge endpoints for draft scoring
+suggestions, and exports dashboard-compatible CSVs. It intentionally contains no
+model downloader, cloud API integration, third-party HTTP client, or secret use.
 """
 
 import argparse
 import csv
 import hashlib
+import http.client
+import ipaddress
 import json
 import sys
+import time
 from datetime import date, datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 
 HARNESS_ROOT = Path(__file__).resolve().parent
@@ -64,6 +69,7 @@ TABLE_FIELDS = {
         "speed_practicality",
         "total_score",
         "final_label",
+        "score_status",
     ),
     "decisions": (
         "id",
@@ -167,6 +173,108 @@ def _load_prompt_set():
             raise HarnessError("Duplicate prompt id: {}".format(prompt["id"]))
         seen.add(prompt["id"])
     return prompt_set
+
+
+def _validate_local_endpoint(endpoint):
+    parsed = urlparse(endpoint)
+    if parsed.scheme not in ("http", "https"):
+        raise HarnessError("Endpoint must use http or https.")
+    if not parsed.hostname:
+        raise HarnessError("Endpoint must include a host.")
+    host = parsed.hostname.lower()
+    if host == "localhost":
+        return parsed
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        raise HarnessError(
+            "Endpoint host must be localhost, loopback IP, or literal private LAN IP."
+        )
+    if address.is_loopback or address.is_private:
+        return parsed
+    raise HarnessError("Endpoint host must not be a public IP address.")
+
+
+def _chat_completions_url(endpoint):
+    parsed = _validate_local_endpoint(endpoint)
+    path = parsed.path.rstrip("/")
+    if not path.endswith("/chat/completions"):
+        path = "{}/chat/completions".format(path or "")
+    return parsed._replace(path=path, params="", query="", fragment="")
+
+
+def _safe_endpoint(parsed):
+    return urlunparse(parsed._replace(query="", fragment=""))
+
+
+def _post_chat_completion(endpoint, payload, timeout):
+    parsed = _chat_completions_url(endpoint)
+    body = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    connection_class = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    port = parsed.port
+    conn = connection_class(parsed.hostname, port=port, timeout=timeout)
+    try:
+        path = parsed.path
+        if parsed.query:
+            path = "{}?{}".format(path, parsed.query)
+        conn.request("POST", path, body=body, headers=headers)
+        response = conn.getresponse()
+        response_body = response.read().decode("utf-8", errors="replace")
+    finally:
+        conn.close()
+    if response.status < 200 or response.status >= 300:
+        raise HarnessError(
+            "Local endpoint returned HTTP {}: {}".format(response.status, response_body[:500])
+        )
+    try:
+        return json.loads(response_body)
+    except json.JSONDecodeError as exc:
+        raise HarnessError("Local endpoint response was not JSON: {}".format(exc))
+
+
+def _message_content(response):
+    choices = response.get("choices") or []
+    if not choices:
+        return ""
+    first = choices[0]
+    message = first.get("message") or {}
+    content = message.get("content")
+    if content is None:
+        content = first.get("text", "")
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                parts.append(str(item.get("text", "")))
+            else:
+                parts.append(str(item))
+        content = "".join(parts)
+    return "" if content is None else str(content)
+
+
+def _finish_reason(response):
+    choices = response.get("choices") or []
+    if not choices:
+        return None
+    return choices[0].get("finish_reason")
+
+
+def _usage_value(response, key):
+    usage = response.get("usage") or {}
+    value = usage.get(key)
+    return value if isinstance(value, (int, float)) else None
+
+
+def _extract_json_object(text):
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise
+        return json.loads(text[start : end + 1])
 
 
 def _load_rubric():
@@ -277,6 +385,7 @@ def _empty_scores_template(rubric):
         "scores": scores,
         "total_score": None,
         "final_label": None,
+        "score_status": "confirmed",
     }
 
 
@@ -357,7 +466,10 @@ def _load_score_row(scores_path, metadata, rubric):
         "run_id": data.get("run_id", metadata["dashboard_ids"]["run_id"]),
         "total_score": data.get("total_score"),
         "final_label": data.get("final_label"),
+        "score_status": data.get("score_status", "confirmed"),
     }
+    if row["score_status"] not in ("confirmed", "draft"):
+        raise HarnessError("score_status must be confirmed or draft.")
     for field in rubric["metric_fields"]:
         row[field] = _validate_score(score_values.get(field), field)
     labels = set(rubric["final_labels"])
@@ -496,6 +608,169 @@ def record_responses(args):
     return output_path
 
 
+def run_local(args):
+    run_dir = Path(args.run_dir).resolve()
+    metadata = _read_json(run_dir / "metadata.json")
+    prompt_set = _load_prompt_set()
+    model_name = args.model or metadata["model"]["model_name"]
+    endpoint = _safe_endpoint(_chat_completions_url(args.endpoint))
+    raw_path = run_dir / "raw_responses.jsonl"
+    _require_absent_empty_or_force(raw_path, args.force)
+
+    records = []
+    for prompt in prompt_set["prompts"]:
+        started_at = _utc_now()
+        started = time.monotonic()
+        source = {
+            "prompt_id": prompt["id"],
+            "started_at": started_at,
+            "raw_response": "",
+            "error": None,
+        }
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt["prompt"]}],
+            "temperature": (
+                args.temperature
+                if args.temperature is not None
+                else metadata["run"].get("temperature")
+            ),
+            "top_p": args.top_p if args.top_p is not None else metadata["run"].get("top_p"),
+            "max_tokens": args.max_tokens,
+        }
+        payload = {key: value for key, value in payload.items() if value is not None}
+        try:
+            response = _post_chat_completion(args.endpoint, payload, args.timeout)
+            completed = time.monotonic()
+            output_tokens = _usage_value(response, "completion_tokens")
+            latency_ms = int(round((completed - started) * 1000))
+            source.update(
+                {
+                    "completed_at": _utc_now(),
+                    "latency_ms": latency_ms,
+                    "input_tokens": _usage_value(response, "prompt_tokens"),
+                    "output_tokens": output_tokens,
+                    "tokens_per_sec": (
+                        round(float(output_tokens) / (latency_ms / 1000.0), 2)
+                        if output_tokens and latency_ms > 0
+                        else None
+                    ),
+                    "stop_reason": _finish_reason(response),
+                    "raw_response": _message_content(response),
+                }
+            )
+        except HarnessError as exc:
+            source.update(
+                {
+                    "completed_at": _utc_now(),
+                    "latency_ms": int(round((time.monotonic() - started) * 1000)),
+                    "error": str(exc),
+                    "stop_reason": "error",
+                }
+            )
+        records.append(_normalize_response_record(source, metadata, prompt))
+
+    _write_jsonl(raw_path, records)
+    evidence_path = run_dir / "evidence.md"
+    with evidence_path.open("a", encoding="utf-8") as handle:
+        handle.write("\n## Local Runner\n\n")
+        handle.write("- Endpoint: `{}`\n".format(endpoint))
+        handle.write("- Model argument: `{}`\n".format(model_name))
+        handle.write("- Completed at: `{}`\n".format(_utc_now()))
+        handle.write("- Prompt records: `{}`\n".format(len(records)))
+    return raw_path
+
+
+def _judge_prompt(metadata, raw_records, rubric):
+    compact_records = [
+        {
+            "prompt_id": record.get("prompt_id"),
+            "prompt_title": record.get("prompt_title"),
+            "error": record.get("error"),
+            "raw_response": record.get("raw_response", ""),
+            "evaluator_notes": record.get("evaluator_notes", ""),
+        }
+        for record in raw_records
+    ]
+    return "\n".join(
+        [
+            "You are a local benchmark judge for AI Lab OS.",
+            "Use only the supplied benchmark responses. Do not infer hidden capabilities.",
+            "Return only one JSON object.",
+            "Required JSON shape:",
+            json.dumps(
+                {
+                    "scores": {field: 0 for field in rubric["metric_fields"]},
+                    "total_score": 0,
+                    "final_label": "WATCHLIST",
+                    "rationale": "short overall rationale",
+                    "metric_rationales": {
+                        field: "short rationale" for field in rubric["metric_fields"]
+                    },
+                },
+                indent=2,
+            ),
+            "Scores must be numbers from 0 to 100.",
+            "Valid final labels: {}".format(", ".join(rubric["final_labels"])),
+            "Benchmark metadata:",
+            json.dumps(metadata, indent=2, sort_keys=True),
+            "Raw response records:",
+            json.dumps(compact_records, indent=2, sort_keys=True),
+        ]
+    )
+
+
+def suggest_scores(args):
+    run_dir = Path(args.run_dir).resolve()
+    metadata = _read_json(run_dir / "metadata.json")
+    rubric = _load_rubric()
+    raw_records = _load_jsonl(run_dir / "raw_responses.jsonl")
+    output_path = args.out or run_dir / "draft-scores.json"
+    _require_absent_or_force(output_path, args.force)
+    judge_model = args.judge_model or "local-judge"
+    endpoint = _safe_endpoint(_chat_completions_url(args.endpoint))
+    prompt = _judge_prompt(metadata, raw_records, rubric)
+    response = _post_chat_completion(
+        args.endpoint,
+        {
+            "model": judge_model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": args.temperature,
+            "max_tokens": args.max_tokens,
+        },
+        args.timeout,
+    )
+    content = _message_content(response)
+    try:
+        suggestion = _extract_json_object(content)
+    except json.JSONDecodeError as exc:
+        raise HarnessError("Judge response did not contain a JSON object: {}".format(exc))
+    score_values = suggestion.get("scores") or {}
+    draft = {
+        "id": metadata["dashboard_ids"].get("score_id"),
+        "run_id": metadata["dashboard_ids"]["run_id"],
+        "score_status": "draft",
+        "scores": {},
+        "total_score": suggestion.get("total_score"),
+        "final_label": suggestion.get("final_label"),
+        "rationale": suggestion.get("rationale", ""),
+        "metric_rationales": suggestion.get("metric_rationales", {}),
+        "judge": {
+            "endpoint": endpoint,
+            "model": judge_model,
+            "created_at": _utc_now(),
+        },
+    }
+    for field in rubric["metric_fields"]:
+        draft["scores"][field] = _validate_score(score_values.get(field), field)
+    if draft["total_score"] not in (None, ""):
+        draft["total_score"] = _validate_score(draft["total_score"], "total_score")
+    if draft["final_label"] not in (None, "") and draft["final_label"] not in rubric["final_labels"]:
+        raise HarnessError("Unknown final_label: {}".format(draft["final_label"]))
+    _write_json(output_path, draft)
+    return output_path
+
+
 def export_dashboard(args):
     run_dir = Path(args.run_dir).resolve()
     metadata = _read_json(run_dir / "metadata.json")
@@ -521,7 +796,7 @@ def list_prompts(args):
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        description="Create local benchmark artifacts without calling or downloading models."
+        description="Create local benchmark artifacts without downloads or cloud APIs."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -560,6 +835,20 @@ def build_parser():
     init_parser.add_argument("--run-notes")
     init_parser.set_defaults(func=init_run)
 
+    run_parser = subparsers.add_parser(
+        "run-local",
+        help="Capture prompt responses from a local OpenAI-compatible chat endpoint.",
+    )
+    run_parser.add_argument("--run-dir", required=True, type=Path)
+    run_parser.add_argument("--endpoint", required=True)
+    run_parser.add_argument("--model")
+    run_parser.add_argument("--timeout", type=float, default=120.0)
+    run_parser.add_argument("--max-tokens", type=int, default=1024)
+    run_parser.add_argument("--temperature", type=float)
+    run_parser.add_argument("--top-p", type=float)
+    run_parser.add_argument("--force", action="store_true")
+    run_parser.set_defaults(func=run_local)
+
     record_parser = subparsers.add_parser(
         "record-responses",
         help="Copy human-supplied response JSONL into the run raw_responses.jsonl.",
@@ -568,6 +857,20 @@ def build_parser():
     record_parser.add_argument("--responses-jsonl", required=True, type=Path)
     record_parser.add_argument("--force", action="store_true")
     record_parser.set_defaults(func=record_responses)
+
+    suggest_parser = subparsers.add_parser(
+        "suggest-scores",
+        help="Ask a separate local judge endpoint for draft rubric score suggestions.",
+    )
+    suggest_parser.add_argument("--run-dir", required=True, type=Path)
+    suggest_parser.add_argument("--endpoint", required=True)
+    suggest_parser.add_argument("--judge-model")
+    suggest_parser.add_argument("--out", type=Path)
+    suggest_parser.add_argument("--timeout", type=float, default=180.0)
+    suggest_parser.add_argument("--max-tokens", type=int, default=2048)
+    suggest_parser.add_argument("--temperature", type=float, default=0.0)
+    suggest_parser.add_argument("--force", action="store_true")
+    suggest_parser.set_defaults(func=suggest_scores)
 
     export_parser = subparsers.add_parser(
         "export-dashboard", help="Write dashboard-compatible CSVs for a run."

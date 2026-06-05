@@ -1,8 +1,10 @@
 import csv
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -26,6 +28,81 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         return result
+
+    def run_harness_raw(self, *args):
+        return subprocess.run(
+            [sys.executable, str(HARNESS), *args],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    def start_chat_server(self, mode):
+        class ChatHandler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                request_body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+                payload = json.loads(request_body.decode("utf-8"))
+                messages = payload.get("messages", [])
+                content = messages[-1].get("content", "") if messages else ""
+                if mode == "judge":
+                    scores = {field: 77 for field in self.server.metric_fields}
+                    response_content = json.dumps(
+                        {
+                            "scores": scores,
+                            "total_score": 77,
+                            "final_label": "WATCHLIST",
+                            "rationale": "Draft local judge fixture.",
+                            "metric_rationales": {
+                                field: "Fixture rationale" for field in self.server.metric_fields
+                            },
+                        }
+                    )
+                else:
+                    prompt_id = "unknown"
+                    for candidate in ("LLMCORE-v0.1-001", "LLMCORE-v0.1-012"):
+                        if candidate in content:
+                            prompt_id = candidate
+                    response_content = "mock local response for {}".format(prompt_id)
+                body = json.dumps(
+                    {
+                        "choices": [
+                            {
+                                "message": {"content": response_content},
+                                "finish_reason": "stop",
+                            }
+                        ],
+                        "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+                    }
+                ).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, fmt, *args):
+                return
+
+        try:
+            server = ThreadingHTTPServer(("127.0.0.1", 0), ChatHandler)
+        except PermissionError as exc:
+            self.skipTest("local bind unavailable in this environment: {}".format(exc))
+        server.metric_fields = [
+            "instruction_following",
+            "truthfulness_uncertainty",
+            "reasoning",
+            "coding_debugging",
+            "agent_planning",
+            "local_ai_lab_usefulness",
+            "research_synthesis",
+            "business_seo_strategy",
+            "long_context",
+            "creativity",
+            "speed_practicality",
+        ]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        return server
 
     def test_init_run_creates_local_artifact_skeleton(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -191,6 +268,131 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertEqual(len(summaries), 1)
             self.assertEqual(summaries[0]["model_name"], "Fixture Model")
             self.assertEqual(summaries[0]["final_label"], "WATCHLIST")
+
+    def test_run_local_captures_all_prompts_and_rejects_public_endpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_id = "20260605-fixture-local-runner"
+            self.run_harness(
+                "init-run",
+                "--benchmark-run-id",
+                run_id,
+                "--model-name",
+                "Fixture Runner Model",
+                "--backend",
+                "LM Studio",
+                "--output-root",
+                tmp,
+            )
+            run_dir = Path(tmp) / run_id
+            server = self.start_chat_server("runner")
+            try:
+                endpoint = "http://127.0.0.1:{}/v1".format(server.server_port)
+                self.run_harness(
+                    "run-local",
+                    "--run-dir",
+                    str(run_dir),
+                    "--endpoint",
+                    endpoint,
+                    "--model",
+                    "fixture-local-model",
+                    "--force",
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+
+            records = [
+                json.loads(line)
+                for line in (run_dir / "raw_responses.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertEqual(len(records), 12)
+            self.assertTrue(all(record["raw_response"] for record in records))
+            self.assertTrue(all(record["error"] is None for record in records))
+
+            failed = self.run_harness_raw(
+                "run-local",
+                "--run-dir",
+                str(run_dir),
+                "--endpoint",
+                "https://8.8.8.8/v1",
+                "--force",
+            )
+            self.assertEqual(failed.returncode, 2)
+            self.assertIn("public IP", failed.stderr)
+
+    def test_suggest_scores_writes_draft_and_exports_draft_csv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_id = "20260605-fixture-draft-scoring"
+            self.run_harness(
+                "init-run",
+                "--benchmark-run-id",
+                run_id,
+                "--model-name",
+                "Fixture Draft Model",
+                "--backend",
+                "LM Studio",
+                "--output-root",
+                tmp,
+            )
+            run_dir = Path(tmp) / run_id
+            responses_path = Path(tmp) / "manual-responses.jsonl"
+            responses_path.write_text(
+                json.dumps(
+                    {
+                        "prompt_id": "LLMCORE-v0.1-001",
+                        "raw_response": "A compact but useful fixture answer.",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            self.run_harness(
+                "record-responses",
+                "--run-dir",
+                str(run_dir),
+                "--responses-jsonl",
+                str(responses_path),
+                "--force",
+            )
+
+            server = self.start_chat_server("judge")
+            draft_path = run_dir / "draft-scores.json"
+            try:
+                endpoint = "http://127.0.0.1:{}/v1".format(server.server_port)
+                self.run_harness(
+                    "suggest-scores",
+                    "--run-dir",
+                    str(run_dir),
+                    "--endpoint",
+                    endpoint,
+                    "--judge-model",
+                    "fixture-judge",
+                    "--out",
+                    str(draft_path),
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+
+            draft = json.loads(draft_path.read_text(encoding="utf-8"))
+            self.assertEqual(draft["score_status"], "draft")
+            self.assertEqual(draft["scores"]["reasoning"], 77.0)
+
+            self.run_harness(
+                "export-dashboard",
+                "--run-dir",
+                str(run_dir),
+                "--scores-json",
+                str(draft_path),
+            )
+
+            with (run_dir / "dashboard-import" / "eval_scores.csv").open(
+                newline="", encoding="utf-8"
+            ) as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual(rows[0]["score_status"], "draft")
 
 
 if __name__ == "__main__":
