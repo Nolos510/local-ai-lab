@@ -9,6 +9,26 @@ AI Lab Radar turns manually approved model discovery notes into candidate record
 for later evaluation. It does not download models, run models, call cloud APIs,
 or require secrets.
 
+## Radar Lanes
+
+### Local Radar
+
+Local Radar uses only repo-local, user-approved source packets and prior local
+benchmark artifacts. This is the default lane for creating durable candidate
+records.
+
+### External Radar
+
+External Radar is an on-demand metadata scan over curated public sources such as
+official model cards, Hugging Face pages, GitHub release/readme pages, and
+official project docs. External Radar may collect source links and public claims,
+but it must write an unapproved source packet first. External candidates do not
+enter `data/model_registry/candidates.csv` until the user explicitly approves
+them.
+
+External Radar still must not download models, run models, call model APIs, add
+API clients, use secrets, or create install instructions.
+
 ## Inputs
 
 Use only user-approved local inputs, such as:
@@ -17,8 +37,12 @@ Use only user-approved local inputs, such as:
 - Local research notes copied into a thread or report.
 - Prior AI Lab OS benchmark reports and dashboard decisions.
 
-Do not add crawler code, automatic web fetching, package downloads, model
-downloads, or API clients to this automation.
+For Local Radar, do not add crawler code, automatic web fetching, package
+downloads, model downloads, or API clients to this automation.
+
+For External Radar, perform public metadata discovery manually/on demand and
+write a source packet with `Approved for radar review: no` and `Safe to commit:
+no` until the user approves it.
 
 ## Outputs
 
@@ -39,6 +63,9 @@ Radar work should produce:
 4. Recommend the next local action without downloading or running the model.
 5. If a model is ready for evaluation, point it at
    `evals/local-llm-benchmark/SPEC.md` and `skills/local-llm-eval`.
+
+For External Radar, insert an approval gate between steps 1 and 2. The first
+packet/report is candidate-only and must not edit `data/model_registry`.
 
 ## Validation
 
