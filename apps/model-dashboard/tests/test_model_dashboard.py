@@ -27,9 +27,26 @@ CANDIDATE_FIELDS = [
     "risk_notes",
     "proposed_eval",
 ]
+PROJECT_FIELDS = [
+    "repo_id",
+    "repo_name",
+    "owner",
+    "repo_url",
+    "category",
+    "status",
+    "stars_observed",
+    "license",
+    "source_packet_path",
+    "report_path",
+    "why_interesting",
+    "business_tie_in",
+    "local_fit",
+    "risk_notes",
+    "recommended_next_step",
+]
 
 
-def write_candidate_registry(path):
+def write_candidate_registry(path, extra_rows=None):
     rows = [
         {
             "candidate_id": "20260603-ready-local",
@@ -60,8 +77,53 @@ def write_candidate_registry(path):
             "proposed_eval": "Confirm local artifact first.",
         },
     ]
+    if extra_rows:
+        rows.extend(extra_rows)
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=CANDIDATE_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def write_project_registry(path):
+    rows = [
+        {
+            "repo_id": "20260605-local-runtime",
+            "repo_name": "Local Runtime",
+            "owner": "example",
+            "repo_url": "https://github.com/example/local-runtime",
+            "category": "local inference",
+            "status": "ready_for_review",
+            "stars_observed": "100k",
+            "license": "MIT",
+            "source_packet_path": "automations/ai-lab-radar/inputs/projects.md",
+            "report_path": "automations/ai-lab-radar/reports/projects.md",
+            "why_interesting": "Strong local inference candidate.",
+            "business_tie_in": "Supports benchmark serving.",
+            "local_fit": "Self-hosted local path.",
+            "risk_notes": "Review before install.",
+            "recommended_next_step": "Inspect runtime path.",
+        },
+        {
+            "repo_id": "20260605-agent-watch",
+            "repo_name": "Agent Watch",
+            "owner": "example",
+            "repo_url": "https://github.com/example/agent-watch",
+            "category": "multi-agent framework",
+            "status": "watchlist",
+            "stars_observed": "50k",
+            "license": "MIT",
+            "source_packet_path": "automations/ai-lab-radar/inputs/projects.md",
+            "report_path": "automations/ai-lab-radar/reports/projects.md",
+            "why_interesting": "Agent orchestration reference.",
+            "business_tie_in": "Could support business process simulations.",
+            "local_fit": "Needs provider review.",
+            "risk_notes": "Telemetry unclear.",
+            "recommended_next_step": "Review local provider support.",
+        },
+    ]
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=PROJECT_FIELDS)
         writer.writeheader()
         writer.writerows(rows)
 
@@ -287,6 +349,7 @@ class ModelDashboardQaTests(unittest.TestCase):
                     conn,
                     registry_path=registry_path,
                     eval_results_dir=eval_results,
+                    project_registry_path=tmp_path / "missing-projects.csv",
                 )
 
             self.assertIn("Lab Dashboard", html)
@@ -295,6 +358,99 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("python3 evals/local-llm-benchmark/harness.py run-local", html)
             self.assertIn("/artifacts/20260603-ready-local", html)
             self.assertIn("Benchmark Artifacts", html)
+
+    def test_lab_dashboard_shows_abliterated_dolphin_lane(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(
+                registry_path,
+                extra_rows=[
+                    {
+                        "candidate_id": "20260605-qwen3-8b-abliterated-gguf",
+                        "model_name": "Qwen3-8B-Abliterated-GGUF",
+                        "model_family": "Qwen3 Abliterated",
+                        "provider_or_org": "mlabonne / bartowski",
+                        "status": "ready_for_eval",
+                        "format_or_runtime": "GGUF through LM Studio or llama.cpp",
+                        "source_packet_path": "automations/ai-lab-radar/inputs/abliterated.md",
+                        "report_path": "automations/ai-lab-radar/reports/abliterated.md",
+                        "benchmark_run_id": "",
+                        "why_interesting": "Compact low-refusal candidate for local behavior testing.",
+                        "risk_notes": "Experimental refusal behavior must be benchmarked before use.",
+                        "proposed_eval": "Run local benchmark with refusal-boundary review notes.",
+                    },
+                    {
+                        "candidate_id": "20260605-dolphin3-llama31-8b-gguf",
+                        "model_name": "Dolphin3.0-Llama3.1-8B-GGUF",
+                        "model_family": "Dolphin",
+                        "provider_or_org": "Cognitive Computations",
+                        "status": "ready_for_eval",
+                        "format_or_runtime": "GGUF through LM Studio or llama.cpp",
+                        "source_packet_path": "automations/ai-lab-radar/inputs/dolphin.md",
+                        "report_path": "automations/ai-lab-radar/reports/dolphin.md",
+                        "benchmark_run_id": "",
+                        "why_interesting": "Local Dolphin baseline for agentic assistant testing.",
+                        "risk_notes": "License and low-refusal behavior need review.",
+                        "proposed_eval": "Run local benchmark and compare against Qwen r2.",
+                    },
+                ],
+            )
+
+            with db.connect(db_path) as conn:
+                html = server._lab(
+                    conn,
+                    registry_path=registry_path,
+                    eval_results_dir=tmp_path / "eval_results",
+                    project_registry_path=tmp_path / "missing-projects.csv",
+                )
+
+            self.assertIn("Abliterated / Dolphin Lane", html)
+            self.assertIn("Qwen3-8B-Abliterated-GGUF", html)
+            self.assertIn("Dolphin3.0-Llama3.1-8B-GGUF", html)
+            self.assertIn("Abliterated", html)
+            self.assertIn("Dolphin", html)
+
+    def test_projects_filters_project_registry_by_category(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "github_repos.csv"
+            write_project_registry(registry_path)
+
+            html = server._projects(
+                {"category": ["local inference"]},
+                registry_path=registry_path,
+            )
+
+            self.assertIn("GitHub Project Radar (1 of 2)", html)
+            self.assertIn("Local Runtime", html)
+            self.assertIn("100k", html)
+            self.assertNotIn("Agent Watch", html)
+
+    def test_lab_dashboard_shows_github_project_radar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            candidate_registry_path = tmp_path / "candidates.csv"
+            project_registry_path = tmp_path / "github_repos.csv"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(candidate_registry_path)
+            write_project_registry(project_registry_path)
+
+            with db.connect(db_path) as conn:
+                html = server._lab(
+                    conn,
+                    registry_path=candidate_registry_path,
+                    eval_results_dir=tmp_path / "eval_results",
+                    project_registry_path=project_registry_path,
+                )
+
+            self.assertIn("GitHub Project Radar", html)
+            self.assertIn("Local Runtime", html)
+            self.assertIn("Supports benchmark serving.", html)
+            self.assertIn("/projects", html)
 
 
 if __name__ == "__main__":

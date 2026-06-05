@@ -21,6 +21,7 @@ SERVER_PATHS = (
     "/",
     "/?label=CODING_SPECIALIST&keep=yes",
     "/radar",
+    "/projects",
     "/reports",
     "/models/3",
 )

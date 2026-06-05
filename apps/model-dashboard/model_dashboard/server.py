@@ -12,7 +12,9 @@ from .scoring import METRIC_FIELDS
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CANDIDATE_REGISTRY_PATH = REPO_ROOT / "data" / "model_registry" / "candidates.csv"
+PROJECT_REGISTRY_PATH = REPO_ROOT / "data" / "project_registry" / "github_repos.csv"
 EVAL_RESULTS_DIR = REPO_ROOT / "data" / "eval_results"
+SPECIALTY_LANE_TERMS = ("abliterated", "dolphin")
 
 NAV_ITEMS = (
     ("/lab", "Lab Dashboard"),
@@ -20,6 +22,7 @@ NAV_ITEMS = (
     ("/runs", "Model Runs"),
     ("/compare", "Compare Models"),
     ("/radar", "Radar Candidates"),
+    ("/projects", "GitHub Projects"),
     ("/storage", "Storage / Install Status"),
     ("/reports", "Reports"),
 )
@@ -121,6 +124,18 @@ def _load_radar_candidates(path=CANDIDATE_REGISTRY_PATH):
         ]
 
 
+def _load_project_repos(path=PROJECT_REGISTRY_PATH):
+    registry_path = Path(path)
+    if not registry_path.exists():
+        return []
+    with registry_path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        return [
+            {key: (value or "").strip() for key, value in row.items() if key}
+            for row in reader
+        ]
+
+
 def _radar_filter_values(query):
     return {
         "q": _query_value(query, "q"),
@@ -164,6 +179,76 @@ def _filter_candidates(candidates, filters):
             continue
         filtered.append(row)
     return filtered
+
+
+def _project_filter_values(query):
+    return {
+        "q": _query_value(query, "q"),
+        "status": _query_value(query, "status"),
+        "category": _query_value(query, "category"),
+    }
+
+
+def _matches_project_search(row, search):
+    if not search:
+        return True
+    haystack = " ".join(
+        row.get(field, "")
+        for field in (
+            "repo_id",
+            "repo_name",
+            "owner",
+            "category",
+            "status",
+            "why_interesting",
+            "business_tie_in",
+            "local_fit",
+            "risk_notes",
+            "recommended_next_step",
+        )
+    )
+    return search.lower() in haystack.lower()
+
+
+def _filter_projects(projects, filters):
+    filtered = []
+    for row in projects:
+        if filters["status"] and row.get("status") != filters["status"]:
+            continue
+        if filters["category"] and row.get("category") != filters["category"]:
+            continue
+        if not _matches_project_search(row, filters["q"]):
+            continue
+        filtered.append(row)
+    return filtered
+
+
+def _is_specialty_candidate(row):
+    haystack = " ".join(
+        row.get(field, "")
+        for field in (
+            "candidate_id",
+            "model_name",
+            "model_family",
+            "provider_or_org",
+            "why_interesting",
+            "risk_notes",
+            "proposed_eval",
+        )
+    ).lower()
+    return any(term in haystack for term in SPECIALTY_LANE_TERMS)
+
+
+def _specialty_lane_label(row):
+    haystack = " ".join(
+        row.get(field, "") for field in ("candidate_id", "model_name", "model_family")
+    ).lower()
+    labels = []
+    if "abliterated" in haystack:
+        labels.append("Abliterated")
+    if "dolphin" in haystack:
+        labels.append("Dolphin")
+    return " / ".join(labels) if labels else "Specialty"
 
 
 def _radar_filters(candidates, filters):
@@ -220,6 +305,51 @@ def _radar_filters(candidates, filters):
         family_options=family_options,
         all_runtimes=_option("", "All runtimes", filters["runtime"]),
         runtime_options=runtime_options,
+        clear_link=clear_link,
+    )
+
+
+def _project_filters(projects, filters):
+    status_options = "".join(
+        _option(status, status, filters["status"])
+        for status in _field_options(projects, "status")
+    )
+    category_options = "".join(
+        _option(category, category, filters["category"])
+        for category in _field_options(projects, "category")
+    )
+    clear_link = '<a class="clear-link" href="/projects">Clear</a>' if any(filters.values()) else ""
+    return """
+    <form class="filters filters-compact" method="get" action="/projects">
+      <div class="field field-wide">
+        <label for="project-q">Search</label>
+        <input id="project-q" name="q" type="search" value="{q}">
+      </div>
+      <div class="field">
+        <label for="project-status">Status</label>
+        <select id="project-status" name="status">
+          {all_statuses}
+          {status_options}
+        </select>
+      </div>
+      <div class="field">
+        <label for="project-category">Category</label>
+        <select id="project-category" name="category">
+          {all_categories}
+          {category_options}
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button type="submit">Apply</button>
+        {clear_link}
+      </div>
+    </form>
+    """.format(
+        q=_text(filters["q"]),
+        all_statuses=_option("", "All statuses", filters["status"]),
+        status_options=status_options,
+        all_categories=_option("", "All categories", filters["category"]),
+        category_options=category_options,
         clear_link=clear_link,
     )
 
@@ -491,6 +621,9 @@ def _layout(title, current_path, body):
       padding: 12px;
       margin: 0 0 14px;
     }}
+    .filters-compact {{
+      grid-template-columns: minmax(220px, 2fr) repeat(2, minmax(140px, 1fr)) auto;
+    }}
     .field label {{
       display: block;
       color: var(--muted);
@@ -649,6 +782,21 @@ def _layout(title, current_path, body):
     .radar-table td:nth-child(6) {{
       width: 190px;
     }}
+    .project-table {{
+      min-width: 980px;
+    }}
+    .project-table th:nth-child(1),
+    .project-table td:nth-child(1) {{
+      width: 190px;
+    }}
+    .project-table th:nth-child(2),
+    .project-table td:nth-child(2) {{
+      width: 150px;
+    }}
+    .project-table th:nth-child(4),
+    .project-table td:nth-child(4) {{
+      width: 220px;
+    }}
     @media (max-width: 780px) {{
       .filters {{ grid-template-columns: 1fr; }}
       .filter-actions {{ justify-content: flex-start; }}
@@ -739,8 +887,14 @@ def _overview(conn, query=None):
     return _layout("Overview", "/", body)
 
 
-def _lab(conn, registry_path=CANDIDATE_REGISTRY_PATH, eval_results_dir=EVAL_RESULTS_DIR):
+def _lab(
+    conn,
+    registry_path=CANDIDATE_REGISTRY_PATH,
+    eval_results_dir=EVAL_RESULTS_DIR,
+    project_registry_path=PROJECT_REGISTRY_PATH,
+):
     candidates = _load_radar_candidates(registry_path)
+    projects = _load_project_repos(project_registry_path)
     artifacts = _artifact_summaries(eval_results_dir)
     model_links = _dashboard_model_links(conn)
     imported_run_ids = _dashboard_run_ids(conn)
@@ -748,6 +902,8 @@ def _lab(conn, registry_path=CANDIDATE_REGISTRY_PATH, eval_results_dir=EVAL_RESU
     ready_candidates = [
         row for row in candidates if row.get("status") == "ready_for_eval"
     ]
+    specialty_candidates = [row for row in candidates if _is_specialty_candidate(row)]
+    ready_projects = [row for row in projects if row.get("status") == "ready_for_review"]
     linked_candidates = [row for row in candidates if row.get("benchmark_run_id")]
     artifact_ids = {row["benchmark_run_id"] for row in artifacts}
     linked_imports = len(artifact_ids & imported_run_ids)
@@ -758,6 +914,12 @@ def _lab(conn, registry_path=CANDIDATE_REGISTRY_PATH, eval_results_dir=EVAL_RESU
             _pill("ready"),
             "{} ready candidates".format(len(ready_candidates)),
             '<a href="/radar?status=ready_for_eval">Review ready queue</a>',
+        ],
+        [
+            "Project Radar",
+            _pill("review"),
+            "{} GitHub repos tracked".format(len(projects)),
+            '<a href="/projects">Review project opportunities</a>',
         ],
         [
             "Benchmark",
@@ -857,16 +1019,81 @@ def _lab(conn, registry_path=CANDIDATE_REGISTRY_PATH, eval_results_dir=EVAL_RESU
             ]
         )
 
+    specialty_rows = []
+    for row in specialty_candidates:
+        specialty_rows.append(
+            [
+                '<div class="cell-stack"><div>{name}</div><code>{id}</code></div>'.format(
+                    name=_text(row.get("model_name")),
+                    id=_text(row.get("candidate_id")),
+                ),
+                '<div class="cell-stack"><div>{lane}</div>{status}</div>'.format(
+                    lane=_text(_specialty_lane_label(row)),
+                    status=_pill(row.get("status")),
+                ),
+                """
+                <div class="cell-stack">
+                  <div><strong>Runtime</strong><br>{runtime}</div>
+                  <div><strong>Why</strong><br>{why}</div>
+                  <div><strong>Risk</strong><br>{risk}</div>
+                </div>
+                """.format(
+                    runtime=_text(row.get("format_or_runtime")),
+                    why=_text(row.get("why_interesting")),
+                    risk=_text(row.get("risk_notes")),
+                ),
+                _text(row.get("proposed_eval")),
+            ]
+        )
+
+    project_rows = []
+    for row in ready_projects:
+        project_rows.append(
+            [
+                '<div class="cell-stack"><a href="{url}">{repo}</a><code>{owner}</code></div>'.format(
+                    url=_text(row.get("repo_url"), "#"),
+                    repo=_text(row.get("repo_name")),
+                    owner=_text(row.get("owner")),
+                ),
+                '<div class="cell-stack"><div>{category}</div><span class="pill">{stars}</span></div>'.format(
+                    category=_text(row.get("category")),
+                    stars=_text(row.get("stars_observed")),
+                ),
+                """
+                <div class="cell-stack">
+                  <div><strong>Business</strong><br>{business}</div>
+                  <div><strong>Local fit</strong><br>{local_fit}</div>
+                  <div><strong>Risk</strong><br>{risk}</div>
+                </div>
+                """.format(
+                    business=_text(row.get("business_tie_in")),
+                    local_fit=_text(row.get("local_fit")),
+                    risk=_text(row.get("risk_notes")),
+                ),
+                _text(row.get("recommended_next_step")),
+            ]
+        )
+
     body = """
     <section class="grid">
       <div class="stat"><div class="label">Ready candidates</div><div class="value">{ready}</div></div>
       <div class="stat"><div class="label">Artifacts</div><div class="value">{artifacts}</div></div>
       <div class="stat"><div class="label">Draft scores</div><div class="value">{drafts}</div></div>
       <div class="stat"><div class="label">Confirmed scores</div><div class="value">{confirmed}</div></div>
+      <div class="stat"><div class="label">Abliterated / Dolphin</div><div class="value">{specialty}</div></div>
+      <div class="stat"><div class="label">GitHub projects</div><div class="value">{projects}</div></div>
     </section>
     <section>
       <h2>Product Loop</h2>
       {stages}
+    </section>
+    <section style="margin-top:16px">
+      <h2>Abliterated / Dolphin Lane</h2>
+      {specialty_table}
+    </section>
+    <section style="margin-top:16px">
+      <h2>GitHub Project Radar</h2>
+      {project_table}
     </section>
     <section style="margin-top:16px">
       <h2>Ready Queue</h2>
@@ -881,10 +1108,24 @@ def _lab(conn, registry_path=CANDIDATE_REGISTRY_PATH, eval_results_dir=EVAL_RESU
         artifacts=len(artifacts),
         drafts=score_counts["draft"],
         confirmed=score_counts["confirmed"],
+        specialty=len(specialty_candidates),
+        projects=len(projects),
         stages=_table(
             ["Stage", "State", "Signal", "Next action"],
             stage_rows,
             table_class="workflow-table",
+        ),
+        specialty_table=_table(
+            ["Candidate", "Lane", "Local fit", "Proposed eval"],
+            specialty_rows,
+            empty_message="No abliterated or Dolphin candidates are registered yet.",
+            table_class="lab-queue",
+        ),
+        project_table=_table(
+            ["Project", "Signal", "Business fit", "Next step"],
+            project_rows,
+            empty_message="No GitHub projects are ready for review yet.",
+            table_class="project-table",
         ),
         queue=_table(
             ["Candidate", "Status", "State", "Next command"],
@@ -980,6 +1221,7 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
     ready_count = sum(1 for row in candidates if row.get("status") == "ready_for_eval")
     watchlist_count = sum(1 for row in candidates if row.get("status") == "watchlist")
     linked_count = sum(1 for row in candidates if row.get("benchmark_run_id"))
+    specialty_count = sum(1 for row in candidates if _is_specialty_candidate(row))
 
     rows = []
     for row in filtered_candidates:
@@ -1038,6 +1280,7 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
       <div class="stat"><div class="label">Ready for eval</div><div class="value">{ready}</div></div>
       <div class="stat"><div class="label">Watchlist</div><div class="value">{watchlist}</div></div>
       <div class="stat"><div class="label">Linked artifacts</div><div class="value">{linked}</div></div>
+      <div class="stat"><div class="label">Abliterated / Dolphin</div><div class="value">{specialty}</div></div>
     </section>
     <section>
       {filters}
@@ -1049,6 +1292,7 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
         ready=ready_count,
         watchlist=watchlist_count,
         linked=linked_count,
+        specialty=specialty_count,
         filters=_radar_filters(candidates, filters),
         filtered_count=(
             " ({} of {})".format(len(filtered_candidates), len(candidates))
@@ -1070,6 +1314,113 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
         ),
     )
     return _layout("Radar Candidates", "/radar", body)
+
+
+def _projects(query=None, registry_path=PROJECT_REGISTRY_PATH):
+    projects = _load_project_repos(registry_path)
+    filters = _project_filter_values(query or {})
+    filtered_projects = _filter_projects(projects, filters)
+    ready_count = sum(1 for row in projects if row.get("status") == "ready_for_review")
+    watchlist_count = sum(1 for row in projects if row.get("status") == "watchlist")
+    local_count = sum(
+        1
+        for row in projects
+        if "local" in row.get("local_fit", "").lower()
+        or "self-host" in row.get("local_fit", "").lower()
+    )
+
+    rows = []
+    for row in filtered_projects:
+        repo = '<a href="{url}">{name}</a>'.format(
+            url=_text(row.get("repo_url"), "#"),
+            name=_text(row.get("repo_name")),
+        )
+        identity = '<div class="cell-stack"><div>{repo}</div><code>{owner}</code></div>'.format(
+            repo=repo,
+            owner=_text(row.get("owner")),
+        )
+        signal = """
+        <div class="cell-stack">
+          <div><strong>Category</strong><br>{category}</div>
+          <div><strong>Stars observed</strong><br>{stars}</div>
+          <div><strong>License</strong><br>{license}</div>
+        </div>
+        """.format(
+            category=_text(row.get("category")),
+            stars=_text(row.get("stars_observed")),
+            license=_text(row.get("license")),
+        )
+        review = """
+        <div class="cell-stack">
+          <div><strong>Why</strong><br>{why}</div>
+          <div><strong>Business</strong><br>{business}</div>
+          <div><strong>Local fit</strong><br>{local_fit}</div>
+          <div><strong>Risk</strong><br>{risk}</div>
+        </div>
+        """.format(
+            why=_text(row.get("why_interesting")),
+            business=_text(row.get("business_tie_in")),
+            local_fit=_text(row.get("local_fit")),
+            risk=_text(row.get("risk_notes")),
+        )
+        links = """
+        <div class="cell-stack">
+          <div><strong>Source</strong><br>{source}</div>
+          <div><strong>Report</strong><br>{report}</div>
+        </div>
+        """.format(
+            source=_path_cell(row.get("source_packet_path")),
+            report=_path_cell(row.get("report_path")),
+        )
+        rows.append(
+            [
+                identity,
+                _pill(row.get("status")),
+                signal,
+                review,
+                _text(row.get("recommended_next_step")),
+                links,
+            ]
+        )
+
+    body = """
+    <section class="grid">
+      <div class="stat"><div class="label">Projects</div><div class="value">{projects}</div></div>
+      <div class="stat"><div class="label">Ready for review</div><div class="value">{ready}</div></div>
+      <div class="stat"><div class="label">Watchlist</div><div class="value">{watchlist}</div></div>
+      <div class="stat"><div class="label">Local/self-host signal</div><div class="value">{local_count}</div></div>
+    </section>
+    <section>
+      {filters}
+      <h2>GitHub Project Radar{filtered_count}</h2>
+      {table}
+    </section>
+    """.format(
+        projects=len(projects),
+        ready=ready_count,
+        watchlist=watchlist_count,
+        local_count=local_count,
+        filters=_project_filters(projects, filters),
+        filtered_count=(
+            " ({} of {})".format(len(filtered_projects), len(projects))
+            if any(filters.values())
+            else ""
+        ),
+        table=_table(
+            [
+                "Project",
+                "Status",
+                "Signal",
+                "Review notes",
+                "Next step",
+                "Links",
+            ],
+            rows,
+            empty_message="No GitHub projects match these filters.",
+            table_class="project-table",
+        ),
+    )
+    return _layout("GitHub Projects", "/projects", body)
 
 
 def _artifact_detail(conn, benchmark_run_id, registry_path=CANDIDATE_REGISTRY_PATH):
@@ -1266,6 +1617,8 @@ def make_handler(database_path):
                 return _compare(conn)
             if path == "/radar":
                 return _radar(conn, query)
+            if path == "/projects":
+                return _projects(query)
             if path == "/storage":
                 return _storage(conn)
             if path == "/reports":

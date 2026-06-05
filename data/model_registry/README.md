@@ -3,6 +3,10 @@
 Local registry area for model candidates, reviewed models, and future dashboard
 or benchmark import notes.
 
+For GitHub repositories, workflow tools, agent frameworks, and other non-model
+project opportunities, use `data/project_registry` instead. Those records feed
+the dashboard project radar and must not become model eval scores.
+
 ## Intended Flow
 
 ```text

@@ -80,7 +80,8 @@ http://127.0.0.1:8765/lab
 
 It is the read-only v1 command center for the local product loop. It shows ready
 radar candidates, benchmark artifact state, draft/confirmed score counts, import
-linkage, decisions, and the next benchmark commands to run locally.
+linkage, decisions, an abliterated/Dolphin specialty candidate lane, GitHub
+project radar, and the next benchmark commands to run locally.
 
 The Overview page supports URL-backed filters for search text, final label, decision, and install status. Filtered views can be bookmarked or shared locally, for example:
 
@@ -98,6 +99,23 @@ It reads `data/model_registry/candidates.csv` and displays candidate-only radar
 records separately from scored eval results. Candidate rows may link to local
 source packets, radar reports, and benchmark artifact directories, but they do
 not become dashboard scores or final labels.
+
+The radar and lab pages include an `Abliterated / Dolphin` count sourced from
+candidate registry rows whose names or families include abliterated or Dolphin
+terms. This is a benchmark queue signal only; low-refusal or uncensored source
+claims remain risk notes until local evidence exists.
+
+The GitHub Projects page is available at:
+
+```text
+http://127.0.0.1:8765/projects
+```
+
+It reads `data/project_registry/github_repos.csv` and displays project-only
+opportunities such as local inference runtimes, workflow automation tools, RAG
+systems, AI coding agents, and business workflow integrations. These records are
+not model candidates and never become eval scores. GitHub stars are treated as
+adoption signals, not quality scores.
 
 Scored eval rows now include `score_status`. Existing and manually confirmed
 scores default to `confirmed`; local-judge suggestions may be imported as
