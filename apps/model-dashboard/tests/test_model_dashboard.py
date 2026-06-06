@@ -5,13 +5,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
 
 from model_dashboard import csv_io, db, reports, server  # noqa: E402
 from model_dashboard.scoring import METRIC_FIELDS  # noqa: E402
-
 
 FIXTURE_DIR = APP_DIR / "fixtures"
 CANDIDATE_FIELDS = [
@@ -213,7 +211,7 @@ def write_dashboard_import_fixture(artifact_dir, run_id="20260605-import-fixture
                 "tokens_per_sec": "42",
                 "ram_usage_gb": "32",
                 "stability_notes": "Fixture only.",
-                "run_notes": "benchmark_run_id={} | artifact_import_test=yes".format(run_id),
+                "run_notes": f"benchmark_run_id={run_id} | artifact_import_test=yes",
             }
         ],
         "eval_scores": [
@@ -240,7 +238,7 @@ def write_dashboard_import_fixture(artifact_dir, run_id="20260605-import-fixture
         ],
     }
     for table_name, rows in rows_by_table.items():
-        with (import_dir / "{}.csv".format(table_name)).open(
+        with (import_dir / f"{table_name}.csv").open(
             "w",
             newline="",
             encoding="utf-8",
@@ -542,7 +540,7 @@ class ModelDashboardQaTests(unittest.TestCase):
                 server.EVAL_RESULTS_DIR = old_eval_results_dir
 
         self.assertIn("Dashboard Import", html)
-        self.assertIn("<button type=\"button\" disabled>Import Artifact</button>", html)
+        self.assertIn('<button type="button" disabled>Import Artifact</button>', html)
         self.assertIn("--enable-import-actions", html)
         self.assertIn("python3", html)
         self.assertIn("apps/model-dashboard/run_dashboard.py", html)
@@ -660,17 +658,17 @@ class ModelDashboardQaTests(unittest.TestCase):
                 score_fields = ", ".join(METRIC_FIELDS)
                 score_placeholders = ", ".join("80" for _ in METRIC_FIELDS)
                 conn.execute(
-                    """
+                    f"""
                     INSERT INTO eval_scores (
                         id,
                         run_id,
-                        {fields},
+                        {score_fields},
                         total_score,
                         final_label,
                         score_status
                     )
-                    VALUES (5, 77, {values}, 80, 'DAILY_DRIVER', 'confirmed')
-                    """.format(fields=score_fields, values=score_placeholders)
+                    VALUES (5, 77, {score_placeholders}, 80, 'DAILY_DRIVER', 'confirmed')
+                    """
                 )
                 conn.execute(
                     """
@@ -743,20 +741,20 @@ class ModelDashboardQaTests(unittest.TestCase):
                 score_fields = ", ".join(METRIC_FIELDS)
                 score_values = ", ".join("80" for _ in METRIC_FIELDS)
                 conn.execute(
-                    """
+                    f"""
                     INSERT INTO eval_scores (
-                        id, run_id, {fields}, total_score, final_label, score_status
+                        id, run_id, {score_fields}, total_score, final_label, score_status
                     )
-                    VALUES (1, 1, {values}, 80, 'CODING_SPECIALIST', 'confirmed')
-                    """.format(fields=score_fields, values=score_values)
+                    VALUES (1, 1, {score_values}, 80, 'CODING_SPECIALIST', 'confirmed')
+                    """
                 )
                 conn.execute(
-                    """
+                    f"""
                     INSERT INTO eval_scores (
-                        id, run_id, {fields}, total_score, final_label, score_status
+                        id, run_id, {score_fields}, total_score, final_label, score_status
                     )
-                    VALUES (2, 2, {values}, 80, 'RESEARCH_SPECIALIST', 'draft')
-                    """.format(fields=score_fields, values=score_values)
+                    VALUES (2, 2, {score_values}, 80, 'RESEARCH_SPECIALIST', 'draft')
+                    """
                 )
                 conn.execute(
                     """
@@ -977,7 +975,10 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertEqual(models[0]["runtime"], "LM Studio")
         self.assertEqual(models[0]["model_id"], "qwen3-coder-30b-a3b-instruct-mlx")
         self.assertEqual(models[0]["status"], "loaded")
-        self.assertEqual(models[0]["source_path"], "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit")
+        self.assertEqual(
+            models[0]["source_path"],
+            "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
+        )
         self.assertEqual(models[1]["model_id"], "indexed-only-24b")
         self.assertEqual(models[1]["status"], "indexed")
         self.assertNotIn("4bit", {row["model_id"] for row in models})
@@ -1006,9 +1007,7 @@ class ModelDashboardQaTests(unittest.TestCase):
     def test_inventory_parsers_handle_malformed_or_crash_output(self):
         self.assertEqual(server._parse_lmstudio_inventory("not json"), [])
         self.assertEqual(
-            server._parse_ollama_inventory(
-                "libc++abi: terminating due to uncaught exception"
-            ),
+            server._parse_ollama_inventory("libc++abi: terminating due to uncaught exception"),
             [],
         )
 
@@ -1040,8 +1039,12 @@ class ModelDashboardQaTests(unittest.TestCase):
                         "source_packet_path": "automations/ai-lab-radar/inputs/abliterated.md",
                         "report_path": "automations/ai-lab-radar/reports/abliterated.md",
                         "benchmark_run_id": "",
-                        "why_interesting": "Compact low-refusal candidate for local behavior testing.",
-                        "risk_notes": "Experimental refusal behavior must be benchmarked before use.",
+                        "why_interesting": (
+                            "Compact low-refusal candidate for local behavior testing."
+                        ),
+                        "risk_notes": (
+                            "Experimental refusal behavior must be benchmarked before use."
+                        ),
                         "proposed_eval": "Run local benchmark with refusal-boundary review notes.",
                         "security_review_status": "blocked",
                         "download_approval": "blocked",

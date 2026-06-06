@@ -18,8 +18,8 @@ def connect(db_path):
 
 
 def create_schema(conn):
-    label_list = ", ".join("'{}'".format(label) for label in FINAL_LABELS)
-    status_list = ", ".join("'{}'".format(status) for status in SCORE_STATUSES)
+    label_list = ", ".join(f"'{label}'" for label in FINAL_LABELS)
+    status_list = ", ".join(f"'{status}'" for status in SCORE_STATUSES)
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS models (
@@ -90,10 +90,7 @@ def create_schema(conn):
 
 
 def _ensure_eval_score_status(conn):
-    columns = {
-        row["name"]
-        for row in conn.execute("PRAGMA table_info(eval_scores)").fetchall()
-    }
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(eval_scores)").fetchall()}
     if "score_status" not in columns:
         conn.execute(
             """
@@ -115,10 +112,8 @@ def init_db(db_path, reset=False):
 
 def table_count(conn, table_name):
     if table_name not in TABLES:
-        raise ValueError("Unknown table: {}".format(table_name))
-    return conn.execute("SELECT COUNT(*) AS count FROM {}".format(table_name)).fetchone()[
-        "count"
-    ]
+        raise ValueError(f"Unknown table: {table_name}")
+    return conn.execute(f"SELECT COUNT(*) AS count FROM {table_name}").fetchone()["count"]
 
 
 def database_has_data(db_path):

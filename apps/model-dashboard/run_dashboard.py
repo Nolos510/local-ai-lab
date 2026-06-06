@@ -26,27 +26,27 @@ def command_init_db(args):
     db.init_db(args.db, reset=args.reset)
     if args.with_fixtures:
         counts = csv_io.import_fixture_set(args.db, FIXTURE_DIR)
-        print("Imported fixtures: {}".format(counts))
-    print("Database ready: {}".format(args.db))
+        print(f"Imported fixtures: {counts}")
+    print(f"Database ready: {args.db}")
     return 0
 
 
 def command_import_csv(args):
     counts = csv_io.import_all(args.db, _csv_paths_from_args(args))
-    print("Imported rows: {}".format(counts))
+    print(f"Imported rows: {counts}")
     return 0
 
 
 def command_export_csv(args):
     output_paths = csv_io.export_all(args.db, args.out)
     for table_name, path in output_paths.items():
-        print("{}: {}".format(table_name, path))
+        print(f"{table_name}: {path}")
     return 0
 
 
 def command_report(args):
     path = reports.write_report(args.db, args.out, include_demo=args.include_demo)
-    print("Report written: {}".format(path))
+    print(f"Report written: {path}")
     return 0
 
 
@@ -118,7 +118,11 @@ def build_parser():
 
     export_parser = subparsers.add_parser("export-csv", help="Export dashboard tables to CSV.")
     export_parser.add_argument("--db", type=Path, default=DEFAULT_DB)
-    export_parser.add_argument("--out", type=Path, default=REPO_ROOT / "data" / "dashboard" / "exports")
+    export_parser.add_argument(
+        "--out",
+        type=Path,
+        default=REPO_ROOT / "data" / "dashboard" / "exports",
+    )
     export_parser.set_defaults(func=command_export_csv)
 
     report_parser = subparsers.add_parser("report", help="Generate a Markdown report.")

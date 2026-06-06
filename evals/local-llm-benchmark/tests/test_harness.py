@@ -1,13 +1,12 @@
 import csv
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import subprocess
 import sys
 import tempfile
 import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-
 
 HARNESS_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = HARNESS_DIR.parents[1]
@@ -62,7 +61,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
                     for candidate in ("LLMCORE-v0.1-001", "LLMCORE-v0.1-012"):
                         if candidate in content:
                             prompt_id = candidate
-                    response_content = "mock local response for {}".format(prompt_id)
+                    response_content = f"mock local response for {prompt_id}"
                 body = json.dumps(
                     {
                         "choices": [
@@ -86,7 +85,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
         try:
             server = ThreadingHTTPServer(("127.0.0.1", 0), ChatHandler)
         except PermissionError as exc:
-            self.skipTest("local bind unavailable in this environment: {}".format(exc))
+            self.skipTest(f"local bind unavailable in this environment: {exc}")
         server.metric_fields = [
             "instruction_following",
             "truthfulness_uncertainty",
@@ -128,9 +127,9 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertTrue((run_dir / "raw_responses.jsonl").exists())
             self.assertTrue((run_dir / "response-template.jsonl").exists())
 
-            template_lines = (run_dir / "response-template.jsonl").read_text(
-                encoding="utf-8"
-            ).splitlines()
+            template_lines = (
+                (run_dir / "response-template.jsonl").read_text(encoding="utf-8").splitlines()
+            )
             self.assertEqual(len(template_lines), 12)
 
             for table_name in ("models", "model_runs", "eval_scores", "decisions"):
@@ -190,7 +189,10 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             ]
             self.assertEqual(len(raw_records), 1)
             self.assertEqual(raw_records[0]["benchmark_run_id"], run_id)
-            self.assertEqual(raw_records[0]["raw_response"], "Raw response line 1\nRaw response line 2")
+            self.assertEqual(
+                raw_records[0]["raw_response"],
+                "Raw response line 1\nRaw response line 2",
+            )
             self.assertRegex(raw_records[0]["prompt_text_sha256"], r"^[0-9a-f]{64}$")
 
             scores_path = Path(tmp) / "scores.json"
@@ -286,7 +288,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             run_dir = Path(tmp) / run_id
             server = self.start_chat_server("runner")
             try:
-                endpoint = "http://127.0.0.1:{}/v1".format(server.server_port)
+                endpoint = f"http://127.0.0.1:{server.server_port}/v1"
                 self.run_harness(
                     "run-local",
                     "--run-dir",
@@ -447,7 +449,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             server = self.start_chat_server("judge")
             draft_path = run_dir / "draft-scores.json"
             try:
-                endpoint = "http://127.0.0.1:{}/v1".format(server.server_port)
+                endpoint = f"http://127.0.0.1:{server.server_port}/v1"
                 self.run_harness(
                     "suggest-scores",
                     "--run-dir",

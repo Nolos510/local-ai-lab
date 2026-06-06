@@ -11,12 +11,13 @@ def _value(value, fallback=""):
 
 
 def _score(value):
-    return "" if value is None else "{:.2f}".format(float(value))
+    return "" if value is None else f"{float(value):.2f}"
 
 
 def _is_demo_row(row):
-    provider = str(row["provider"] if "provider" in row.keys() else "")
-    source_url = str(row["source_url"] if "source_url" in row.keys() else "")
+    keys = row.keys()
+    provider = str(row["provider"] if "provider" in keys else "")
+    source_url = str(row["source_url"] if "source_url" in keys else "")
     return provider == "Local Fixture" or source_url.startswith("local-registry://")
 
 
@@ -33,7 +34,7 @@ def generate_markdown_report(db_path, include_demo=False):
     lines = [
         "# Local Model Performance Report",
         "",
-        "Generated: {}".format(generated_at),
+        f"Generated: {generated_at}",
         "",
     ]
 
@@ -60,7 +61,8 @@ def generate_markdown_report(db_path, include_demo=False):
                 "- Ranked models are imported benchmark results, not installed-model inventory.",
                 "- Radar candidates are possible models to evaluate, not scored models.",
                 "- Installed Models is the source of truth for what the dashboard detects locally.",
-                "- Scores are only valid after raw responses, confirmed scores, and decisions exist.",
+                "- Scores are only valid after raw responses, confirmed scores, "
+                "and decisions exist.",
                 "- Demo rows are examples only and are hidden from this report by default.",
                 "",
                 "## Summary",
@@ -69,7 +71,7 @@ def generate_markdown_report(db_path, include_demo=False):
                 "- Runs tracked: {}".format(counts["model_runs"]),
                 "- Eval score rows: {}".format(counts["eval_scores"]),
                 "- Decisions logged: {}".format(counts["decisions"]),
-                "- Demo fixture models hidden: {}".format(0 if include_demo else demo_count),
+                f"- Demo fixture models hidden: {0 if include_demo else demo_count}",
                 "",
                 "## Ranked Models",
                 "",
@@ -80,8 +82,12 @@ def generate_markdown_report(db_path, include_demo=False):
         if not summaries:
             lines.append("| No real benchmark imports yet. |  |  |  |  |  |  |  |")
         for row in summaries:
+            table_row = (
+                "| {model} | {backend} | {quant} | {score} | {status} | "
+                "{label} | {decision} | {use} |"
+            )
             lines.append(
-                "| {model} | {backend} | {quant} | {score} | {status} | {label} | {decision} | {use} |".format(
+                table_row.format(
                     model=_value(row["model_name"]),
                     backend=_value(row["backend"]),
                     quant=_value(row["quantization"]),

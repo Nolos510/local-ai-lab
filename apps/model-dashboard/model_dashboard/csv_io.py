@@ -100,7 +100,7 @@ def _coerce_bool(value):
         return 1
     if normalized in ("0", "false", "no", "n", "delete"):
         return 0
-    raise ValueError("Cannot parse boolean value: {!r}".format(value))
+    raise ValueError(f"Cannot parse boolean value: {value!r}")
 
 
 def _insert_row(conn, table_name, row):
@@ -108,14 +108,10 @@ def _insert_row(conn, table_name, row):
     placeholders = ", ".join("?" for _ in fields)
     field_list = ", ".join(fields)
     update_fields = [field for field in fields if field != "id"]
-    update_list = ", ".join(
-        "{} = excluded.{}".format(field, field) for field in update_fields
-    )
+    update_list = ", ".join(f"{field} = excluded.{field}" for field in update_fields)
     sql = (
-        "INSERT INTO {} ({}) VALUES ({}) "
-        "ON CONFLICT(id) DO UPDATE SET {}".format(
-            table_name, field_list, placeholders, update_list
-        )
+        f"INSERT INTO {table_name} ({field_list}) VALUES ({placeholders}) "
+        f"ON CONFLICT(id) DO UPDATE SET {update_list}"
     )
     conn.execute(sql, [row.get(field) for field in fields])
 
@@ -123,7 +119,7 @@ def _insert_row(conn, table_name, row):
 def import_table(conn, table_name, csv_path):
     csv_path = Path(csv_path)
     if table_name not in TABLE_FIELDS:
-        raise ValueError("Unknown table: {}".format(table_name))
+        raise ValueError(f"Unknown table: {table_name}")
     with csv_path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         fieldnames = set(reader.fieldnames or [])
@@ -168,7 +164,7 @@ def import_fixture_set(db_path, fixture_dir):
 def export_table(conn, table_name, output_dir):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / "{}.csv".format(table_name)
+    output_path = output_dir / f"{table_name}.csv"
     fields = TABLE_FIELDS[table_name]
     with output_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)

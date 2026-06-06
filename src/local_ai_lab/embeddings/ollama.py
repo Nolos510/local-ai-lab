@@ -72,9 +72,7 @@ class OllamaEmbeddingProvider:
             ) from exc
 
         if not isinstance(payload, dict):
-            raise EmbeddingProviderResponseError(
-                self._error_message("unexpected response payload")
-            )
+            raise EmbeddingProviderResponseError(self._error_message("unexpected response payload"))
         return payload
 
     def _extract_embeddings(
@@ -87,9 +85,7 @@ class OllamaEmbeddingProvider:
         if isinstance(embeddings, list):
             if len(embeddings) != expected_count:
                 raise EmbeddingProviderResponseError(
-                    self._error_message(
-                        "embedding count did not match requested input count"
-                    )
+                    self._error_message("embedding count did not match requested input count")
                 )
             return embeddings
 
@@ -97,9 +93,7 @@ class OllamaEmbeddingProvider:
         if expected_count == 1 and isinstance(legacy_embedding, list):
             return [legacy_embedding]
 
-        raise EmbeddingProviderResponseError(
-            self._error_message("unexpected response payload")
-        )
+        raise EmbeddingProviderResponseError(self._error_message("unexpected response payload"))
 
     def _validate_vector(self, vector: list[Any]) -> list[float]:
         if len(vector) != self._vector_size:

@@ -18,10 +18,16 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
+try:
+    from datetime import UTC
+except ImportError:  # Python < 3.11 compatibility for system python3.
+    from datetime import timezone as _timezone
+
+    UTC = _timezone.utc  # noqa: UP017
 
 HARNESS_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = HARNESS_ROOT.parents[1]
@@ -142,9 +148,7 @@ def _load_jsonl(path):
             try:
                 records.append(json.loads(line))
             except json.JSONDecodeError as exc:
-                raise HarnessError(
-                    "{} line {} is not valid JSON: {}".format(path, line_number, exc)
-                )
+                raise HarnessError(f"{path} line {line_number} is not valid JSON: {exc}") from exc
     return records
 
 
@@ -153,7 +157,7 @@ def _sha256_text(value):
 
 
 def _utc_now():
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return datetime.now(UTC).replace(microsecond=0).isoformat()
 
 
 def _blank(value):
@@ -189,10 +193,10 @@ def _validate_local_endpoint(endpoint):
         return parsed
     try:
         address = ipaddress.ip_address(host)
-    except ValueError:
+    except ValueError as exc:
         raise HarnessError(
             "Endpoint host must be localhost, loopback IP, or literal private LAN IP."
-        )
+        ) from exc
     if address.is_loopback or address.is_private:
         return parsed
     raise HarnessError("Endpoint host must not be a public IP address.")
@@ -214,26 +218,26 @@ def _post_chat_completion(endpoint, payload, timeout):
     parsed = _chat_completions_url(endpoint)
     body = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
-    connection_class = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    connection_class = (
+        http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    )
     port = parsed.port
     conn = connection_class(parsed.hostname, port=port, timeout=timeout)
     try:
         path = parsed.path
         if parsed.query:
-            path = "{}?{}".format(path, parsed.query)
+            path = f"{path}?{parsed.query}"
         conn.request("POST", path, body=body, headers=headers)
         response = conn.getresponse()
         response_body = response.read().decode("utf-8", errors="replace")
     finally:
         conn.close()
     if response.status < 200 or response.status >= 300:
-        raise HarnessError(
-            "Local endpoint returned HTTP {}: {}".format(response.status, response_body[:500])
-        )
+        raise HarnessError(f"Local endpoint returned HTTP {response.status}: {response_body[:500]}")
     try:
         return json.loads(response_body)
     except json.JSONDecodeError as exc:
-        raise HarnessError("Local endpoint response was not JSON: {}".format(exc))
+        raise HarnessError(f"Local endpoint response was not JSON: {exc}") from exc
 
 
 def _message_content(response):
@@ -276,7 +280,7 @@ def _resolve_lms_path(path=None):
             raise HarnessError("LM Studio CLI path must point to an `lms` executable.")
         if candidate.exists() and candidate.is_file():
             return str(candidate)
-        raise HarnessError("LM Studio CLI not found at: {}".format(candidate))
+        raise HarnessError(f"LM Studio CLI not found at: {candidate}")
     bundled = Path.home() / ".lmstudio" / "bin" / "lms"
     if bundled.exists() and bundled.is_file():
         return str(bundled)
@@ -348,17 +352,14 @@ def _run_lms_chat(lms_path, model_id, prompt, timeout, ttl):
             "stdout": exc.stdout or "",
             "stderr": exc.stderr or "",
             "returncode": None,
-            "error": "LM Studio CLI timed out after {} seconds.".format(timeout),
+            "error": f"LM Studio CLI timed out after {timeout} seconds.",
         }
     output = result.stdout or ""
     error_output = result.stderr or ""
     error = None
     if result.returncode != 0:
         detail = (error_output or output).strip()
-        error = "LM Studio CLI returned exit {}: {}".format(
-            result.returncode,
-            detail[:500],
-        )
+        error = f"LM Studio CLI returned exit {result.returncode}: {detail[:500]}"
     return {
         "stdout": output,
         "stderr": error_output,
@@ -393,13 +394,13 @@ def _run_dir(output_root, benchmark_run_id):
 def _require_absent_or_force(path, force):
     path = Path(path)
     if path.exists() and not force:
-        raise HarnessError("{} already exists; pass --force to overwrite it.".format(path))
+        raise HarnessError(f"{path} already exists; pass --force to overwrite it.")
 
 
 def _require_absent_empty_or_force(path, force):
     path = Path(path)
     if path.exists() and path.stat().st_size > 0 and not force:
-        raise HarnessError("{} already has content; pass --force to overwrite it.".format(path))
+        raise HarnessError(f"{path} already has content; pass --force to overwrite it.")
 
 
 def _metadata_from_args(args, prompt_set, rubric, run_dir):
@@ -509,7 +510,8 @@ def _evidence_template(metadata, prompt_set):
         "",
         "Benchmark run: `{}`".format(metadata["benchmark_run_id"]),
         "",
-        "Preserve observations separately from raw responses. Do not paste private raw output into public notes.",
+        "Preserve observations separately from raw responses. Do not paste "
+        "private raw output into public notes.",
         "",
     ]
     for prompt in prompt_set["prompts"]:
@@ -550,10 +552,10 @@ def _write_csv(path, fields, rows):
 
 def _validate_score(value, field):
     if value is None or value == "":
-        raise HarnessError("Score field {} is required.".format(field))
+        raise HarnessError(f"Score field {field} is required.")
     score = float(value)
     if score < 0 or score > 100:
-        raise HarnessError("Score field {} must be between 0 and 100.".format(field))
+        raise HarnessError(f"Score field {field} must be between 0 and 100.")
     return score
 
 
@@ -622,7 +624,7 @@ def write_dashboard_csvs(run_dir, metadata, rubric, scores_path=None, decision_p
     }
     for table_name in IMPORT_ORDER:
         _write_csv(
-            output_dir / "{}.csv".format(table_name),
+            output_dir / f"{table_name}.csv",
             TABLE_FIELDS[table_name],
             rows_by_table[table_name],
         )
@@ -641,7 +643,7 @@ def _coerce_boolish(value):
         return 1
     if normalized in ("0", "false", "no", "n", "skip", "watchlist", "retest"):
         return 0
-    raise HarnessError("Cannot parse keep_installed value: {!r}".format(value))
+    raise HarnessError(f"Cannot parse keep_installed value: {value!r}")
 
 
 def init_run(args):
@@ -653,13 +655,14 @@ def init_run(args):
     metadata = _metadata_from_args(args, prompt_set, rubric, run_dir)
 
     _write_json(run_dir / "metadata.json", metadata)
-    _write_jsonl(run_dir / "response-template.jsonl", _response_template_records(metadata, prompt_set))
+    _write_jsonl(
+        run_dir / "response-template.jsonl",
+        _response_template_records(metadata, prompt_set),
+    )
     _write_jsonl(run_dir / "raw_responses.jsonl", [])
     _write_json(run_dir / "scores-template.json", _empty_scores_template(rubric))
     _write_json(run_dir / "decision-template.json", _decision_template())
-    (run_dir / "evidence.md").write_text(
-        _evidence_template(metadata, prompt_set), encoding="utf-8"
-    )
+    (run_dir / "evidence.md").write_text(_evidence_template(metadata, prompt_set), encoding="utf-8")
     write_dashboard_csvs(run_dir, metadata, rubric)
     return run_dir
 
@@ -698,9 +701,9 @@ def record_responses(args):
     for record in records:
         prompt_id = record.get("prompt_id")
         if prompt_id not in prompts:
-            raise HarnessError("Unknown prompt_id in response input: {}".format(prompt_id))
+            raise HarnessError(f"Unknown prompt_id in response input: {prompt_id}")
         if prompt_id in seen:
-            raise HarnessError("Duplicate response prompt_id: {}".format(prompt_id))
+            raise HarnessError(f"Duplicate response prompt_id: {prompt_id}")
         seen.add(prompt_id)
         normalized.append(_normalize_response_record(record, metadata, prompts[prompt_id]))
     output_path = run_dir / "raw_responses.jsonl"
@@ -775,10 +778,10 @@ def run_local(args):
     evidence_path = run_dir / "evidence.md"
     with evidence_path.open("a", encoding="utf-8") as handle:
         handle.write("\n## Local Runner\n\n")
-        handle.write("- Endpoint: `{}`\n".format(endpoint))
-        handle.write("- Model argument: `{}`\n".format(model_name))
-        handle.write("- Completed at: `{}`\n".format(_utc_now()))
-        handle.write("- Prompt records: `{}`\n".format(len(records)))
+        handle.write(f"- Endpoint: `{endpoint}`\n")
+        handle.write(f"- Model argument: `{model_name}`\n")
+        handle.write(f"- Completed at: `{_utc_now()}`\n")
+        handle.write(f"- Prompt records: `{len(records)}`\n")
     return raw_path
 
 
@@ -796,9 +799,11 @@ def run_lmstudio_cli(args):
     log_lines = [
         "LM Studio CLI capture",
         "benchmark_run_id={}".format(metadata["benchmark_run_id"]),
-        "model_id={}".format(args.model_id),
-        "started_at={}".format(_utc_now()),
-        "command_shape=lms chat <model-id> -p <prompt> --stats --ttl {} --yes --dont-fetch-catalog".format(args.ttl),
+        f"model_id={args.model_id}",
+        f"started_at={_utc_now()}",
+        "command_shape="
+        f"lms chat <model-id> -p <prompt> --stats --ttl {args.ttl} "
+        "--yes --dont-fetch-catalog",
         "",
     ]
     log_path.write_text("\n".join(log_lines), encoding="utf-8")
@@ -820,9 +825,7 @@ def run_lmstudio_cli(args):
         )
         completed = time.monotonic()
         latency_ms = int(round((completed - started) * 1000))
-        combined_output = "\n".join(
-            part for part in (result["stdout"], result["stderr"]) if part
-        )
+        combined_output = "\n".join(part for part in (result["stdout"], result["stderr"]) if part)
         stats = _parse_lms_stats(combined_output)
         source.update(
             {
@@ -831,9 +834,7 @@ def run_lmstudio_cli(args):
                 "input_tokens": stats.get("input_tokens"),
                 "output_tokens": stats.get("output_tokens"),
                 "tokens_per_sec": stats.get("tokens_per_sec"),
-                "stop_reason": (
-                    "cli_exit_0" if result["returncode"] == 0 else "error"
-                ),
+                "stop_reason": ("cli_exit_0" if result["returncode"] == 0 else "error"),
                 "error": result["error"],
                 "raw_response": result["stdout"].strip(),
             }
@@ -843,7 +844,7 @@ def run_lmstudio_cli(args):
             [
                 "## {}".format(prompt["id"]),
                 "returncode={}".format(result["returncode"]),
-                "latency_ms={}".format(latency_ms),
+                f"latency_ms={latency_ms}",
                 "error={}".format(result["error"] or ""),
                 "stdout:",
                 result["stdout"].rstrip(),
@@ -858,11 +859,15 @@ def run_lmstudio_cli(args):
     evidence_path = run_dir / "evidence.md"
     with evidence_path.open("a", encoding="utf-8") as handle:
         handle.write("\n## LM Studio CLI Runner\n\n")
-        handle.write("- Command shape: `lms chat <model-id> -p <prompt> --stats --ttl {} --yes --dont-fetch-catalog`\n".format(args.ttl))
-        handle.write("- Model id: `{}`\n".format(args.model_id))
-        handle.write("- Completed at: `{}`\n".format(_utc_now()))
-        handle.write("- Prompt records: `{}`\n".format(len(records)))
-        handle.write("- Capture log: `{}`\n".format(_display_path(log_path)))
+        handle.write(
+            "- Command shape: "
+            f"`lms chat <model-id> -p <prompt> --stats --ttl {args.ttl} "
+            "--yes --dont-fetch-catalog`\n"
+        )
+        handle.write(f"- Model id: `{args.model_id}`\n")
+        handle.write(f"- Completed at: `{_utc_now()}`\n")
+        handle.write(f"- Prompt records: `{len(records)}`\n")
+        handle.write(f"- Capture log: `{_display_path(log_path)}`\n")
     return raw_path
 
 
@@ -929,7 +934,7 @@ def suggest_scores(args):
     try:
         suggestion = _extract_json_object(content)
     except json.JSONDecodeError as exc:
-        raise HarnessError("Judge response did not contain a JSON object: {}".format(exc))
+        raise HarnessError(f"Judge response did not contain a JSON object: {exc}") from exc
     score_values = suggestion.get("scores") or {}
     draft = {
         "id": metadata["dashboard_ids"].get("score_id"),
@@ -950,8 +955,11 @@ def suggest_scores(args):
         draft["scores"][field] = _validate_score(score_values.get(field), field)
     if draft["total_score"] not in (None, ""):
         draft["total_score"] = _validate_score(draft["total_score"], "total_score")
-    if draft["final_label"] not in (None, "") and draft["final_label"] not in rubric["final_labels"]:
-        raise HarnessError("Unknown final_label: {}".format(draft["final_label"]))
+    if (
+        draft["final_label"] not in (None, "")
+        and draft["final_label"] not in rubric["final_labels"]
+    ):
+        raise HarnessError(f"Unknown final_label: {draft['final_label']}")
     _write_json(output_path, draft)
     return output_path
 
@@ -1084,7 +1092,7 @@ def main(argv=None):
     try:
         result = args.func(args)
     except HarnessError as exc:
-        print("harness error: {}".format(exc), file=sys.stderr)
+        print(f"harness error: {exc}", file=sys.stderr)
         return 2
     if result is not None:
         print(result)

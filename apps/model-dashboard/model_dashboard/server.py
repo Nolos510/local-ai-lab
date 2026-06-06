@@ -3,15 +3,15 @@
 import csv
 import ipaddress
 import json
+import secrets
 import shlex
 import shutil
-from html import escape
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
-import secrets
 import subprocess
 import sys
 from datetime import date, datetime
+from html import escape
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from . import csv_io, db
@@ -70,7 +70,7 @@ def _number(value, digits=1, fallback=""):
 
 def _pill(value):
     label = _text(value, "UNLABELED")
-    return '<span class="pill">{}</span>'.format(label)
+    return f'<span class="pill">{label}</span>'
 
 
 def _status_pill(value):
@@ -78,30 +78,30 @@ def _status_pill(value):
     class_name = "pill score-status"
     if status == "draft":
         class_name += " draft"
-    return '<span class="{}">{}</span>'.format(class_name, _text(status.upper()))
+    return f'<span class="{class_name}">{_text(status.upper())}</span>'
 
 
 def _stat_card(label, value, icon):
     return (
         '<div class="stat">'
-        '<i class="ti {}" aria-hidden="true"></i>'
-        '<div><div class="label">{}</div><div class="value">{}</div></div>'
+        f'<i class="ti {_text(icon)}" aria-hidden="true"></i>'
+        f'<div><div class="label">{_text(label)}</div><div class="value">{_text(value)}</div></div>'
         "</div>"
-    ).format(_text(icon), _text(label), _text(value))
+    )
 
 
 def _table(headers, rows, empty_message="No rows yet.", table_class=""):
     if not rows:
-        return '<p class="empty">{}</p>'.format(escape(empty_message))
-    header_html = "".join("<th>{}</th>".format(escape(header)) for header in headers)
+        return f'<p class="empty">{escape(empty_message)}</p>'
+    header_html = "".join(f"<th>{escape(header)}</th>" for header in headers)
     row_html = []
     for row in rows:
-        row_html.append("<tr>{}</tr>".format("".join("<td>{}</td>".format(cell) for cell in row)))
-    class_attr = ' class="{}"'.format(escape(table_class)) if table_class else ""
+        row_html.append("<tr>{}</tr>".format("".join(f"<td>{cell}</td>" for cell in row)))
+    class_attr = f' class="{escape(table_class)}"' if table_class else ""
     table = "<table{}><thead><tr>{}</tr></thead><tbody>{}</tbody></table>".format(
         class_attr, header_html, "".join(row_html)
     )
-    return '<div class="table-wrap">{}</div>'.format(table)
+    return f'<div class="table-wrap">{table}</div>'
 
 
 def _query_value(query, key):
@@ -113,9 +113,7 @@ def _query_value(query, key):
 
 def _option(value, label, selected):
     selected_attr = " selected" if value == selected else ""
-    return '<option value="{}"{}>{}</option>'.format(
-        _text(value), selected_attr, _text(label)
-    )
+    return f'<option value="{_text(value)}"{selected_attr}>{_text(label)}</option>'
 
 
 def _field_options(rows, field):
@@ -152,10 +150,9 @@ def _matches_search(row, search):
 
 
 def _is_demo_row(row):
-    provider = str(row["provider"] if "provider" in row.keys() else row.get("provider", "") or "")
-    source_url = str(
-        row["source_url"] if "source_url" in row.keys() else row.get("source_url", "") or ""
-    )
+    keys = row.keys()
+    provider = str(row["provider"] if "provider" in keys else row.get("provider", "") or "")
+    source_url = str(row["source_url"] if "source_url" in keys else row.get("source_url", "") or "")
     return provider == "Local Fixture" or source_url.startswith("local-registry://")
 
 
@@ -184,13 +181,13 @@ def _real_counts(conn):
 def _real_data_notice(demo_count):
     if demo_count <= 0:
         return ""
-    return """
+    return f"""
     <section class="panel" style="margin-bottom:16px">
       <h2>Real Data View</h2>
-      <p>This page hides {count} demo fixture model rows. Demo rows are examples for dashboard testing, not installed models.</p>
+      <p>This page hides {demo_count} demo fixture model rows. Demo rows are examples for dashboard testing, not installed models.</p>
       <p><a href="/demo">View demo data</a> when you want to inspect fixture examples.</p>
     </section>
-    """.format(count=demo_count)
+    """
 
 
 def _load_radar_candidates(path=CANDIDATE_REGISTRY_PATH):
@@ -199,10 +196,7 @@ def _load_radar_candidates(path=CANDIDATE_REGISTRY_PATH):
         return []
     with registry_path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
-        return [
-            {key: (value or "").strip() for key, value in row.items() if key}
-            for row in reader
-        ]
+        return [{key: (value or "").strip() for key, value in row.items() if key} for row in reader]
 
 
 def _load_project_repos(path=PROJECT_REGISTRY_PATH):
@@ -211,10 +205,7 @@ def _load_project_repos(path=PROJECT_REGISTRY_PATH):
         return []
     with registry_path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
-        return [
-            {key: (value or "").strip() for key, value in row.items() if key}
-            for row in reader
-        ]
+        return [{key: (value or "").strip() for key, value in row.items() if key} for row in reader]
 
 
 def _radar_filter_values(query):
@@ -269,10 +260,7 @@ def _filter_candidates(candidates, filters):
             continue
         if filters["runtime"] and row.get("format_or_runtime") != filters["runtime"]:
             continue
-        if (
-            filters["security"]
-            and _candidate_security_status(row) != filters["security"]
-        ):
+        if filters["security"] and _candidate_security_status(row) != filters["security"]:
             continue
         if not _matches_candidate_search(row, filters["q"]):
             continue
@@ -472,8 +460,7 @@ def _radar_filters(candidates, filters):
 
 def _project_filters(projects, filters):
     status_options = "".join(
-        _option(status, status, filters["status"])
-        for status in _field_options(projects, "status")
+        _option(status, status, filters["status"]) for status in _field_options(projects, "status")
     )
     category_options = "".join(
         _option(category, category, filters["category"])
@@ -531,10 +518,7 @@ def _filter_specialty_candidates(candidates, filters):
             continue
         if filters["lane"] and _specialty_lane_label(row) != filters["lane"]:
             continue
-        if (
-            filters["security"]
-            and _candidate_security_status(row) != filters["security"]
-        ):
+        if filters["security"] and _candidate_security_status(row) != filters["security"]:
             continue
         if not _matches_candidate_search(row, filters["q"]):
             continue
@@ -561,7 +545,9 @@ def _specialty_filters(candidates, filters):
             key=lambda value: value.lower(),
         )
     )
-    clear_link = '<a class="clear-link" href="/specialty">Clear</a>' if any(filters.values()) else ""
+    clear_link = (
+        '<a class="clear-link" href="/specialty">Clear</a>' if any(filters.values()) else ""
+    )
     return """
     <form class="filters" method="get" action="/specialty">
       <div class="field field-wide">
@@ -609,7 +595,7 @@ def _specialty_filters(candidates, filters):
 def _path_cell(value):
     if not value:
         return '<span class="empty">None</span>'
-    return "<code>{}</code>".format(_text(value))
+    return f"<code>{_text(value)}</code>"
 
 
 def _external_link(url, label):
@@ -619,10 +605,7 @@ def _external_link(url, label):
     parsed = urlparse(value)
     if parsed.scheme not in ("http", "https"):
         return '<span class="empty">Unsupported link</span>'
-    return '<a href="{url}" target="_blank" rel="noreferrer">{label}</a>'.format(
-        url=_text(value),
-        label=_text(label),
-    )
+    return f'<a href="{_text(value)}" target="_blank" rel="noreferrer">{_text(label)}</a>'
 
 
 def _candidate_review_links(row):
@@ -634,7 +617,7 @@ def _candidate_review_links(row):
         ("ollama_url", "Ollama"),
     ):
         if row.get(field):
-            links.append("<div>{}</div>".format(_external_link(row.get(field), label)))
+            links.append(f"<div>{_external_link(row.get(field), label)}</div>")
     if not links:
         return '<span class="empty">No verified model/store links</span>'
     return "".join(links)
@@ -642,15 +625,12 @@ def _candidate_review_links(row):
 
 def _candidate_availability(row):
     runtime = row.get("runtime_availability") or row.get("format_or_runtime") or "unknown"
-    return """
+    return f"""
     <div class="cell-stack">
-      <div><strong>Runtime availability</strong><br>{runtime}</div>
-      <div><strong>Model/store links</strong><br>{links}</div>
+      <div><strong>Runtime availability</strong><br>{_text(runtime)}</div>
+      <div><strong>Model/store links</strong><br>{_candidate_review_links(row)}</div>
     </div>
-    """.format(
-        runtime=_text(runtime),
-        links=_candidate_review_links(row),
-    )
+    """
 
 
 def _candidate_security_status(row):
@@ -663,26 +643,21 @@ def _candidate_security(row):
     license_status = row.get("license_review_status") or "unknown"
     provenance = row.get("provenance_status") or "unverified"
     notes = row.get("security_notes") or "No security review notes recorded."
-    isolation = row.get("isolation_notes") or "Use local runtimes only; do not run untrusted install scripts."
-    review_path = row.get("security_review_path")
-    return """
-    <div class="cell-stack">
-      <div><strong>Review</strong><br>{status}</div>
-      <div><strong>Download</strong><br>{approval}</div>
-      <div><strong>License / provenance</strong><br>{license_status} / {provenance}</div>
-      <div><strong>Review artifact</strong><br>{review_path}</div>
-      <div><strong>Notes</strong><br>{notes}</div>
-      <div><strong>Isolation</strong><br>{isolation}</div>
-    </div>
-    """.format(
-        status=_pill(status),
-        approval=_text(approval),
-        license_status=_text(license_status),
-        provenance=_text(provenance),
-        review_path=_path_cell(review_path),
-        notes=_text(notes),
-        isolation=_text(isolation),
+    isolation = (
+        row.get("isolation_notes")
+        or "Use local runtimes only; do not run untrusted install scripts."
     )
+    review_path = row.get("security_review_path")
+    return f"""
+    <div class="cell-stack">
+      <div><strong>Review</strong><br>{_pill(status)}</div>
+      <div><strong>Download</strong><br>{_text(approval)}</div>
+      <div><strong>License / provenance</strong><br>{_text(license_status)} / {_text(provenance)}</div>
+      <div><strong>Review artifact</strong><br>{_path_cell(review_path)}</div>
+      <div><strong>Notes</strong><br>{_text(notes)}</div>
+      <div><strong>Isolation</strong><br>{_text(isolation)}</div>
+    </div>
+    """
 
 
 def _slug(value):
@@ -717,15 +692,15 @@ def _run_test_control(row, enable_run_tests=False, action_token=""):
     if not _candidate_run_ready(row):
         return (
             '<span class="empty">Needs exact local model id</span>'
-            '<div class="empty">Runner: {}</div>'
-        ).format(_text(_candidate_runner_label(row)))
+            f'<div class="empty">Runner: {_text(_candidate_runner_label(row))}</div>'
+        )
     if not enable_run_tests:
         return (
             '<div class="cell-stack">'
             '<span class="empty">Run button disabled</span>'
-            '<div>Restart with <code>--enable-run-tests</code></div>'
-            '<div><strong>Runner</strong><br>{runner}</div>'
-            '<div><strong>Model id</strong><br><code>{model_id}</code></div>'
+            "<div>Restart with <code>--enable-run-tests</code></div>"
+            "<div><strong>Runner</strong><br>{runner}</div>"
+            "<div><strong>Model id</strong><br><code>{model_id}</code></div>"
             "</div>"
         ).format(
             runner=_text(_candidate_runner_label(row)),
@@ -756,7 +731,7 @@ def _next_dashboard_run_id(row, eval_results_dir=EVAL_RESULTS_DIR):
     candidate = base
     index = 2
     while (root / candidate).exists():
-        candidate = "{}-r{}".format(base, index)
+        candidate = f"{base}-r{index}"
         index += 1
     return candidate
 
@@ -950,7 +925,7 @@ def _scan_lmstudio_filesystem_models(root=LMSTUDIO_MODELS_ROOT, indexed_paths=()
         for model_dir in sorted(publisher_dir.iterdir(), key=lambda item: item.name.lower()):
             if not model_dir.is_dir() or model_dir.name.startswith("."):
                 continue
-            relative_path = "{}/{}".format(publisher_dir.name, model_dir.name)
+            relative_path = f"{publisher_dir.name}/{model_dir.name}"
             if relative_path.lower() in indexed:
                 continue
             models.append(
@@ -1118,7 +1093,11 @@ def _inventory_filters(entries, filters):
     runtime_options = "".join(
         _option(runtime, runtime, filters["runtime"])
         for runtime in sorted(
-            {entry["model"].get("runtime", "") for entry in entries if entry["model"].get("runtime")},
+            {
+                entry["model"].get("runtime", "")
+                for entry in entries
+                if entry["model"].get("runtime")
+            },
             key=lambda value: value.lower(),
         )
     )
@@ -1136,7 +1115,9 @@ def _inventory_filters(entries, filters):
             key=lambda value: value.lower(),
         )
     )
-    clear_link = '<a class="clear-link" href="/inventory">Clear</a>' if any(filters.values()) else ""
+    clear_link = (
+        '<a class="clear-link" href="/inventory">Clear</a>' if any(filters.values()) else ""
+    )
     return """
     <form class="filters" method="get" action="/inventory">
       <div class="field field-wide">
@@ -1227,7 +1208,9 @@ def _inventory(
             if _inventory_run_allowed(model, candidate):
                 action_cell = _run_test_control(candidate, enable_run_tests, action_token)
             elif model.get("status") == "filesystem_only":
-                action_cell = '<span class="empty">Filesystem-only; index/load in LM Studio first</span>'
+                action_cell = (
+                    '<span class="empty">Filesystem-only; index/load in LM Studio first</span>'
+                )
             else:
                 action_cell = '<span class="empty">Register exact local model id first</span>'
             model_rows.append(
@@ -1273,10 +1256,7 @@ def _inventory(
         ),
         checked_at=_text(result["checked_at"] if result else "not checked yet"),
         filtered_count=(
-            " ({} of {})".format(
-                len(_filter_inventory_entries(entries, filters)),
-                len(entries),
-            )
+            f" ({len(_filter_inventory_entries(entries, filters))} of {len(entries)})"
             if any(filters.values())
             else ""
         ),
@@ -1350,7 +1330,7 @@ def _build_candidate_commands(row, run_id, eval_results_dir):
             "--force",
         ]
     else:
-        raise ValueError("Unsupported local runner: {}".format(runner))
+        raise ValueError(f"Unsupported local runner: {runner}")
     return init_command, capture_command
 
 
@@ -1358,7 +1338,7 @@ def _run_candidate_test(candidate_id, registry_path, eval_results_dir, timeout):
     candidates = _load_radar_candidates(registry_path)
     row = next((item for item in candidates if item.get("candidate_id") == candidate_id), None)
     if row is None:
-        raise ValueError("Candidate not found: {}".format(candidate_id))
+        raise ValueError(f"Candidate not found: {candidate_id}")
     if not _candidate_run_ready(row):
         raise ValueError("Candidate is missing exact local runner metadata.")
     run_id = _next_dashboard_run_id(row, eval_results_dir)
@@ -1384,7 +1364,7 @@ def _run_candidate_test(candidate_id, registry_path, eval_results_dir, timeout):
 
 def _result_block(label, result):
     if result is None:
-        return '<p class="empty">{} did not run.</p>'.format(_text(label))
+        return f'<p class="empty">{_text(label)} did not run.</p>'
     status = "passed" if result.returncode == 0 else "failed"
     return """
     <div class="panel">
@@ -1442,9 +1422,7 @@ def _relative_path(path):
 def _artifact_link(benchmark_run_id):
     if not benchmark_run_id:
         return '<span class="empty">Not linked</span>'
-    return '<a href="/artifacts/{id}"><code>{id}</code></a>'.format(
-        id=_text(benchmark_run_id)
-    )
+    return '<a href="/artifacts/{id}"><code>{id}</code></a>'.format(id=_text(benchmark_run_id))
 
 
 def _benchmark_run_id_from_notes(notes):
@@ -1460,7 +1438,7 @@ def _artifact_link_from_notes(notes):
 
 
 def _command_block(command):
-    return '<pre class="command">{}</pre>'.format(_text(command))
+    return f'<pre class="command">{_text(command)}</pre>'
 
 
 def _command_lines(command):
@@ -1513,7 +1491,9 @@ def _artifact_csv_paths(benchmark_run_id, eval_results_dir=None):
 
 
 def _artifact_import_ready(benchmark_run_id, eval_results_dir=None):
-    return all(path.exists() for path in _artifact_csv_paths(benchmark_run_id, eval_results_dir).values())
+    return all(
+        path.exists() for path in _artifact_csv_paths(benchmark_run_id, eval_results_dir).values()
+    )
 
 
 def _artifact_import_command(
@@ -1590,20 +1570,20 @@ def _artifact_import_control(
             '<div class="empty">Restart with <code>--enable-import-actions</code></div>'
             "</div>"
         )
-    return """
+    return f"""
     <form class="inline-form" method="post" action="/actions/import-artifact">
-      <input type="hidden" name="token" value="{token}">
-      <input type="hidden" name="benchmark_run_id" value="{run_id}">
+      <input type="hidden" name="token" value="{_text(action_token)}">
+      <input type="hidden" name="benchmark_run_id" value="{_text(benchmark_run_id)}">
       <button type="submit">Import Artifact</button>
     </form>
-    """.format(token=_text(action_token), run_id=_text(benchmark_run_id))
+    """
 
 
 def _import_artifact(benchmark_run_id, database_path, eval_results_dir=None):
     eval_results_dir = EVAL_RESULTS_DIR if eval_results_dir is None else eval_results_dir
     artifact_dir = Path(eval_results_dir) / benchmark_run_id
     if not artifact_dir.exists() or not artifact_dir.is_dir():
-        raise ValueError("Artifact not found: {}".format(benchmark_run_id))
+        raise ValueError(f"Artifact not found: {benchmark_run_id}")
     paths = _artifact_csv_paths(benchmark_run_id, eval_results_dir)
     missing = [name for name, path in paths.items() if not path.exists()]
     if missing:
@@ -1677,8 +1657,8 @@ def _import_state_for_run(run, decisions_by_model):
     return (
         '<div class="cell-stack">'
         '<a href="/models/{id}">imported model</a>'
-        '<div>{score} {status}</div>'
-        '<div>decision: {decision}</div>'
+        "<div>{score} {status}</div>"
+        "<div>decision: {decision}</div>"
         "</div>"
     ).format(
         id=run["model_id"],
@@ -1886,8 +1866,7 @@ def _overview_filters(rows, filters):
 
 def _runs_filters(rows, filters):
     backend_options = "".join(
-        _option(backend, backend, filters["backend"])
-        for backend in _field_options(rows, "backend")
+        _option(backend, backend, filters["backend"]) for backend in _field_options(rows, "backend")
     )
     label_options = "".join(
         _option(label, label, filters["label"]) for label in _field_options(rows, "final_label")
@@ -2034,12 +2013,7 @@ def _layout(title, current_path, body):
         active = " active" if current_path == path else ""
         icon = NAV_ICONS.get(path, "ti-circle")
         nav.append(
-            '<a class="nav{}" href="{}"><i class="ti {}" aria-hidden="true"></i><span>{}</span></a>'.format(
-                active,
-                path,
-                escape(icon),
-                escape(label),
-            )
+            f'<a class="nav{active}" href="{path}"><i class="ti {escape(icon)}" aria-hidden="true"></i><span>{escape(label)}</span></a>'
         )
     return """<!doctype html>
 <html lang="en">
@@ -2443,9 +2417,7 @@ def _layout(title, current_path, body):
   <header><div class="topbar"><h1>Local Model Performance Dashboard</h1><nav>{nav}</nav></div></header>
   <main>{body}</main>
 </body>
-</html>""".format(
-        title=escape(title), nav="".join(nav), body=body
-    )
+</html>""".format(title=escape(title), nav="".join(nav), body=body)
 
 
 def _overview(conn, query=None):
@@ -2455,9 +2427,7 @@ def _overview(conn, query=None):
     filters = _filter_values(query or {})
     filtered_summaries = _filter_summaries(summaries, filters)
     score_values = [
-        float(row["total_score"])
-        for row in summaries
-        if row["total_score"] not in (None, "")
+        float(row["total_score"]) for row in summaries if row["total_score"] not in (None, "")
     ]
     avg_score = sum(score_values) / len(score_values) if score_values else None
     keep_count = sum(1 for row in summaries if row["keep_installed"] == 1)
@@ -2500,9 +2470,7 @@ def _overview(conn, query=None):
         kept_stat=_stat_card("Kept installed", keep_count, "ti-checkup-list"),
         filters=_overview_filters(summaries, filters),
         filtered_count=(
-            " ({} of {})".format(len(filtered_summaries), len(summaries))
-            if any(filters.values())
-            else ""
+            f" ({len(filtered_summaries)} of {len(summaries)})" if any(filters.values()) else ""
         ),
         table=_table(
             [
@@ -2543,9 +2511,7 @@ def _lab(
     decisions_by_model = _latest_decisions_by_model_id(conn)
     score_counts = _score_status_counts(conn)
     real_counts = _real_counts(conn)
-    ready_candidates = [
-        row for row in candidates if row.get("status") == "ready_for_eval"
-    ]
+    ready_candidates = [row for row in candidates if row.get("status") == "ready_for_eval"]
     specialty_candidates = [row for row in candidates if _is_specialty_candidate(row)]
     ready_projects = [row for row in projects if row.get("status") == "ready_for_review"]
     artifact_ids = {row["benchmark_run_id"] for row in artifacts}
@@ -2555,33 +2521,31 @@ def _lab(
         [
             "Radar",
             _pill("ready"),
-            "{} ready candidates".format(len(ready_candidates)),
+            f"{len(ready_candidates)} ready candidates",
             '<a href="/radar?status=ready_for_eval">Review ready queue</a>',
         ],
         [
             "Project Radar",
             _pill("review"),
-            "{} GitHub repos tracked".format(len(projects)),
+            f"{len(projects)} GitHub repos tracked",
             '<a href="/projects">Review project opportunities</a>',
         ],
         [
             "Benchmark",
             _pill("active"),
-            "{} artifact directories".format(len(artifacts)),
+            f"{len(artifacts)} artifact directories",
             "Run a local endpoint benchmark for the next approved candidate.",
         ],
         [
             "Score",
             _status_pill("draft") if score_counts["draft"] else _status_pill("confirmed"),
-            "{} draft / {} confirmed".format(
-                score_counts["draft"], score_counts["confirmed"]
-            ),
+            "{} draft / {} confirmed".format(score_counts["draft"], score_counts["confirmed"]),
             "Use draft scores for review, then export confirmed scores.",
         ],
         [
             "Import",
             _pill("linked"),
-            "{} artifacts linked to active DB".format(linked_imports),
+            f"{linked_imports} artifacts linked to active DB",
             '<a href="/runs">Inspect imported runs</a>',
         ],
         [
@@ -2597,14 +2561,12 @@ def _lab(
         run_id = row.get("benchmark_run_id")
         model_id = model_links.get(row.get("model_name", "").lower())
         dashboard_state = (
-            '<a href="/models/{id}">imported</a>'.format(id=model_id)
+            f'<a href="/models/{model_id}">imported</a>'
             if model_id
             else '<span class="empty">not imported</span>'
         )
         artifact_state = (
-            _artifact_link(run_id)
-            if run_id
-            else '<span class="empty">no artifact yet</span>'
+            _artifact_link(run_id) if run_id else '<span class="empty">no artifact yet</span>'
         )
         proposed_run_id = run_id or "YYYYMMDD-{}-local".format(
             row.get("candidate_id", "candidate").replace("_", "-")
@@ -2612,14 +2574,14 @@ def _lab(
         command = "\n".join(
             [
                 "python3 evals/local-llm-benchmark/harness.py init-run \\",
-                "  --benchmark-run-id {} \\".format(proposed_run_id),
+                f"  --benchmark-run-id {proposed_run_id} \\",
                 '  --model-name "{}" \\'.format(row.get("model_name", "")),
                 '  --backend "Local OpenAI-compatible" \\',
                 "  --temperature 0.2 \\",
                 "  --top-p 0.9",
                 "",
                 "python3 evals/local-llm-benchmark/harness.py run-local \\",
-                "  --run-dir data/eval_results/{} \\".format(proposed_run_id),
+                f"  --run-dir data/eval_results/{proposed_run_id} \\",
                 "  --endpoint http://127.0.0.1:1234/v1 \\",
                 '  --model "{}" \\'.format(row.get("model_name", "")),
                 "  --force",
@@ -2653,9 +2615,7 @@ def _lab(
     artifact_rows = []
     for row in artifacts:
         run_id = row["benchmark_run_id"]
-        dashboard_state = _import_state_for_run(
-            dashboard_runs.get(run_id), decisions_by_model
-        )
+        dashboard_state = _import_state_for_run(dashboard_runs.get(run_id), decisions_by_model)
         artifact_rows.append(
             [
                 _artifact_link(run_id),
@@ -2766,7 +2726,9 @@ def _lab(
         artifacts_stat=_stat_card("Artifacts", len(artifacts), "ti-archive"),
         drafts_stat=_stat_card("Draft scores", score_counts["draft"], "ti-edit"),
         confirmed_stat=_stat_card("Confirmed scores", score_counts["confirmed"], "ti-circle-check"),
-        specialty_stat=_stat_card("Abliterated / Dolphin", len(specialty_candidates), "ti-sparkles"),
+        specialty_stat=_stat_card(
+            "Abliterated / Dolphin", len(specialty_candidates), "ti-sparkles"
+        ),
         projects_stat=_stat_card("GitHub projects", len(projects), "ti-brand-github"),
         stages=_table(
             ["Stage", "State", "Signal", "Next action"],
@@ -2844,13 +2806,8 @@ def _runs(conn, query=None):
     """.format(
         notice=_real_data_notice(len(_demo_rows(all_runs))),
         filters=_runs_filters(runs, filters),
-        filtered_count=(
-            " ({} of {})".format(len(filtered_runs), len(runs))
-            if any(filters.values())
-            else ""
-        ),
-        table=
-        _table(
+        filtered_count=(f" ({len(filtered_runs)} of {len(runs)})" if any(filters.values()) else ""),
+        table=_table(
             [
                 "Date",
                 "Model",
@@ -2902,9 +2859,7 @@ def _compare(conn, query=None):
         notice=_real_data_notice(len(_demo_rows(all_scores))),
         filters=_compare_filters(scores, filters),
         filtered_count=(
-            " ({} of {})".format(len(filtered_scores), len(scores))
-            if any(filters.values())
-            else ""
+            f" ({len(filtered_scores)} of {len(scores)})" if any(filters.values()) else ""
         ),
         table=_table(
             headers,
@@ -2925,9 +2880,7 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
     linked_count = sum(1 for row in candidates if row.get("benchmark_run_id"))
     specialty_count = sum(1 for row in candidates if _is_specialty_candidate(row))
     security_review_count = sum(
-        1
-        for row in candidates
-        if _candidate_security_status(row) in ("needs_review", "unreviewed")
+        1 for row in candidates if _candidate_security_status(row) in ("needs_review", "unreviewed")
     )
 
     rows = []
@@ -2935,9 +2888,7 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
         model_id = model_links.get(row.get("model_name", "").lower())
         model_name = _text(row.get("model_name"))
         if model_id:
-            model_name = '<a href="/models/{id}">{name}</a>'.format(
-                id=model_id, name=model_name
-            )
+            model_name = f'<a href="/models/{model_id}">{model_name}</a>'
         metadata = """
         <div class="cell-stack">
           <div><strong>Family</strong><br>{family}</div>
@@ -3010,9 +2961,7 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
         security_stat=_stat_card("Security reviews needed", security_review_count, "ti-shield"),
         filters=_radar_filters(candidates, filters),
         filtered_count=(
-            " ({} of {})".format(len(filtered_candidates), len(candidates))
-            if any(filters.values())
-            else ""
+            f" ({len(filtered_candidates)} of {len(candidates)})" if any(filters.values()) else ""
         ),
         table=_table(
             [
@@ -3035,9 +2984,7 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
 
 def _specialty(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
     candidates = [
-        row
-        for row in _load_radar_candidates(registry_path)
-        if _is_specialty_candidate(row)
+        row for row in _load_radar_candidates(registry_path) if _is_specialty_candidate(row)
     ]
     filters = _specialty_filter_values(query or {})
     filtered_candidates = _filter_specialty_candidates(candidates, filters)
@@ -3045,9 +2992,7 @@ def _specialty(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
     ready_count = sum(1 for row in candidates if row.get("status") == "ready_for_eval")
     watchlist_count = sum(1 for row in candidates if row.get("status") == "watchlist")
     security_review_count = sum(
-        1
-        for row in candidates
-        if _candidate_security_status(row) in ("needs_review", "unreviewed")
+        1 for row in candidates if _candidate_security_status(row) in ("needs_review", "unreviewed")
     )
 
     rows = []
@@ -3055,9 +3000,7 @@ def _specialty(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
         model_id = model_links.get(row.get("model_name", "").lower())
         model_name = _text(row.get("model_name"))
         if model_id:
-            model_name = '<a href="/models/{id}">{name}</a>'.format(
-                id=model_id, name=model_name
-            )
+            model_name = f'<a href="/models/{model_id}">{model_name}</a>'
         rows.append(
             [
                 '<div class="cell-stack"><div>{name}</div><code>{id}</code></div>'.format(
@@ -3107,9 +3050,7 @@ def _specialty(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
         security_stat=_stat_card("Security reviews needed", security_review_count, "ti-shield"),
         filters=_specialty_filters(candidates, filters),
         filtered_count=(
-            " ({} of {})".format(len(filtered_candidates), len(candidates))
-            if any(filters.values())
-            else ""
+            f" ({len(filtered_candidates)} of {len(candidates)})" if any(filters.values()) else ""
         ),
         table=_table(
             [
@@ -3224,9 +3165,7 @@ def _projects(query=None, registry_path=PROJECT_REGISTRY_PATH):
         ),
         filters=_project_filters(projects, filters),
         filtered_count=(
-            " ({} of {})".format(len(filtered_projects), len(projects))
-            if any(filters.values())
-            else ""
+            f" ({len(filtered_projects)} of {len(projects)})" if any(filters.values()) else ""
         ),
         table=_table(
             [
@@ -3267,9 +3206,7 @@ def _artifact_detail(
     decisions_by_model = _latest_decisions_by_model_id(conn)
     dashboard_state = _import_state_for_run(dashboard_run, decisions_by_model)
     candidate_state = (
-        _pill(candidate.get("status"))
-        if candidate
-        else '<span class="empty">not registered</span>'
+        _pill(candidate.get("status")) if candidate else '<span class="empty">not registered</span>'
     )
     artifact_name = (
         candidate.get("model_name")
@@ -3323,7 +3260,9 @@ def _artifact_detail(
             database_path,
             EVAL_RESULTS_DIR,
         ),
-        files=_table(["Name", "Type", "Path"], file_rows, empty_message="Artifact directory not found."),
+        files=_table(
+            ["Name", "Type", "Path"], file_rows, empty_message="Artifact directory not found."
+        ),
     )
     return _layout("Benchmark Artifact", "", body)
 
@@ -3460,12 +3399,9 @@ def _storage(conn, query=None):
         notice=_real_data_notice(len(_demo_rows(all_decisions))),
         filters=_storage_filters(decisions, filters),
         filtered_count=(
-            " ({} of {})".format(len(filtered_decisions), len(decisions))
-            if any(filters.values())
-            else ""
+            f" ({len(filtered_decisions)} of {len(decisions)})" if any(filters.values()) else ""
         ),
-        table=
-        _table(
+        table=_table(
             ["Model", "Decision", "Keep installed", "Best use case", "Weakness", "Retest"],
             rows,
             empty_message="No real storage/install decisions match these filters.",
@@ -3476,7 +3412,7 @@ def _storage(conn, query=None):
 
 def _reports(conn, database_path):
     report = generate_markdown_report(database_path)
-    body = """
+    body = f"""
     <section class="panel" style="margin-bottom:16px">
       <h2>What This Means</h2>
       <p>Ranked models are imported benchmark results, not installed-model inventory.</p>
@@ -3485,8 +3421,8 @@ def _reports(conn, database_path):
       <p>Scores are valid only after raw responses, confirmed scores, and decisions exist.</p>
       <p>Demo rows are examples only and are hidden from real dashboard views by default.</p>
     </section>
-    <h2>Reports</h2><pre class="report">{report}</pre>
-    """.format(report=escape(report))
+    <h2>Reports</h2><pre class="report">{escape(report)}</pre>
+    """
     return _layout("Reports", "/reports", body)
 
 
@@ -3542,7 +3478,7 @@ def make_handler(
                     html = self._route(parsed.path, parse_qs(parsed.query), conn)
                 self.send_response(200)
             except Exception as exc:
-                html = _layout("Error", "", "<h2>Error</h2><p>{}</p>".format(_text(exc)))
+                html = _layout("Error", "", f"<h2>Error</h2><p>{_text(exc)}</p>")
                 self.send_response(500)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
@@ -3618,7 +3554,7 @@ def make_handler(
                         html = _run_action_page(result)
                         self.send_response(200)
             except Exception as exc:
-                html = _layout("Action Error", "", "<h2>Action Error</h2><p>{}</p>".format(_text(exc)))
+                html = _layout("Action Error", "", f"<h2>Action Error</h2><p>{_text(exc)}</p>")
                 self.send_response(400)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
@@ -3706,7 +3642,7 @@ def serve(
             enable_inventory_refresh=enable_inventory_refresh,
         ),
     )
-    print("Serving Local Model Dashboard at http://{}:{}".format(host, port), flush=True)
+    print(f"Serving Local Model Dashboard at http://{host}:{port}", flush=True)
     if enable_run_tests:
         print("Dashboard run-test actions enabled for local candidates.", flush=True)
     if enable_import_actions:

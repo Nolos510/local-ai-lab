@@ -63,9 +63,7 @@ def calculate_total_score(values):
 def validate_final_label(label):
     if label not in FINAL_LABELS:
         raise ValueError(
-            "Unknown final_label {!r}. Expected one of: {}".format(
-                label, ", ".join(FINAL_LABELS)
-            )
+            "Unknown final_label {!r}. Expected one of: {}".format(label, ", ".join(FINAL_LABELS))
         )
     return label
 

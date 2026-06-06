@@ -1,8 +1,7 @@
+import sys
 import tempfile
 import unittest
 from pathlib import Path
-
-import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -24,7 +23,10 @@ class ReportTests(unittest.TestCase):
             self.assertIn("# Local Model Performance Report", text)
             self.assertIn("Models tracked: 0", text)
             self.assertIn("Demo fixture models hidden: 4", text)
-            self.assertIn("| Model | Backend | Quant | Score | Status | Label | Decision | Best use case |", text)
+            self.assertIn(
+                "| Model | Backend | Quant | Score | Status | Label | Decision | Best use case |",
+                text,
+            )
             self.assertIn("No real benchmark imports yet.", text)
             self.assertNotIn("Qwen2.5-Coder 14B Instruct", text)
 

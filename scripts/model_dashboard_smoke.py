@@ -13,7 +13,6 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DASHBOARD_CLI = REPO_ROOT / "apps" / "model-dashboard" / "run_dashboard.py"
 TEST_DIR = REPO_ROOT / "apps" / "model-dashboard" / "tests"
@@ -48,8 +47,8 @@ def _shell_join(command):
 
 
 def _run_step(label, command, timeout):
-    print("\n==> {}".format(label), flush=True)
-    print("$ {}".format(_shell_join(command)), flush=True)
+    print(f"\n==> {label}", flush=True)
+    print(f"$ {_shell_join(command)}", flush=True)
     try:
         proc = subprocess.run(
             [str(part) for part in command],
@@ -58,14 +57,14 @@ def _run_step(label, command, timeout):
             capture_output=True,
             timeout=timeout,
         )
-    except subprocess.TimeoutExpired:
-        raise SmokeFailure("{} timed out after {} seconds".format(label, timeout))
+    except subprocess.TimeoutExpired as exc:
+        raise SmokeFailure(f"{label} timed out after {timeout} seconds") from exc
     if proc.stdout:
         print(proc.stdout.rstrip())
     if proc.stderr:
         print(proc.stderr.rstrip(), file=sys.stderr)
     if proc.returncode != 0:
-        raise SmokeFailure("{} failed with exit code {}".format(label, proc.returncode))
+        raise SmokeFailure(f"{label} failed with exit code {proc.returncode}")
 
 
 def _free_local_port(host):
@@ -86,24 +85,20 @@ def _loopback_host(value):
         return host
     try:
         address = ip_address(host)
-    except ValueError:
+    except ValueError as exc:
         raise argparse.ArgumentTypeError(
             "--host must be localhost or an IPv4 loopback address."
-        )
+        ) from exc
     if address.version == 4 and address.is_loopback:
         return host
-    raise argparse.ArgumentTypeError(
-        "--host must be localhost or an IPv4 loopback address."
-    )
+    raise argparse.ArgumentTypeError("--host must be localhost or an IPv4 loopback address.")
 
 
 def _probe_server(db_path, host, timeout):
     try:
         port = _free_local_port(host)
     except OSError as exc:
-        raise SmokeFailure(
-            "Could not reserve a local probe port on {}: {}".format(host, exc)
-        )
+        raise SmokeFailure(f"Could not reserve a local probe port on {host}: {exc}") from exc
     command = [
         sys.executable,
         DASHBOARD_CLI,
@@ -116,7 +111,7 @@ def _probe_server(db_path, host, timeout):
         port,
     ]
     print("\n==> Probe local server", flush=True)
-    print("$ {}".format(_shell_join(command)), flush=True)
+    print(f"$ {_shell_join(command)}", flush=True)
 
     proc = subprocess.Popen(
         [str(part) for part in command],
@@ -127,16 +122,14 @@ def _probe_server(db_path, host, timeout):
     )
     output = ""
     try:
-        root_url = "http://{}:{}{}".format(host, port, SERVER_PATHS[0])
+        root_url = f"http://{host}:{port}{SERVER_PATHS[0]}"
         deadline = time.monotonic() + timeout
         last_error = None
         while time.monotonic() < deadline:
             if proc.poll() is not None:
                 output = proc.stdout.read() if proc.stdout else ""
                 raise SmokeFailure(
-                    "Dashboard server exited before probe completed.\n{}".format(
-                        output.rstrip()
-                    )
+                    f"Dashboard server exited before probe completed.\n{output.rstrip()}"
                 )
             try:
                 status, body = _request(root_url, timeout=1)
@@ -146,19 +139,19 @@ def _probe_server(db_path, host, timeout):
                 last_error = exc
                 time.sleep(0.1)
         else:
-            raise SmokeFailure("Timed out waiting for {}: {}".format(root_url, last_error))
+            raise SmokeFailure(f"Timed out waiting for {root_url}: {last_error}")
 
         for path in SERVER_PATHS:
-            url = "http://{}:{}{}".format(host, port, path)
+            url = f"http://{host}:{port}{path}"
             try:
                 status, body = _request(url, timeout=timeout)
             except (OSError, URLError) as exc:
-                raise SmokeFailure("{} request failed: {}".format(url, exc))
+                raise SmokeFailure(f"{url} request failed: {exc}") from exc
             if status != 200:
-                raise SmokeFailure("{} returned HTTP {}".format(url, status))
+                raise SmokeFailure(f"{url} returned HTTP {status}")
             if "Local Model Performance Dashboard" not in body:
-                raise SmokeFailure("{} did not render the dashboard shell".format(url))
-            print("OK {} -> HTTP {}".format(path, status), flush=True)
+                raise SmokeFailure(f"{url} did not render the dashboard shell")
+            print(f"OK {path} -> HTTP {status}", flush=True)
     finally:
         if proc.poll() is None:
             proc.terminate()
@@ -173,7 +166,9 @@ def _probe_server(db_path, host, timeout):
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        description="Run dashboard tests, fixture DB init, report generation, and optional server probe."
+        description=(
+            "Run dashboard tests, fixture DB init, report generation, and optional server probe."
+        )
     )
     parser.add_argument(
         "--artifact-dir",
@@ -197,16 +192,14 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
-    artifact_dir = args.artifact_dir or Path(
-        tempfile.mkdtemp(prefix="model-dashboard-smoke-")
-    )
+    artifact_dir = args.artifact_dir or Path(tempfile.mkdtemp(prefix="model-dashboard-smoke-"))
     artifact_dir = artifact_dir.resolve()
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
     db_path = artifact_dir / "model_dashboard.sqlite"
     report_path = artifact_dir / "fixture-model-report.md"
 
-    print("Smoke artifacts: {}".format(artifact_dir), flush=True)
+    print(f"Smoke artifacts: {artifact_dir}", flush=True)
     _run_step(
         "Run dashboard tests",
         [sys.executable, "-m", "unittest", "discover", "-s", TEST_DIR],
@@ -240,13 +233,13 @@ def main(argv=None):
     )
 
     if not report_path.exists():
-        raise SmokeFailure("Expected report was not written: {}".format(report_path))
+        raise SmokeFailure(f"Expected report was not written: {report_path}")
     if args.probe_server:
         _probe_server(db_path, args.host, args.timeout)
 
     print("\nDashboard smoke passed.", flush=True)
-    print("Database: {}".format(db_path), flush=True)
-    print("Report: {}".format(report_path), flush=True)
+    print(f"Database: {db_path}", flush=True)
+    print(f"Report: {report_path}", flush=True)
     return 0
 
 
@@ -254,5 +247,5 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except SmokeFailure as exc:
-        print("\nDashboard smoke failed: {}".format(exc), file=sys.stderr)
+        print(f"\nDashboard smoke failed: {exc}", file=sys.stderr)
         sys.exit(1)

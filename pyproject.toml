@@ -52,14 +52,15 @@ pythonpath = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-exclude = [
-    "apps/model-dashboard",
-    "evals/local-llm-benchmark",
-    "scripts/model_dashboard_smoke.py",
-]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# server.py intentionally contains large server-rendered HTML/CSS templates.
+# Keep the file linted for imports, bugbear, pyupgrade, syntax, and simplification
+# checks, but do not make template readability chase 100-column wrapping.
+"apps/model-dashboard/model_dashboard/server.py" = ["E501"]
 
 [tool.ruff.format]
 quote-style = "double"
