@@ -44,6 +44,19 @@ NAV_ITEMS = (
     ("/reports", "Reports"),
 )
 
+NAV_ICONS = {
+    "/lab": "ti-layout-dashboard",
+    "/": "ti-chart-bar",
+    "/runs": "ti-player-play",
+    "/compare": "ti-git-compare",
+    "/inventory": "ti-device-desktop-analytics",
+    "/radar": "ti-radar",
+    "/specialty": "ti-sparkles",
+    "/projects": "ti-brand-github",
+    "/storage": "ti-database",
+    "/reports": "ti-file-analytics",
+}
+
 
 def _text(value, fallback=""):
     return escape(fallback if value is None else str(value))
@@ -66,6 +79,15 @@ def _status_pill(value):
     if status == "draft":
         class_name += " draft"
     return '<span class="{}">{}</span>'.format(class_name, _text(status.upper()))
+
+
+def _stat_card(label, value, icon):
+    return (
+        '<div class="stat">'
+        '<i class="ti {}" aria-hidden="true"></i>'
+        '<div><div class="label">{}</div><div class="value">{}</div></div>'
+        "</div>"
+    ).format(_text(icon), _text(label), _text(value))
 
 
 def _table(headers, rows, empty_message="No rows yet.", table_class=""):
@@ -2010,24 +2032,77 @@ def _layout(title, current_path, body):
     nav = []
     for path, label in NAV_ITEMS:
         active = " active" if current_path == path else ""
-        nav.append('<a class="nav{}" href="{}">{}</a>'.format(active, path, escape(label)))
+        icon = NAV_ICONS.get(path, "ti-circle")
+        nav.append(
+            '<a class="nav{}" href="{}"><i class="ti {}" aria-hidden="true"></i><span>{}</span></a>'.format(
+                active,
+                path,
+                escape(icon),
+                escape(label),
+            )
+        )
     return """<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{title} - Local Model Dashboard</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.26.0/dist/tabler-icons.min.css">
   <style>
     :root {{
-      color-scheme: light;
-      --bg: #f7f5ef;
-      --panel: #ffffff;
+      color-scheme: light dark;
+      --bg: #f4f1eb;
+      --header: #fbfaf6;
+      --panel: #fffefa;
+      --panel-soft: #f9f6ef;
+      --control: #fffdf8;
       --ink: #202124;
-      --muted: #62676f;
-      --line: #ded9cf;
-      --accent: #196f6b;
+      --muted: #676b72;
+      --line: rgba(32, 33, 36, 0.13);
+      --line-soft: rgba(32, 33, 36, 0.08);
+      --accent: #1b746f;
+      --accent-ink: #ffffff;
+      --accent-soft: #dff1ee;
+      --accent-soft-ink: #135a55;
       --accent-2: #9b4d1f;
-      --good: #1f7a42;
+      --table-head: #ece5da;
+      --pill-bg: #e5f1ee;
+      --pill-ink: #185a55;
+      --status-confirmed-bg: #e1f3e9;
+      --status-confirmed-ink: #1d6540;
+      --status-draft-bg: #fff0d6;
+      --status-draft-ink: #805015;
+      --code-bg: #202327;
+      --code-ink: #f7f1e8;
+      --shadow: 0 12px 32px rgba(55, 45, 30, 0.07);
+    }}
+    @media (prefers-color-scheme: dark) {{
+      :root {{
+        --bg: #1a1b1e;
+        --header: #202125;
+        --panel: #24262a;
+        --panel-soft: #202226;
+        --control: #202226;
+        --ink: #f3efe7;
+        --muted: #a9a59d;
+        --line: rgba(243, 239, 231, 0.14);
+        --line-soft: rgba(243, 239, 231, 0.08);
+        --accent: #39aaa2;
+        --accent-ink: #102322;
+        --accent-soft: rgba(57, 170, 162, 0.16);
+        --accent-soft-ink: #8ee3da;
+        --accent-2: #e0a26d;
+        --table-head: #2d2b28;
+        --pill-bg: rgba(57, 170, 162, 0.14);
+        --pill-ink: #9ce5dd;
+        --status-confirmed-bg: rgba(84, 190, 125, 0.14);
+        --status-confirmed-ink: #9be7b8;
+        --status-draft-bg: rgba(238, 178, 85, 0.16);
+        --status-draft-ink: #f0c985;
+        --code-bg: #111316;
+        --code-ink: #f7f1e8;
+        --shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
+      }}
     }}
     * {{ box-sizing: border-box; }}
     body {{
@@ -2036,22 +2111,25 @@ def _layout(title, current_path, body):
       color: var(--ink);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 15px;
-      line-height: 1.45;
+      line-height: 1.5;
+      font-weight: 400;
     }}
+    strong {{ font-weight: 500; }}
     header {{
-      border-bottom: 1px solid var(--line);
-      background: #fffdf8;
+      border-bottom: 0.5px solid var(--line);
+      background: var(--header);
     }}
     .topbar {{
       max-width: 1200px;
       margin: 0 auto;
-      padding: 18px 20px 12px;
+      padding: 22px 20px 16px;
     }}
     h1 {{
-      margin: 0 0 14px;
+      margin: 0 0 16px;
       font-size: 28px;
       line-height: 1.15;
       letter-spacing: 0;
+      font-weight: 500;
     }}
     nav {{
       display: flex;
@@ -2059,54 +2137,82 @@ def _layout(title, current_path, body):
       gap: 8px;
     }}
     .nav {{
-      color: var(--ink);
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 7px 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      border: 0.5px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 11px;
       text-decoration: none;
-      background: #fbfaf6;
+      background: var(--panel-soft);
+      font-weight: 500;
+      transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+    }}
+    .nav .ti {{
+      color: var(--accent);
+      font-size: 17px;
+      line-height: 1;
     }}
     .nav.active {{
-      border-color: var(--accent);
-      color: #ffffff;
-      background: var(--accent);
+      border-color: transparent;
+      color: var(--accent-soft-ink);
+      background: var(--accent-soft);
+    }}
+    .nav.active .ti {{
+      color: var(--accent-soft-ink);
     }}
     main {{
       max-width: 1200px;
       margin: 0 auto;
-      padding: 20px;
+      padding: 24px 20px 32px;
     }}
     .grid {{
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 12px;
-      margin-bottom: 18px;
+      gap: 14px;
+      margin-bottom: 22px;
     }}
     .stat, .panel {{
       background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 14px;
+      border: 0.5px solid var(--line);
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+    }}
+    .stat {{
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }}
+    .stat .ti {{
+      color: var(--accent);
+      font-size: 20px;
+      line-height: 1;
+      margin-top: 3px;
     }}
     .stat .label {{
       color: var(--muted);
       font-size: 13px;
-      margin-bottom: 4px;
+      margin-bottom: 5px;
     }}
     .stat .value {{
       font-size: 26px;
-      font-weight: 700;
+      font-weight: 500;
+      line-height: 1.1;
     }}
     .filters {{
       display: grid;
       grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(140px, 1fr)) auto;
-      gap: 10px;
+      gap: 12px;
       align-items: end;
       background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 12px;
-      margin: 0 0 14px;
+      border: 0.5px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      margin: 0 0 18px;
+      box-shadow: var(--shadow);
     }}
     .filters-compact {{
       grid-template-columns: minmax(220px, 2fr) repeat(2, minmax(140px, 1fr)) auto;
@@ -2118,33 +2224,39 @@ def _layout(title, current_path, body):
       display: block;
       color: var(--muted);
       font-size: 12px;
-      font-weight: 700;
-      margin: 0 0 4px;
+      font-weight: 500;
+      margin: 0 0 6px;
     }}
     input, select {{
       width: 100%;
-      min-height: 36px;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      background: #fffdf8;
+      min-height: 38px;
+      border: 0.5px solid var(--line);
+      border-radius: 8px;
+      background: var(--control);
       color: var(--ink);
       font: inherit;
-      padding: 7px 9px;
+      padding: 8px 10px;
     }}
     button {{
-      min-height: 36px;
-      border: 1px solid var(--accent);
-      border-radius: 6px;
+      min-height: 38px;
+      border: 0.5px solid var(--accent);
+      border-radius: 8px;
       background: var(--accent);
-      color: #ffffff;
+      color: var(--accent-ink);
       font: inherit;
-      font-weight: 700;
-      padding: 7px 12px;
+      font-weight: 500;
+      padding: 8px 13px;
       cursor: pointer;
+    }}
+    button:disabled {{
+      border-color: var(--line);
+      background: var(--panel-soft);
+      color: var(--muted);
+      cursor: not-allowed;
     }}
     .inline-form {{
       display: grid;
-      gap: 6px;
+      gap: 8px;
       align-items: start;
     }}
     .filter-actions {{
@@ -2159,79 +2271,85 @@ def _layout(title, current_path, body):
     }}
     h2 {{
       font-size: 20px;
-      margin: 0 0 12px;
+      margin: 0 0 14px;
       letter-spacing: 0;
+      font-weight: 500;
     }}
     table {{
       width: 100%;
       min-width: 760px;
-      border-collapse: collapse;
+      border-collapse: separate;
+      border-spacing: 0;
       background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      border: 0.5px solid var(--line);
+      border-radius: 12px;
       overflow: hidden;
+      box-shadow: var(--shadow);
     }}
     th, td {{
-      border-bottom: 1px solid var(--line);
-      padding: 10px 9px;
+      border-bottom: 0.5px solid var(--line-soft);
+      padding: 13px 12px;
       text-align: left;
       vertical-align: top;
       white-space: normal;
       overflow-wrap: anywhere;
     }}
     th {{
-      background: #ede7dc;
-      color: #393b3f;
+      background: var(--table-head);
+      color: var(--muted);
       font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow-wrap: normal;
     }}
     .table-wrap {{
       width: 100%;
       overflow-x: auto;
-      border-radius: 8px;
+      border-radius: 12px;
     }}
     tr:last-child td {{ border-bottom: 0; }}
     a {{ color: var(--accent); }}
     .pill {{
       display: inline-block;
       border-radius: 999px;
-      padding: 3px 8px;
-      background: #e4f0ed;
-      color: #185a55;
+      padding: 4px 9px;
+      background: var(--pill-bg);
+      color: var(--pill-ink);
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 500;
       white-space: nowrap;
     }}
     .score-status {{
-      background: #e9ecef;
-      color: #3d434a;
+      background: var(--status-confirmed-bg);
+      color: var(--status-confirmed-ink);
       text-transform: uppercase;
     }}
     .score-status.draft {{
-      background: #fff1d6;
-      color: #7a4a10;
+      background: var(--status-draft-bg);
+      color: var(--status-draft-ink);
     }}
     .empty {{ color: var(--muted); }}
     .report {{
-      background: #1e2227;
-      color: #f6f0e6;
-      border-radius: 8px;
-      padding: 16px;
+      background: var(--code-bg);
+      color: var(--code-ink);
+      border-radius: 12px;
+      padding: 18px;
       overflow-x: auto;
       white-space: pre-wrap;
     }}
     .command {{
       margin: 0;
-      background: #1e2227;
-      color: #f6f0e6;
-      border-radius: 8px;
-      padding: 10px;
+      background: var(--code-bg);
+      color: var(--code-ink);
+      border-radius: 12px;
+      padding: 12px;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
       font-size: 13px;
     }}
     .workflow-table td:nth-child(1) {{
       width: 150px;
-      font-weight: 700;
+      font-weight: 500;
     }}
     .lab-queue {{
       min-width: 980px;
@@ -2251,18 +2369,19 @@ def _layout(title, current_path, body):
     .split {{
       display: grid;
       grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.6fr);
-      gap: 16px;
+      gap: 18px;
     }}
     .cell-stack {{
       display: grid;
-      gap: 6px;
+      gap: 7px;
     }}
     .cell-stack strong {{
       color: var(--muted);
       font-size: 12px;
+      font-weight: 500;
     }}
     .radar-table {{
-      min-width: 1320px;
+      min-width: 1520px;
     }}
     .radar-table th:nth-child(1),
     .radar-table td:nth-child(1) {{
@@ -2279,6 +2398,10 @@ def _layout(title, current_path, body):
     .radar-table th:nth-child(4),
     .radar-table td:nth-child(4) {{
       width: 220px;
+    }}
+    .radar-table th:nth-child(5),
+    .radar-table td:nth-child(5) {{
+      width: 230px;
     }}
     .radar-table th:nth-child(6),
     .radar-table td:nth-child(6) {{
@@ -2312,7 +2435,7 @@ def _layout(title, current_path, body):
       .filter-actions {{ justify-content: flex-start; }}
       .split {{ grid-template-columns: 1fr; }}
       h1 {{ font-size: 24px; }}
-      th, td {{ padding: 8px 7px; }}
+      th, td {{ padding: 11px 9px; }}
     }}
   </style>
 </head>
@@ -2359,10 +2482,10 @@ def _overview(conn, query=None):
     body = """
     {notice}
     <section class="grid">
-      <div class="stat"><div class="label">Models</div><div class="value">{models}</div></div>
-      <div class="stat"><div class="label">Runs</div><div class="value">{runs}</div></div>
-      <div class="stat"><div class="label">Average score</div><div class="value">{avg}</div></div>
-      <div class="stat"><div class="label">Kept installed</div><div class="value">{kept}</div></div>
+      {models_stat}
+      {runs_stat}
+      {avg_stat}
+      {kept_stat}
     </section>
     <section>
       {filters}
@@ -2371,10 +2494,10 @@ def _overview(conn, query=None):
     </section>
     """.format(
         notice=_real_data_notice(counts["demo_models"]),
-        models=counts["models"],
-        runs=counts["model_runs"],
-        avg=_number(avg_score, 1, "0.0"),
-        kept=keep_count,
+        models_stat=_stat_card("Models", counts["models"], "ti-cube"),
+        runs_stat=_stat_card("Runs", counts["model_runs"], "ti-player-play"),
+        avg_stat=_stat_card("Average score", _number(avg_score, 1, "0.0"), "ti-chart-line"),
+        kept_stat=_stat_card("Kept installed", keep_count, "ti-checkup-list"),
         filters=_overview_filters(summaries, filters),
         filtered_count=(
             " ({} of {})".format(len(filtered_summaries), len(summaries))
@@ -2611,12 +2734,12 @@ def _lab(
 
     body = """
     <section class="grid">
-      <div class="stat"><div class="label">Ready candidates</div><div class="value">{ready}</div></div>
-      <div class="stat"><div class="label">Artifacts</div><div class="value">{artifacts}</div></div>
-      <div class="stat"><div class="label">Draft scores</div><div class="value">{drafts}</div></div>
-      <div class="stat"><div class="label">Confirmed scores</div><div class="value">{confirmed}</div></div>
-      <div class="stat"><div class="label">Abliterated / Dolphin</div><div class="value">{specialty}</div></div>
-      <div class="stat"><div class="label">GitHub projects</div><div class="value">{projects}</div></div>
+      {ready_stat}
+      {artifacts_stat}
+      {drafts_stat}
+      {confirmed_stat}
+      {specialty_stat}
+      {projects_stat}
     </section>
     <section>
       <h2>Product Loop</h2>
@@ -2639,12 +2762,12 @@ def _lab(
       {artifacts_table}
     </section>
     """.format(
-        ready=len(ready_candidates),
-        artifacts=len(artifacts),
-        drafts=score_counts["draft"],
-        confirmed=score_counts["confirmed"],
-        specialty=len(specialty_candidates),
-        projects=len(projects),
+        ready_stat=_stat_card("Ready candidates", len(ready_candidates), "ti-list-check"),
+        artifacts_stat=_stat_card("Artifacts", len(artifacts), "ti-archive"),
+        drafts_stat=_stat_card("Draft scores", score_counts["draft"], "ti-edit"),
+        confirmed_stat=_stat_card("Confirmed scores", score_counts["confirmed"], "ti-circle-check"),
+        specialty_stat=_stat_card("Abliterated / Dolphin", len(specialty_candidates), "ti-sparkles"),
+        projects_stat=_stat_card("GitHub projects", len(projects), "ti-brand-github"),
         stages=_table(
             ["Stage", "State", "Signal", "Next action"],
             stage_rows,
@@ -2862,12 +2985,12 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
 
     body = """
     <section class="grid">
-      <div class="stat"><div class="label">Candidates</div><div class="value">{candidates}</div></div>
-      <div class="stat"><div class="label">Ready for eval</div><div class="value">{ready}</div></div>
-      <div class="stat"><div class="label">Watchlist</div><div class="value">{watchlist}</div></div>
-      <div class="stat"><div class="label">Linked artifacts</div><div class="value">{linked}</div></div>
-      <div class="stat"><div class="label">Abliterated / Dolphin</div><div class="value">{specialty}</div></div>
-      <div class="stat"><div class="label">Security reviews needed</div><div class="value">{security}</div></div>
+      {candidates_stat}
+      {ready_stat}
+      {watchlist_stat}
+      {linked_stat}
+      {specialty_stat}
+      {security_stat}
     </section>
     <section class="panel" style="margin-bottom:16px">
       <h2>Security Gate</h2>
@@ -2879,12 +3002,12 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
       {table}
     </section>
     """.format(
-        candidates=len(candidates),
-        ready=ready_count,
-        watchlist=watchlist_count,
-        linked=linked_count,
-        specialty=specialty_count,
-        security=security_review_count,
+        candidates_stat=_stat_card("Candidates", len(candidates), "ti-radar"),
+        ready_stat=_stat_card("Ready for eval", ready_count, "ti-list-check"),
+        watchlist_stat=_stat_card("Watchlist", watchlist_count, "ti-eye"),
+        linked_stat=_stat_card("Linked artifacts", linked_count, "ti-link"),
+        specialty_stat=_stat_card("Abliterated / Dolphin", specialty_count, "ti-sparkles"),
+        security_stat=_stat_card("Security reviews needed", security_review_count, "ti-shield"),
         filters=_radar_filters(candidates, filters),
         filtered_count=(
             " ({} of {})".format(len(filtered_candidates), len(candidates))
@@ -2963,10 +3086,10 @@ def _specialty(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
 
     body = """
     <section class="grid">
-      <div class="stat"><div class="label">Specialty candidates</div><div class="value">{total}</div></div>
-      <div class="stat"><div class="label">Ready for eval</div><div class="value">{ready}</div></div>
-      <div class="stat"><div class="label">Watchlist</div><div class="value">{watchlist}</div></div>
-      <div class="stat"><div class="label">Security reviews needed</div><div class="value">{security}</div></div>
+      {total_stat}
+      {ready_stat}
+      {watchlist_stat}
+      {security_stat}
     </section>
     <section class="panel" style="margin-bottom:16px">
       <h2>Abliterated / Dolphin Models</h2>
@@ -2978,10 +3101,10 @@ def _specialty(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
     <h2>Specialty Candidates{filtered_count}</h2>
     {table}
     """.format(
-        total=len(candidates),
-        ready=ready_count,
-        watchlist=watchlist_count,
-        security=security_review_count,
+        total_stat=_stat_card("Specialty candidates", len(candidates), "ti-sparkles"),
+        ready_stat=_stat_card("Ready for eval", ready_count, "ti-list-check"),
+        watchlist_stat=_stat_card("Watchlist", watchlist_count, "ti-eye"),
+        security_stat=_stat_card("Security reviews needed", security_review_count, "ti-shield"),
         filters=_specialty_filters(candidates, filters),
         filtered_count=(
             " ({} of {})".format(len(filtered_candidates), len(candidates))
@@ -3078,11 +3201,11 @@ def _projects(query=None, registry_path=PROJECT_REGISTRY_PATH):
 
     body = """
     <section class="grid">
-      <div class="stat"><div class="label">Projects</div><div class="value">{projects}</div></div>
-      <div class="stat"><div class="label">Ready for review</div><div class="value">{ready}</div></div>
-      <div class="stat"><div class="label">Watchlist</div><div class="value">{watchlist}</div></div>
-      <div class="stat"><div class="label">Local/self-host signal</div><div class="value">{local_count}</div></div>
-      <div class="stat"><div class="label">Priority 5</div><div class="value">{priority_five}</div></div>
+      {projects_stat}
+      {ready_stat}
+      {watchlist_stat}
+      {local_stat}
+      {priority_stat}
     </section>
     <section>
       {filters}
@@ -3090,11 +3213,15 @@ def _projects(query=None, registry_path=PROJECT_REGISTRY_PATH):
       {table}
     </section>
     """.format(
-        projects=len(projects),
-        ready=ready_count,
-        watchlist=watchlist_count,
-        local_count=local_count,
-        priority_five=sum(1 for row in projects if _project_priority_score(row) == 5),
+        projects_stat=_stat_card("Projects", len(projects), "ti-brand-github"),
+        ready_stat=_stat_card("Ready for review", ready_count, "ti-list-check"),
+        watchlist_stat=_stat_card("Watchlist", watchlist_count, "ti-eye"),
+        local_stat=_stat_card("Local/self-host signal", local_count, "ti-server"),
+        priority_stat=_stat_card(
+            "Priority 5",
+            sum(1 for row in projects if _project_priority_score(row) == 5),
+            "ti-flame",
+        ),
         filters=_project_filters(projects, filters),
         filtered_count=(
             " ({} of {})".format(len(filtered_projects), len(projects))
