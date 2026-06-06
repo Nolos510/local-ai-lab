@@ -333,6 +333,8 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
                         "#!/usr/bin/env python3",
                         "import sys",
                         "model_id = sys.argv[2]",
+                        "assert '--yes' in sys.argv",
+                        "assert '--dont-fetch-catalog' in sys.argv",
                         "prompt = sys.argv[sys.argv.index('-p') + 1]",
                         "prompt_id = 'unknown'",
                         "for candidate in ('LLMCORE-v0.1-001', 'LLMCORE-v0.1-012'):",

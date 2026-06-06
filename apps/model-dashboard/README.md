@@ -130,13 +130,24 @@ Run-test buttons create a benchmark artifact and capture raw responses only.
 They do not download models, create scores, import CSVs, or make keep/watch
 decisions. For LM Studio CLI candidates, the button uses
 `run-lmstudio-cli`, which avoids the OpenAI-compatible server path when the
-server responds with `401 Unauthorized`.
+server responds with `401 Unauthorized`. The LM Studio CLI runner uses
+`--yes` and `--dont-fetch-catalog` so dashboard-triggered runs do not pause for
+interactive prompts or catalog fetches.
 
 The Overview page supports URL-backed filters for search text, final label, decision, and install status. Filtered views can be bookmarked or shared locally, for example:
 
 ```text
 http://127.0.0.1:8765/?label=CODING_SPECIALIST&keep=yes
 ```
+
+Additional URL-backed filters are available on:
+
+- `/runs` for search, backend, final label, and score status.
+- `/compare` for search, final label, and score status.
+- `/inventory` for search, runtime, installed/loaded status, and registry match.
+- `/radar` for search, status, family, runtime, and security review state.
+- `/specialty` for search, status, abliterated/Dolphin lane, and security review state.
+- `/storage` for search, decision, and keep-installed state.
 
 The Radar Candidates page is available at:
 
@@ -153,6 +164,12 @@ Candidate rows can also show model/source-page, GitHub, LM Studio, and Ollama
 review links plus a short runtime-availability note. These links are for
 inspection and source tracing only; they are not download, install, or benchmark
 execution approval.
+
+Radar candidates include a security gate with review status, download approval,
+license/provenance posture, and isolation notes. External candidates default to
+`needs_review` and `not_approved`; popularity or source claims do not make a
+model safe to download. Use `docs/model-security-vetting.md` before approving a
+new artifact, update, or runtime path.
 
 The radar and lab pages include an `Abliterated / Dolphin` count sourced from
 candidate registry rows whose names or families include abliterated or Dolphin

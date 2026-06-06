@@ -24,6 +24,12 @@ or benchmarked.
 | `local_runner` | Optional | Exact local runner for approved one-click tests, such as `lmstudio-cli` or `openai-compatible`. Leave blank when unverified. |
 | `local_model_id` | Optional | Exact local runtime model id. Required before dashboard run buttons can execute a model. |
 | `default_endpoint` | Optional | Loopback/private-LAN endpoint for `openai-compatible` runs only. Do not store public URLs. |
+| `security_review_status` | Required for registry rows | `unreviewed`, `needs_review`, `local_inventory_reviewed`, `reviewed`, or `blocked`. This is a due-diligence state, not a quality score. |
+| `download_approval` | Required for registry rows | `not_approved`, `not_needed_local`, `approved`, or `blocked`. Default external candidates to `not_approved`. |
+| `license_review_status` | Required for registry rows | `unknown`, `needs_review`, `reviewed`, or `blocked`. Do not infer license compatibility from popularity. |
+| `provenance_status` | Required for registry rows | Examples: `source_metadata_only`, `local_inventory`, `unverified_local_inventory`, `unverified_local_note`, or `reviewed_artifact`. |
+| `security_notes` | Required for registry rows | Short notes about source trust, artifact format, checksum/hash needs, custom-code risk, and unresolved safety concerns. |
+| `isolation_notes` | Optional | Local runtime or sandbox guidance. Prefer LM Studio, Ollama, llama.cpp, or MLX paths that do not run untrusted model-card code. |
 | `source_date` | Optional | Date of the source, not the discovery date. |
 | `discovered_at` | Required | ISO timestamp or date when added to radar. |
 | `why_interesting` | Required | Concise reason to track. |
@@ -49,6 +55,18 @@ map stable fields into:
 - A radar candidate is a review target, not an install request.
 - Runtime/model links are navigation metadata only. Do not turn them into
   download, install, or model execution steps without explicit user approval.
+- External candidates default to `security_review_status=needs_review` and
+  `download_approval=not_approved` until a specific artifact, license, source,
+  and local runtime path are reviewed.
+- Treat executable code as higher risk than weight files. Do not run model-card
+  Python, custom loaders, install scripts, notebooks, or repository code as part
+  of model recommendation.
+- Prefer local runtimes that load weights without executing upstream code. For
+  formats, note whether the candidate is GGUF, MLX, Safetensors, or an
+  unreviewed/custom format.
+- Before approving a new download or update, record source provenance, license
+  posture, file format, expected runtime, and checksum/hash or release evidence
+  when available.
 - Dashboard run buttons may only use explicit local runner metadata from an
   approved candidate row. Do not guess local model IDs from public model names.
 - Do not convert claims into scores without a benchmark run.

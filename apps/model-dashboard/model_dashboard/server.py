@@ -198,6 +198,7 @@ def _radar_filter_values(query):
         "status": _query_value(query, "status"),
         "family": _query_value(query, "family"),
         "runtime": _query_value(query, "runtime"),
+        "security": _query_value(query, "security"),
     }
 
 
@@ -222,6 +223,12 @@ def _matches_candidate_search(row, search):
             "lm_studio_url",
             "ollama_url",
             "runtime_availability",
+            "security_review_status",
+            "download_approval",
+            "license_review_status",
+            "provenance_status",
+            "security_notes",
+            "isolation_notes",
         )
     )
     return search.lower() in haystack.lower()
@@ -235,6 +242,11 @@ def _filter_candidates(candidates, filters):
         if filters["family"] and row.get("model_family") != filters["family"]:
             continue
         if filters["runtime"] and row.get("format_or_runtime") != filters["runtime"]:
+            continue
+        if (
+            filters["security"]
+            and _candidate_security_status(row) != filters["security"]
+        ):
             continue
         if not _matches_candidate_search(row, filters["q"]):
             continue
@@ -371,9 +383,16 @@ def _radar_filters(candidates, filters):
         _option(runtime, runtime, filters["runtime"])
         for runtime in _field_options(candidates, "format_or_runtime")
     )
+    security_options = "".join(
+        _option(security, security, filters["security"])
+        for security in sorted(
+            {_candidate_security_status(row) for row in candidates},
+            key=lambda value: value.lower(),
+        )
+    )
     clear_link = '<a class="clear-link" href="/radar">Clear</a>' if any(filters.values()) else ""
     return """
-    <form class="filters" method="get" action="/radar">
+    <form class="filters filters-wide" method="get" action="/radar">
       <div class="field field-wide">
         <label for="radar-q">Search</label>
         <input id="radar-q" name="q" type="search" value="{q}">
@@ -399,6 +418,13 @@ def _radar_filters(candidates, filters):
           {runtime_options}
         </select>
       </div>
+      <div class="field">
+        <label for="radar-security">Security</label>
+        <select id="radar-security" name="security">
+          {all_security}
+          {security_options}
+        </select>
+      </div>
       <div class="filter-actions">
         <button type="submit">Apply</button>
         {clear_link}
@@ -412,6 +438,8 @@ def _radar_filters(candidates, filters):
         family_options=family_options,
         all_runtimes=_option("", "All runtimes", filters["runtime"]),
         runtime_options=runtime_options,
+        all_security=_option("", "All security states", filters["security"]),
+        security_options=security_options,
         clear_link=clear_link,
     )
 
@@ -461,6 +489,97 @@ def _project_filters(projects, filters):
     )
 
 
+def _specialty_filter_values(query):
+    return {
+        "q": _query_value(query, "q"),
+        "status": _query_value(query, "status"),
+        "lane": _query_value(query, "lane"),
+        "security": _query_value(query, "security"),
+    }
+
+
+def _filter_specialty_candidates(candidates, filters):
+    filtered = []
+    for row in candidates:
+        if filters["status"] and row.get("status") != filters["status"]:
+            continue
+        if filters["lane"] and _specialty_lane_label(row) != filters["lane"]:
+            continue
+        if (
+            filters["security"]
+            and _candidate_security_status(row) != filters["security"]
+        ):
+            continue
+        if not _matches_candidate_search(row, filters["q"]):
+            continue
+        filtered.append(row)
+    return filtered
+
+
+def _specialty_filters(candidates, filters):
+    status_options = "".join(
+        _option(status, status, filters["status"])
+        for status in _field_options(candidates, "status")
+    )
+    lane_options = "".join(
+        _option(lane, lane, filters["lane"])
+        for lane in sorted(
+            {_specialty_lane_label(row) for row in candidates},
+            key=lambda value: value.lower(),
+        )
+    )
+    security_options = "".join(
+        _option(security, security, filters["security"])
+        for security in sorted(
+            {_candidate_security_status(row) for row in candidates},
+            key=lambda value: value.lower(),
+        )
+    )
+    clear_link = '<a class="clear-link" href="/specialty">Clear</a>' if any(filters.values()) else ""
+    return """
+    <form class="filters" method="get" action="/specialty">
+      <div class="field field-wide">
+        <label for="specialty-q">Search</label>
+        <input id="specialty-q" name="q" type="search" value="{q}">
+      </div>
+      <div class="field">
+        <label for="specialty-status">Status</label>
+        <select id="specialty-status" name="status">
+          {all_statuses}
+          {status_options}
+        </select>
+      </div>
+      <div class="field">
+        <label for="specialty-lane">Lane</label>
+        <select id="specialty-lane" name="lane">
+          {all_lanes}
+          {lane_options}
+        </select>
+      </div>
+      <div class="field">
+        <label for="specialty-security">Security</label>
+        <select id="specialty-security" name="security">
+          {all_security}
+          {security_options}
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button type="submit">Apply</button>
+        {clear_link}
+      </div>
+    </form>
+    """.format(
+        q=_text(filters["q"]),
+        all_statuses=_option("", "All statuses", filters["status"]),
+        status_options=status_options,
+        all_lanes=_option("", "All lanes", filters["lane"]),
+        lane_options=lane_options,
+        all_security=_option("", "All security states", filters["security"]),
+        security_options=security_options,
+        clear_link=clear_link,
+    )
+
+
 def _path_cell(value):
     if not value:
         return '<span class="empty">None</span>'
@@ -505,6 +624,35 @@ def _candidate_availability(row):
     """.format(
         runtime=_text(runtime),
         links=_candidate_review_links(row),
+    )
+
+
+def _candidate_security_status(row):
+    return row.get("security_review_status") or "unreviewed"
+
+
+def _candidate_security(row):
+    status = _candidate_security_status(row)
+    approval = row.get("download_approval") or "not_approved"
+    license_status = row.get("license_review_status") or "unknown"
+    provenance = row.get("provenance_status") or "unverified"
+    notes = row.get("security_notes") or "No security review notes recorded."
+    isolation = row.get("isolation_notes") or "Use local runtimes only; do not run untrusted install scripts."
+    return """
+    <div class="cell-stack">
+      <div><strong>Review</strong><br>{status}</div>
+      <div><strong>Download</strong><br>{approval}</div>
+      <div><strong>License / provenance</strong><br>{license_status} / {provenance}</div>
+      <div><strong>Notes</strong><br>{notes}</div>
+      <div><strong>Isolation</strong><br>{isolation}</div>
+    </div>
+    """.format(
+        status=_pill(status),
+        approval=_text(approval),
+        license_status=_text(license_status),
+        provenance=_text(provenance),
+        notes=_text(notes),
+        isolation=_text(isolation),
     )
 
 
@@ -837,6 +985,117 @@ def _match_inventory_model(model, candidates):
     return "unregistered", None
 
 
+def _inventory_filter_values(query):
+    return {
+        "q": _query_value(query, "q"),
+        "runtime": _query_value(query, "runtime"),
+        "status": _query_value(query, "status"),
+        "match": _query_value(query, "match"),
+    }
+
+
+def _matches_inventory_search(entry, search):
+    if not search:
+        return True
+    model = entry["model"]
+    candidate = entry.get("candidate")
+    haystack = " ".join(
+        [
+            model.get("runtime", ""),
+            model.get("model_id", ""),
+            model.get("display_name", ""),
+            model.get("status", ""),
+            entry.get("match_state", ""),
+            candidate.get("candidate_id", "") if candidate else "",
+            candidate.get("model_name", "") if candidate else "",
+        ]
+    )
+    return search.lower() in haystack.lower()
+
+
+def _filter_inventory_entries(entries, filters):
+    filtered = []
+    for entry in entries:
+        model = entry["model"]
+        if filters["runtime"] and model.get("runtime") != filters["runtime"]:
+            continue
+        if filters["status"] and model.get("status") != filters["status"]:
+            continue
+        if filters["match"] and entry.get("match_state") != filters["match"]:
+            continue
+        if not _matches_inventory_search(entry, filters["q"]):
+            continue
+        filtered.append(entry)
+    return filtered
+
+
+def _inventory_filters(entries, filters):
+    runtime_options = "".join(
+        _option(runtime, runtime, filters["runtime"])
+        for runtime in sorted(
+            {entry["model"].get("runtime", "") for entry in entries if entry["model"].get("runtime")},
+            key=lambda value: value.lower(),
+        )
+    )
+    status_options = "".join(
+        _option(status, status, filters["status"])
+        for status in sorted(
+            {entry["model"].get("status", "") for entry in entries if entry["model"].get("status")},
+            key=lambda value: value.lower(),
+        )
+    )
+    match_options = "".join(
+        _option(match, match, filters["match"])
+        for match in sorted(
+            {entry.get("match_state", "") for entry in entries if entry.get("match_state")},
+            key=lambda value: value.lower(),
+        )
+    )
+    clear_link = '<a class="clear-link" href="/inventory">Clear</a>' if any(filters.values()) else ""
+    return """
+    <form class="filters" method="get" action="/inventory">
+      <div class="field field-wide">
+        <label for="inventory-q">Search</label>
+        <input id="inventory-q" name="q" type="search" value="{q}">
+      </div>
+      <div class="field">
+        <label for="inventory-runtime">Runtime</label>
+        <select id="inventory-runtime" name="runtime">
+          {all_runtimes}
+          {runtime_options}
+        </select>
+      </div>
+      <div class="field">
+        <label for="inventory-status">Status</label>
+        <select id="inventory-status" name="status">
+          {all_statuses}
+          {status_options}
+        </select>
+      </div>
+      <div class="field">
+        <label for="inventory-match">Registry match</label>
+        <select id="inventory-match" name="match">
+          {all_matches}
+          {match_options}
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button type="submit">Apply</button>
+        {clear_link}
+      </div>
+    </form>
+    """.format(
+        q=_text(filters["q"]),
+        all_runtimes=_option("", "All runtimes", filters["runtime"]),
+        runtime_options=runtime_options,
+        all_statuses=_option("", "All statuses", filters["status"]),
+        status_options=status_options,
+        all_matches=_option("", "All matches", filters["match"]),
+        match_options=match_options,
+        clear_link=clear_link,
+    )
+
+
 def _inventory(
     query=None,
     inventory_result=None,
@@ -846,8 +1105,10 @@ def _inventory(
 ):
     candidates = _load_radar_candidates()
     result = inventory_result
+    filters = _inventory_filter_values(query or {})
     check_rows = []
     model_rows = []
+    entries = []
     if result:
         for check in result["checks"]:
             output = check.get("stderr") or check.get("stdout") or ""
@@ -862,6 +1123,17 @@ def _inventory(
             )
         for model in result["models"]:
             match_state, candidate = _match_inventory_model(model, candidates)
+            entries.append(
+                {
+                    "model": model,
+                    "match_state": match_state,
+                    "candidate": candidate,
+                }
+            )
+        for entry in _filter_inventory_entries(entries, filters):
+            model = entry["model"]
+            match_state = entry["match_state"]
+            candidate = entry["candidate"]
             candidate_cell = (
                 '<a href="/radar?q={id}">{id}</a>'.format(id=_text(candidate["candidate_id"]))
                 if candidate
@@ -895,7 +1167,8 @@ def _inventory(
       <p class="empty">Last refresh: {checked_at}</p>
     </section>
     <section>
-      <h2>Detected Models</h2>
+      <h2>Detected Models{filtered_count}</h2>
+      {filters}
       {models}
     </section>
     <section style="margin-top:16px">
@@ -911,10 +1184,23 @@ def _inventory(
             else '<p class="empty">Inventory refresh is available only on a localhost or loopback dashboard bind.</p>'
         ),
         checked_at=_text(result["checked_at"] if result else "not checked yet"),
+        filtered_count=(
+            " ({} of {})".format(
+                len(_filter_inventory_entries(entries, filters)),
+                len(entries),
+            )
+            if any(filters.values())
+            else ""
+        ),
+        filters=_inventory_filters(entries, filters),
         models=_table(
             ["Runtime", "Model id", "Display name", "Status", "Registry match", "Action"],
             model_rows,
-            empty_message="No inventory refresh has run yet.",
+            empty_message=(
+                "No inventory refresh has run yet."
+                if not result
+                else "No detected models match these filters."
+            ),
         ),
         checks=_table(
             ["Check", "Status", "Exit", "Command", "Output"],
@@ -1201,6 +1487,130 @@ def _filter_summaries(rows, filters):
     return filtered
 
 
+def _run_filter_values(query):
+    return {
+        "q": _query_value(query, "q"),
+        "backend": _query_value(query, "backend"),
+        "label": _query_value(query, "label"),
+        "status": _query_value(query, "status"),
+    }
+
+
+def _matches_run_search(row, search):
+    if not search:
+        return True
+    haystack = " ".join(
+        str(row[field] or "")
+        for field in (
+            "model_name",
+            "model_family",
+            "provider",
+            "backend",
+            "format",
+            "quantization",
+            "final_label",
+            "score_status",
+            "stability_notes",
+            "run_notes",
+        )
+    )
+    return search.lower() in haystack.lower()
+
+
+def _filter_runs(rows, filters):
+    filtered = []
+    for row in rows:
+        if filters["backend"] and row["backend"] != filters["backend"]:
+            continue
+        if filters["label"] and row["final_label"] != filters["label"]:
+            continue
+        if filters["status"] and row["score_status"] != filters["status"]:
+            continue
+        if not _matches_run_search(row, filters["q"]):
+            continue
+        filtered.append(row)
+    return filtered
+
+
+def _score_filter_values(query):
+    return {
+        "q": _query_value(query, "q"),
+        "label": _query_value(query, "label"),
+        "status": _query_value(query, "status"),
+    }
+
+
+def _matches_score_search(row, search):
+    if not search:
+        return True
+    haystack = " ".join(
+        str(row[field] or "")
+        for field in (
+            "model_name",
+            "provider",
+            "backend",
+            "quantization",
+            "final_label",
+            "score_status",
+        )
+    )
+    return search.lower() in haystack.lower()
+
+
+def _filter_scores(rows, filters):
+    filtered = []
+    for row in rows:
+        if filters["label"] and row["final_label"] != filters["label"]:
+            continue
+        if filters["status"] and row["score_status"] != filters["status"]:
+            continue
+        if not _matches_score_search(row, filters["q"]):
+            continue
+        filtered.append(row)
+    return filtered
+
+
+def _storage_filter_values(query):
+    return {
+        "q": _query_value(query, "q"),
+        "decision": _query_value(query, "decision"),
+        "keep": _query_value(query, "keep"),
+    }
+
+
+def _matches_storage_search(row, search):
+    if not search:
+        return True
+    haystack = " ".join(
+        str(row[field] or "")
+        for field in (
+            "model_name",
+            "model_family",
+            "provider",
+            "decision",
+            "best_use_case",
+            "weakness",
+            "retest_condition",
+        )
+    )
+    return search.lower() in haystack.lower()
+
+
+def _filter_storage_decisions(rows, filters):
+    filtered = []
+    for row in rows:
+        if filters["decision"] and row["decision"] != filters["decision"]:
+            continue
+        if filters["keep"] == "yes" and row["keep_installed"] != 1:
+            continue
+        if filters["keep"] == "no" and row["keep_installed"] != 0:
+            continue
+        if not _matches_storage_search(row, filters["q"]):
+            continue
+        filtered.append(row)
+    return filtered
+
+
 def _overview_filters(rows, filters):
     label_options = "".join(
         _option(label, label, filters["label"]) for label in _field_options(rows, "final_label")
@@ -1252,6 +1662,150 @@ def _overview_filters(rows, filters):
         any_keep=_option("", "Any", filters["keep"]),
         keep_yes=_option("yes", "Keep", filters["keep"]),
         keep_no=_option("no", "Not kept", filters["keep"]),
+        clear_link=clear_link,
+    )
+
+
+def _runs_filters(rows, filters):
+    backend_options = "".join(
+        _option(backend, backend, filters["backend"])
+        for backend in _field_options(rows, "backend")
+    )
+    label_options = "".join(
+        _option(label, label, filters["label"]) for label in _field_options(rows, "final_label")
+    )
+    status_options = "".join(
+        _option(status, status, filters["status"])
+        for status in _field_options(rows, "score_status")
+    )
+    clear_link = '<a class="clear-link" href="/runs">Clear</a>' if any(filters.values()) else ""
+    return """
+    <form class="filters" method="get" action="/runs">
+      <div class="field field-wide">
+        <label for="runs-q">Search</label>
+        <input id="runs-q" name="q" type="search" value="{q}">
+      </div>
+      <div class="field">
+        <label for="runs-backend">Backend</label>
+        <select id="runs-backend" name="backend">
+          {all_backends}
+          {backend_options}
+        </select>
+      </div>
+      <div class="field">
+        <label for="runs-label">Label</label>
+        <select id="runs-label" name="label">
+          {all_labels}
+          {label_options}
+        </select>
+      </div>
+      <div class="field">
+        <label for="runs-status">Score status</label>
+        <select id="runs-status" name="status">
+          {all_statuses}
+          {status_options}
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button type="submit">Apply</button>
+        {clear_link}
+      </div>
+    </form>
+    """.format(
+        q=_text(filters["q"]),
+        all_backends=_option("", "All backends", filters["backend"]),
+        backend_options=backend_options,
+        all_labels=_option("", "All labels", filters["label"]),
+        label_options=label_options,
+        all_statuses=_option("", "All statuses", filters["status"]),
+        status_options=status_options,
+        clear_link=clear_link,
+    )
+
+
+def _compare_filters(rows, filters):
+    label_options = "".join(
+        _option(label, label, filters["label"]) for label in _field_options(rows, "final_label")
+    )
+    status_options = "".join(
+        _option(status, status, filters["status"])
+        for status in _field_options(rows, "score_status")
+    )
+    clear_link = '<a class="clear-link" href="/compare">Clear</a>' if any(filters.values()) else ""
+    return """
+    <form class="filters filters-compact" method="get" action="/compare">
+      <div class="field field-wide">
+        <label for="compare-q">Search</label>
+        <input id="compare-q" name="q" type="search" value="{q}">
+      </div>
+      <div class="field">
+        <label for="compare-label">Label</label>
+        <select id="compare-label" name="label">
+          {all_labels}
+          {label_options}
+        </select>
+      </div>
+      <div class="field">
+        <label for="compare-status">Score status</label>
+        <select id="compare-status" name="status">
+          {all_statuses}
+          {status_options}
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button type="submit">Apply</button>
+        {clear_link}
+      </div>
+    </form>
+    """.format(
+        q=_text(filters["q"]),
+        all_labels=_option("", "All labels", filters["label"]),
+        label_options=label_options,
+        all_statuses=_option("", "All statuses", filters["status"]),
+        status_options=status_options,
+        clear_link=clear_link,
+    )
+
+
+def _storage_filters(rows, filters):
+    decision_options = "".join(
+        _option(decision, decision, filters["decision"])
+        for decision in _field_options(rows, "decision")
+    )
+    clear_link = '<a class="clear-link" href="/storage">Clear</a>' if any(filters.values()) else ""
+    return """
+    <form class="filters filters-compact" method="get" action="/storage">
+      <div class="field field-wide">
+        <label for="storage-q">Search</label>
+        <input id="storage-q" name="q" type="search" value="{q}">
+      </div>
+      <div class="field">
+        <label for="storage-decision">Decision</label>
+        <select id="storage-decision" name="decision">
+          {all_decisions}
+          {decision_options}
+        </select>
+      </div>
+      <div class="field">
+        <label for="storage-keep">Keep installed</label>
+        <select id="storage-keep" name="keep">
+          {any_keep}
+          {keep_yes}
+          {keep_no}
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button type="submit">Apply</button>
+        {clear_link}
+      </div>
+    </form>
+    """.format(
+        q=_text(filters["q"]),
+        all_decisions=_option("", "All decisions", filters["decision"]),
+        decision_options=decision_options,
+        any_keep=_option("", "Any", filters["keep"]),
+        keep_yes=_option("yes", "Yes", filters["keep"]),
+        keep_no=_option("no", "No", filters["keep"]),
         clear_link=clear_link,
     )
 
@@ -1360,6 +1914,9 @@ def _layout(title, current_path, body):
     }}
     .filters-compact {{
       grid-template-columns: minmax(220px, 2fr) repeat(2, minmax(140px, 1fr)) auto;
+    }}
+    .filters-wide {{
+      grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(140px, 1fr)) auto;
     }}
     .field label {{
       display: block;
@@ -1509,7 +2066,7 @@ def _layout(title, current_path, body):
       font-size: 12px;
     }}
     .radar-table {{
-      min-width: 1120px;
+      min-width: 1320px;
     }}
     .radar-table th:nth-child(1),
     .radar-table td:nth-child(1) {{
@@ -1527,8 +2084,16 @@ def _layout(title, current_path, body):
     .radar-table td:nth-child(4) {{
       width: 220px;
     }}
+    .radar-table th:nth-child(6),
+    .radar-table td:nth-child(6) {{
+      width: 260px;
+    }}
     .radar-table th:nth-child(7),
     .radar-table td:nth-child(7) {{
+      width: 190px;
+    }}
+    .radar-table th:nth-child(8),
+    .radar-table td:nth-child(8) {{
       width: 190px;
     }}
     .project-table {{
@@ -1915,10 +2480,13 @@ def _lab(
     return _layout("Lab Dashboard", "/lab", body)
 
 
-def _runs(conn):
+def _runs(conn, query=None):
     rows = []
     all_runs = db.list_runs(conn)
-    for row in _real_rows(all_runs):
+    runs = _real_rows(all_runs)
+    filters = _run_filter_values(query or {})
+    filtered_runs = _filter_runs(runs, filters)
+    for row in filtered_runs:
         rows.append(
             [
                 _text(row["date_tested"]),
@@ -1938,8 +2506,20 @@ def _runs(conn):
                 _text(row["stability_notes"]),
             ]
         )
-    body = "{}<h2>Model Runs</h2>{}".format(
-        _real_data_notice(len(_demo_rows(all_runs))),
+    body = """
+    {notice}
+    {filters}
+    <h2>Model Runs{filtered_count}</h2>
+    {table}
+    """.format(
+        notice=_real_data_notice(len(_demo_rows(all_runs))),
+        filters=_runs_filters(runs, filters),
+        filtered_count=(
+            " ({} of {})".format(len(filtered_runs), len(runs))
+            if any(filters.values())
+            else ""
+        ),
+        table=
         _table(
             [
                 "Date",
@@ -1957,19 +2537,22 @@ def _runs(conn):
                 "Stability",
             ],
             rows,
-            empty_message="No real benchmark runs imported yet.",
-        )
+            empty_message="No real benchmark runs match these filters.",
+        ),
     )
     return _layout("Model Runs", "/runs", body)
 
 
-def _compare(conn):
+def _compare(conn, query=None):
     headers = ["Model", "Score", "Status", "Label"] + [
         field.replace("_", " ").title() for field in METRIC_FIELDS
     ]
     rows = []
     all_scores = db.list_score_details(conn)
-    for row in _real_rows(all_scores):
+    scores = _real_rows(all_scores)
+    filters = _score_filter_values(query or {})
+    filtered_scores = _filter_scores(scores, filters)
+    for row in filtered_scores:
         cells = [
             '<a href="/models/{id}">{name}</a>'.format(
                 id=row["model_id"], name=_text(row["model_name"])
@@ -1980,9 +2563,24 @@ def _compare(conn):
         ]
         cells.extend(_number(row[field], 0) for field in METRIC_FIELDS)
         rows.append(cells)
-    body = "{}<h2>Compare Models</h2>{}".format(
-        _real_data_notice(len(_demo_rows(all_scores))),
-        _table(headers, rows, empty_message="No real confirmed or draft score rows imported yet."),
+    body = """
+    {notice}
+    {filters}
+    <h2>Compare Models{filtered_count}</h2>
+    {table}
+    """.format(
+        notice=_real_data_notice(len(_demo_rows(all_scores))),
+        filters=_compare_filters(scores, filters),
+        filtered_count=(
+            " ({} of {})".format(len(filtered_scores), len(scores))
+            if any(filters.values())
+            else ""
+        ),
+        table=_table(
+            headers,
+            rows,
+            empty_message="No real confirmed or draft score rows match these filters.",
+        ),
     )
     return _layout("Compare Models", "/compare", body)
 
@@ -1996,6 +2594,11 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
     watchlist_count = sum(1 for row in candidates if row.get("status") == "watchlist")
     linked_count = sum(1 for row in candidates if row.get("benchmark_run_id"))
     specialty_count = sum(1 for row in candidates if _is_specialty_candidate(row))
+    security_review_count = sum(
+        1
+        for row in candidates
+        if _candidate_security_status(row) in ("needs_review", "unreviewed")
+    )
 
     rows = []
     for row in filtered_candidates:
@@ -2044,6 +2647,7 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
                 metadata,
                 _candidate_availability(row),
                 context,
+                _candidate_security(row),
                 _text(row.get("proposed_eval")),
                 links,
             ]
@@ -2056,6 +2660,11 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
       <div class="stat"><div class="label">Watchlist</div><div class="value">{watchlist}</div></div>
       <div class="stat"><div class="label">Linked artifacts</div><div class="value">{linked}</div></div>
       <div class="stat"><div class="label">Abliterated / Dolphin</div><div class="value">{specialty}</div></div>
+      <div class="stat"><div class="label">Security reviews needed</div><div class="value">{security}</div></div>
+    </section>
+    <section class="panel" style="margin-bottom:16px">
+      <h2>Security Gate</h2>
+      <p>Radar links are review metadata only. A candidate is not approved to download, install, update, or run until its source, license, artifact path, and local runtime isolation are reviewed.</p>
     </section>
     <section>
       {filters}
@@ -2068,6 +2677,7 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
         watchlist=watchlist_count,
         linked=linked_count,
         specialty=specialty_count,
+        security=security_review_count,
         filters=_radar_filters(candidates, filters),
         filtered_count=(
             " ({} of {})".format(len(filtered_candidates), len(candidates))
@@ -2081,6 +2691,7 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
                 "Metadata",
                 "Availability",
                 "Review notes",
+                "Security gate",
                 "Proposed eval",
                 "Links",
             ],
@@ -2092,18 +2703,25 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
     return _layout("Radar Candidates", "/radar", body)
 
 
-def _specialty(conn, registry_path=CANDIDATE_REGISTRY_PATH):
+def _specialty(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
     candidates = [
         row
         for row in _load_radar_candidates(registry_path)
         if _is_specialty_candidate(row)
     ]
+    filters = _specialty_filter_values(query or {})
+    filtered_candidates = _filter_specialty_candidates(candidates, filters)
     model_links = _dashboard_model_links(conn)
     ready_count = sum(1 for row in candidates if row.get("status") == "ready_for_eval")
     watchlist_count = sum(1 for row in candidates if row.get("status") == "watchlist")
+    security_review_count = sum(
+        1
+        for row in candidates
+        if _candidate_security_status(row) in ("needs_review", "unreviewed")
+    )
 
     rows = []
-    for row in candidates:
+    for row in filtered_candidates:
         model_id = model_links.get(row.get("model_name", "").lower())
         model_name = _text(row.get("model_name"))
         if model_id:
@@ -2130,6 +2748,7 @@ def _specialty(conn, registry_path=CANDIDATE_REGISTRY_PATH):
                     why=_text(row.get("why_interesting")),
                     risk=_text(row.get("risk_notes")),
                 ),
+                _candidate_security(row),
                 _text(row.get("proposed_eval")),
                 _artifact_link(row.get("benchmark_run_id")),
             ]
@@ -2140,28 +2759,40 @@ def _specialty(conn, registry_path=CANDIDATE_REGISTRY_PATH):
       <div class="stat"><div class="label">Specialty candidates</div><div class="value">{total}</div></div>
       <div class="stat"><div class="label">Ready for eval</div><div class="value">{ready}</div></div>
       <div class="stat"><div class="label">Watchlist</div><div class="value">{watchlist}</div></div>
+      <div class="stat"><div class="label">Security reviews needed</div><div class="value">{security}</div></div>
     </section>
     <section class="panel" style="margin-bottom:16px">
       <h2>Abliterated / Dolphin Models</h2>
       <p>This tab collects specialty radar candidates for refusal-boundary and Dolphin-style model testing. They remain candidates until local evidence, scores, and decisions exist.</p>
+      <p>Low-refusal or uncensored claims are not safety approval. Download and runtime approval stay blocked until the security gate is reviewed.</p>
       <p>The same rows remain searchable in <a href="/radar?q=abliterated">Radar Candidates</a>.</p>
     </section>
+    {filters}
+    <h2>Specialty Candidates{filtered_count}</h2>
     {table}
     """.format(
         total=len(candidates),
         ready=ready_count,
         watchlist=watchlist_count,
+        security=security_review_count,
+        filters=_specialty_filters(candidates, filters),
+        filtered_count=(
+            " ({} of {})".format(len(filtered_candidates), len(candidates))
+            if any(filters.values())
+            else ""
+        ),
         table=_table(
             [
                 "Candidate",
                 "Lane",
                 "Availability",
                 "Review notes",
+                "Security gate",
                 "Proposed eval",
                 "Artifact",
             ],
             rows,
-            empty_message="No abliterated or Dolphin candidates are registered yet.",
+            empty_message="No abliterated or Dolphin candidates match these filters.",
             table_class="radar-table",
         ),
     )
@@ -2438,10 +3069,13 @@ def _model_detail(conn, model_id):
     return _layout("Model Detail", "", body)
 
 
-def _storage(conn):
+def _storage(conn, query=None):
     rows = []
     all_decisions = db.list_decisions(conn)
-    for row in _real_rows(all_decisions):
+    decisions = _real_rows(all_decisions)
+    filters = _storage_filter_values(query or {})
+    filtered_decisions = _filter_storage_decisions(decisions, filters)
+    for row in filtered_decisions:
         rows.append(
             [
                 '<a href="/models/{id}">{name}</a>'.format(
@@ -2461,14 +3095,22 @@ def _storage(conn):
       <p>This is a benchmark decision log. It is not an installed-model inventory scanner.</p>
       <p>Use <a href="/inventory">Installed Models</a> to check local LM Studio and Ollama inventory.</p>
     </section>
+    {filters}
+    <h2>Decision Log{filtered_count}</h2>
     {table}
     """.format(
         notice=_real_data_notice(len(_demo_rows(all_decisions))),
+        filters=_storage_filters(decisions, filters),
+        filtered_count=(
+            " ({} of {})".format(len(filtered_decisions), len(decisions))
+            if any(filters.values())
+            else ""
+        ),
         table=
         _table(
             ["Model", "Decision", "Keep installed", "Best use case", "Weakness", "Retest"],
             rows,
-            empty_message="No real storage/install decisions logged yet.",
+            empty_message="No real storage/install decisions match these filters.",
         ),
     )
     return _layout("Storage / Install Status", "/storage", body)
@@ -2615,11 +3257,12 @@ def make_handler(
             if path == "/":
                 return _overview(conn, query)
             if path == "/runs":
-                return _runs(conn)
+                return _runs(conn, query)
             if path == "/compare":
-                return _compare(conn)
+                return _compare(conn, query)
             if path == "/inventory":
                 return _inventory(
+                    query=query,
                     inventory_result=inventory_cache["result"],
                     action_token=action_token,
                     enable_run_tests=enable_run_tests,
@@ -2628,11 +3271,11 @@ def make_handler(
             if path == "/radar":
                 return _radar(conn, query)
             if path == "/specialty":
-                return _specialty(conn)
+                return _specialty(conn, query)
             if path == "/projects":
                 return _projects(query)
             if path == "/storage":
-                return _storage(conn)
+                return _storage(conn, query)
             if path == "/reports":
                 return _reports(conn, database_path)
             if path == "/demo":

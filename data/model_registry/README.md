@@ -35,6 +35,17 @@ sources. These links are metadata for review and should not be treated as
 download or install instructions unless the user separately approves an install
 task.
 
+Candidate rows also carry a lightweight security gate:
+
+- `security_review_status` says whether the candidate is unreviewed, needs
+  review, locally reviewed, reviewed, or blocked.
+- `download_approval` defaults to `not_approved` for external candidates. A
+  promising model is still not approved to download or update until a specific
+  artifact, license, provenance, and local runtime path are reviewed.
+- `security_notes` and `isolation_notes` capture due diligence such as source
+  trust, checksum/hash needs, file-format risk, custom-code risk, and the local
+  runtime path to use.
+
 Rows may also include `local_runner`, `local_model_id`, and `default_endpoint`
 for models that are already available in the local runtime inventory. These
 fields power dashboard run-test buttons when the local server is launched with

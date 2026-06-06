@@ -15,6 +15,10 @@ model candidates before they enter the approved local registry.
 - Do not edit `data/model_registry/candidates.csv` until the user approves the
   specific candidates.
 - Do not convert source claims into dashboard scores or decisions.
+- Do not treat popularity, stars, likes, downloads, or benchmark claims as a
+  security review.
+- Do not run model-card code, custom Python loaders, install scripts, notebooks,
+  or repository code while preparing a recommendation.
 
 ## Workflow
 
@@ -31,8 +35,26 @@ model candidates before they enter the approved local registry.
    under `automations/ai-lab-radar/reports/`.
 4. Assign each candidate one disposition: `ready_for_eval`, `watchlist`, `skip`,
    or `needs_more_info`.
-5. Leave `data/model_registry` unchanged until approval.
-6. After approval, normalize only approved candidates into the registry.
+5. Assign each candidate conservative security fields:
+   `security_review_status=needs_review`,
+   `download_approval=not_approved`, license review state, provenance state,
+   security notes, and isolation notes.
+6. Leave `data/model_registry` unchanged until approval.
+7. After approval, normalize only approved candidates into the registry.
+
+## Security Screening Checklist
+
+For each candidate, capture what is known and what remains unknown:
+
+- Publisher/source: official page, mirror, quantizer, or user-local artifact.
+- Artifact format: GGUF, MLX, Safetensors, Ollama, LM Studio, or custom.
+- License: explicit license and any unresolved use restrictions.
+- Runtime path: local runtime that loads weights without executing upstream code.
+- Hash/release evidence: checksum, release metadata, or model-card file listing
+  when available.
+- Red flags: custom code requirement, pickled weights, install scripts,
+  notebooks, unclear publisher chain, missing license, or mismatched local
+  inventory name.
 
 ## Validation
 

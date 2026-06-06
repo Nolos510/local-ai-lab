@@ -330,6 +330,8 @@ def _run_lms_chat(lms_path, model_id, prompt, timeout, ttl):
         "--stats",
         "--ttl",
         str(ttl),
+        "--yes",
+        "--dont-fetch-catalog",
     ]
     try:
         result = subprocess.run(
@@ -795,8 +797,10 @@ def run_lmstudio_cli(args):
         "benchmark_run_id={}".format(metadata["benchmark_run_id"]),
         "model_id={}".format(args.model_id),
         "started_at={}".format(_utc_now()),
+        "command_shape=lms chat <model-id> -p <prompt> --stats --ttl {} --yes --dont-fetch-catalog".format(args.ttl),
         "",
     ]
+    log_path.write_text("\n".join(log_lines), encoding="utf-8")
     for prompt in prompt_set["prompts"]:
         started_at = _utc_now()
         started = time.monotonic()
@@ -847,13 +851,13 @@ def run_lmstudio_cli(args):
                 "",
             ]
         )
+        log_path.write_text("\n".join(log_lines), encoding="utf-8")
 
     _write_jsonl(raw_path, records)
-    log_path.write_text("\n".join(log_lines), encoding="utf-8")
     evidence_path = run_dir / "evidence.md"
     with evidence_path.open("a", encoding="utf-8") as handle:
         handle.write("\n## LM Studio CLI Runner\n\n")
-        handle.write("- Command shape: `lms chat <model-id> -p <prompt> --stats --ttl {}`\n".format(args.ttl))
+        handle.write("- Command shape: `lms chat <model-id> -p <prompt> --stats --ttl {} --yes --dont-fetch-catalog`\n".format(args.ttl))
         handle.write("- Model id: `{}`\n".format(args.model_id))
         handle.write("- Completed at: `{}`\n".format(_utc_now()))
         handle.write("- Prompt records: `{}`\n".format(len(records)))

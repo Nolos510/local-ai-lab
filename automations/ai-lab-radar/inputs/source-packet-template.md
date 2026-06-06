@@ -45,6 +45,12 @@ Repeat this section for each candidate named in the packet.
 | Claimed context window | unknown |
 | License | unknown |
 | Local artifact status | unknown |
+| Security review status | `needs_review` |
+| Download approval | `not_approved` |
+| License review status | `unknown` |
+| Provenance status | `source_metadata_only` |
+| Security notes |  |
+| Isolation notes | Prefer local runtimes that do not execute upstream code. |
 | Hardware fit | unknown |
 | Claimed strengths |  |
 | Risks or caveats |  |
@@ -60,3 +66,9 @@ Repeat this section for each candidate named in the packet.
   exists.
 - Do not add install instructions unless the user separately asks for a local
   install plan.
+- Treat GitHub/Hugging Face links as metadata only. Do not run model-card code,
+  custom loaders, install scripts, notebooks, or repository code during radar
+  review.
+- Default new external candidates to `download_approval=not_approved` until a
+  specific artifact, license, provenance, checksum/hash evidence, and local
+  runtime path are reviewed.

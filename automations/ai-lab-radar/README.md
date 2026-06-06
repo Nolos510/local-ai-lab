@@ -62,14 +62,36 @@ of writing `*no-new-approved-source-packet.md` into the tracked report set.
 
 1. Collect source notes and record where they came from.
 2. Normalize each candidate using `candidate-schema.md`.
-3. Mark the candidate as `watchlist`, `ready_for_eval`, `skip`, or
+3. Record the candidate security gate: provenance, license review state,
+   download approval, artifact/file-format risk, and local runtime isolation.
+4. Mark the candidate as `watchlist`, `ready_for_eval`, `skip`, or
    `needs_more_info`.
-4. Recommend the next local action without downloading or running the model.
-5. If a model is ready for evaluation, point it at
+5. Recommend the next local action without downloading or running the model.
+6. If a model is ready for evaluation, point it at
    `evals/local-llm-benchmark/SPEC.md` and `skills/local-llm-eval`.
 
 For External Radar, insert an approval gate between steps 1 and 2. The first
 packet/report is candidate-only and must not edit `data/model_registry`.
+
+## Security Due Diligence
+
+Radar recommendations must separate interest from approval. A candidate can be
+interesting and still have `download_approval=not_approved`.
+
+Before a model is approved for download, update, or execution, record:
+
+- source provenance and whether the publisher/artifact source is explicit;
+- license posture, without inferring compatibility from popularity;
+- file format and runtime path, with GGUF, MLX, Safetensors, LM Studio, Ollama,
+  and llama.cpp preferred over custom code paths;
+- checksum/hash, release, or artifact evidence when available;
+- whether any model-card code, custom loader, script, notebook, or repo code
+  would need to run; and
+- isolation guidance for the local benchmark run.
+
+Do not run untrusted code, notebooks, install scripts, or custom loaders as part
+of radar review. If a candidate requires that path, mark it `blocked` or
+`needs_review` until the user explicitly approves a separate security task.
 
 ## Validation
 

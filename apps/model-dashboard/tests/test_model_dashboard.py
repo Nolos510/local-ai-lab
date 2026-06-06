@@ -35,6 +35,12 @@ CANDIDATE_FIELDS = [
     "why_interesting",
     "risk_notes",
     "proposed_eval",
+    "security_review_status",
+    "download_approval",
+    "license_review_status",
+    "provenance_status",
+    "security_notes",
+    "isolation_notes",
 ]
 PROJECT_FIELDS = [
     "repo_id",
@@ -80,6 +86,12 @@ def write_candidate_registry(path, extra_rows=None):
             "why_interesting": "Already installed for a local retest.",
             "risk_notes": "Needs scored evidence.",
             "proposed_eval": "Run the local benchmark prompt set.",
+            "security_review_status": "local_inventory_reviewed",
+            "download_approval": "not_needed_local",
+            "license_review_status": "needs_review",
+            "provenance_status": "local_inventory",
+            "security_notes": "Already installed locally; no new download is approved.",
+            "isolation_notes": "Run through the configured local runner only.",
         },
         {
             "candidate_id": "20260603-watch-local",
@@ -102,6 +114,12 @@ def write_candidate_registry(path, extra_rows=None):
             "why_interesting": "Interesting but not ready.",
             "risk_notes": "Runtime unknown.",
             "proposed_eval": "Confirm local artifact first.",
+            "security_review_status": "needs_review",
+            "download_approval": "not_approved",
+            "license_review_status": "unknown",
+            "provenance_status": "unverified_local_note",
+            "security_notes": "Publisher, license, artifact path, and checksum are unknown.",
+            "isolation_notes": "Do not install or run until provenance is reviewed.",
         },
     ]
     if extra_rows:
@@ -359,6 +377,30 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("https://ollama.com/library/ready-local", html)
             self.assertNotIn("Watch Local 13B", html)
 
+    def test_radar_shows_and_filters_security_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(registry_path)
+
+            with db.connect(db_path) as conn:
+                html = server._radar(
+                    conn,
+                    {"security": ["needs_review"]},
+                    registry_path=registry_path,
+                )
+
+            self.assertIn("Security Gate", html)
+            self.assertIn("Radar Candidates (1 of 2)", html)
+            self.assertIn("Watch Local 13B", html)
+            self.assertIn("Security gate", html)
+            self.assertIn("Download", html)
+            self.assertIn("not_approved", html)
+            self.assertIn("Publisher, license, artifact path, and checksum are unknown.", html)
+            self.assertNotIn("Ready Local 7B", html)
+
     def test_radar_missing_registry_renders_empty_state(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "dashboard.sqlite"
@@ -499,6 +541,84 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("decision: keep", artifact_html)
             self.assertIn("Loop Link Model", artifact_html)
 
+    def test_runs_compare_and_storage_filters_real_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with db.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO models (id, model_name, model_family, provider)
+                    VALUES (1, 'Qwen Filter Model', 'Qwen', 'local')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO models (id, model_name, model_family, provider)
+                    VALUES (2, 'Research Filter Model', 'Research', 'local')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO model_runs (id, model_id, date_tested, backend, run_notes)
+                    VALUES (1, 1, '2026-06-05', 'LM Studio CLI', 'benchmark_run_id=qwen-filter')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO model_runs (id, model_id, date_tested, backend, run_notes)
+                    VALUES (2, 2, '2026-06-05', 'Ollama', 'benchmark_run_id=research-filter')
+                    """
+                )
+                score_fields = ", ".join(METRIC_FIELDS)
+                score_values = ", ".join("80" for _ in METRIC_FIELDS)
+                conn.execute(
+                    """
+                    INSERT INTO eval_scores (
+                        id, run_id, {fields}, total_score, final_label, score_status
+                    )
+                    VALUES (1, 1, {values}, 80, 'CODING_SPECIALIST', 'confirmed')
+                    """.format(fields=score_fields, values=score_values)
+                )
+                conn.execute(
+                    """
+                    INSERT INTO eval_scores (
+                        id, run_id, {fields}, total_score, final_label, score_status
+                    )
+                    VALUES (2, 2, {values}, 80, 'RESEARCH_SPECIALIST', 'draft')
+                    """.format(fields=score_fields, values=score_values)
+                )
+                conn.execute(
+                    """
+                    INSERT INTO decisions (
+                        id, model_id, decision, keep_installed, best_use_case
+                    )
+                    VALUES (1, 1, 'keep', 1, 'Coding')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO decisions (
+                        id, model_id, decision, keep_installed, best_use_case
+                    )
+                    VALUES (2, 2, 'watchlist', 0, 'Research')
+                    """
+                )
+
+                runs_html = server._runs(conn, {"backend": ["LM Studio CLI"]})
+                compare_html = server._compare(conn, {"status": ["draft"]})
+                storage_html = server._storage(conn, {"keep": ["yes"]})
+
+            self.assertIn("Model Runs (1 of 2)", runs_html)
+            self.assertIn("Qwen Filter Model", runs_html)
+            self.assertNotIn("Research Filter Model", runs_html)
+            self.assertIn("Compare Models (1 of 2)", compare_html)
+            self.assertIn("Research Filter Model", compare_html)
+            self.assertNotIn("Qwen Filter Model", compare_html)
+            self.assertIn("Decision Log (1 of 2)", storage_html)
+            self.assertIn("Qwen Filter Model", storage_html)
+            self.assertNotIn("Research Filter Model", storage_html)
+
     def test_lab_dashboard_shows_product_loop_and_next_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -593,7 +713,41 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("Installed Models", html)
         self.assertIn('action="/actions/refresh-inventory"', html)
         self.assertIn("Last refresh: not checked yet", html)
+        self.assertIn('method="get" action="/inventory"', html)
         self.assertIn("No inventory refresh has run yet.", html)
+
+    def test_inventory_filters_detected_models_by_runtime_and_registry_match(self):
+        result = {
+            "checked_at": "2026-06-05T12:00:00-07:00",
+            "checks": [],
+            "models": [
+                {
+                    "runtime": "LM Studio",
+                    "model_id": "qwen3-coder-30b-a3b-instruct-mlx",
+                    "display_name": "Qwen3 Coder 30B",
+                    "status": "loaded",
+                },
+                {
+                    "runtime": "Ollama",
+                    "model_id": "unregistered:latest",
+                    "display_name": "Unregistered",
+                    "status": "installed",
+                },
+            ],
+        }
+
+        html = server._inventory(
+            {"runtime": ["LM Studio"], "match": ["registered"]},
+            inventory_result=result,
+            action_token="fixture-token",
+            enable_run_tests=True,
+        )
+
+        self.assertIn("Qwen3 Coder 30B", html)
+        self.assertIn("20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit", html)
+        self.assertIn("Run Test", html)
+        self.assertIn("Detected Models (1 of 2)", html)
+        self.assertNotIn("unregistered:latest", html)
 
     def test_inventory_parses_lmstudio_models_and_loaded_status(self):
         models = server._parse_lmstudio_inventory(
@@ -659,6 +813,12 @@ class ModelDashboardQaTests(unittest.TestCase):
                         "why_interesting": "Compact low-refusal candidate for local behavior testing.",
                         "risk_notes": "Experimental refusal behavior must be benchmarked before use.",
                         "proposed_eval": "Run local benchmark with refusal-boundary review notes.",
+                        "security_review_status": "blocked",
+                        "download_approval": "blocked",
+                        "license_review_status": "needs_review",
+                        "provenance_status": "source_metadata_only",
+                        "security_notes": "Synthetic blocked specialty candidate.",
+                        "isolation_notes": "Do not run.",
                     },
                     {
                         "candidate_id": "20260605-dolphin3-llama31-8b-gguf",
@@ -673,6 +833,12 @@ class ModelDashboardQaTests(unittest.TestCase):
                         "why_interesting": "Local Dolphin baseline for agentic assistant testing.",
                         "risk_notes": "License and low-refusal behavior need review.",
                         "proposed_eval": "Run local benchmark and compare against Qwen r2.",
+                        "security_review_status": "needs_review",
+                        "download_approval": "not_approved",
+                        "license_review_status": "needs_review",
+                        "provenance_status": "source_metadata_only",
+                        "security_notes": "Synthetic Dolphin candidate needs security review.",
+                        "isolation_notes": "Use local runtime only after approval.",
                     },
                 ],
             )
@@ -685,6 +851,16 @@ class ModelDashboardQaTests(unittest.TestCase):
                     project_registry_path=tmp_path / "missing-projects.csv",
                 )
                 specialty_html = server._specialty(conn, registry_path=registry_path)
+                dolphin_html = server._specialty(
+                    conn,
+                    {"lane": ["Dolphin"]},
+                    registry_path=registry_path,
+                )
+                security_html = server._specialty(
+                    conn,
+                    {"security": ["needs_review"]},
+                    registry_path=registry_path,
+                )
 
             self.assertIn("Abliterated / Dolphin Lane", html)
             self.assertIn("Qwen3-8B-Abliterated-GGUF", html)
@@ -695,6 +871,15 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Qwen3-8B-Abliterated-GGUF", specialty_html)
             self.assertIn("Dolphin3.0-Llama3.1-8B-GGUF", specialty_html)
             self.assertNotIn("Ready Local 7B", specialty_html)
+            self.assertIn("Specialty Candidates (1 of 2)", dolphin_html)
+            self.assertIn("Dolphin3.0-Llama3.1-8B-GGUF", dolphin_html)
+            self.assertNotIn("Qwen3-8B-Abliterated-GGUF", dolphin_html)
+            self.assertIn("Security gate", specialty_html)
+            self.assertIn("Download", specialty_html)
+            self.assertIn("blocked", specialty_html)
+            self.assertIn("Specialty Candidates (1 of 2)", security_html)
+            self.assertIn("Dolphin3.0-Llama3.1-8B-GGUF", security_html)
+            self.assertNotIn("Qwen3-8B-Abliterated-GGUF", security_html)
 
     def test_projects_filters_project_registry_by_category(self):
         with tempfile.TemporaryDirectory() as tmp:
