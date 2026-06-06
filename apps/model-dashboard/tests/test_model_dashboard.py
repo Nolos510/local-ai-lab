@@ -41,6 +41,7 @@ CANDIDATE_FIELDS = [
     "provenance_status",
     "security_notes",
     "isolation_notes",
+    "security_review_path",
 ]
 PROJECT_FIELDS = [
     "repo_id",
@@ -92,6 +93,7 @@ def write_candidate_registry(path, extra_rows=None):
             "provenance_status": "local_inventory",
             "security_notes": "Already installed locally; no new download is approved.",
             "isolation_notes": "Run through the configured local runner only.",
+            "security_review_path": "",
         },
         {
             "candidate_id": "20260603-watch-local",
@@ -120,6 +122,9 @@ def write_candidate_registry(path, extra_rows=None):
             "provenance_status": "unverified_local_note",
             "security_notes": "Publisher, license, artifact path, and checksum are unknown.",
             "isolation_notes": "Do not install or run until provenance is reviewed.",
+            "security_review_path": (
+                "automations/ai-lab-radar/security-reviews/watch-local-13b.md"
+            ),
         },
     ]
     if extra_rows:
@@ -175,6 +180,75 @@ def write_project_registry(path):
         writer = csv.DictWriter(handle, fieldnames=PROJECT_FIELDS)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def write_dashboard_import_fixture(artifact_dir, run_id="20260605-import-fixture"):
+    import_dir = artifact_dir / "dashboard-import"
+    import_dir.mkdir(parents=True)
+    rows_by_table = {
+        "models": [
+            {
+                "id": "101",
+                "model_name": "Import Fixture Model",
+                "model_family": "Import",
+                "provider": "local",
+                "params_b": "24",
+                "license": "reviewed",
+                "source_url": "local-registry://import-fixture",
+                "notes": "Fixture artifact for import action tests.",
+            }
+        ],
+        "model_runs": [
+            {
+                "id": "202",
+                "model_id": "101",
+                "date_tested": "2026-06-05",
+                "backend": "LM Studio CLI",
+                "format": "MLX",
+                "quantization": "4bit",
+                "context_window": "4096",
+                "hardware": "test hardware",
+                "temperature": "0.2",
+                "top_p": "0.9",
+                "tokens_per_sec": "42",
+                "ram_usage_gb": "32",
+                "stability_notes": "Fixture only.",
+                "run_notes": "benchmark_run_id={} | artifact_import_test=yes".format(run_id),
+            }
+        ],
+        "eval_scores": [
+            {
+                "id": "303",
+                "run_id": "202",
+                **{field: "70" for field in METRIC_FIELDS},
+                "total_score": "70",
+                "final_label": "WATCHLIST",
+                "score_status": "confirmed",
+            }
+        ],
+        "decisions": [
+            {
+                "id": "404",
+                "model_id": "101",
+                "decision": "watchlist",
+                "keep_installed": "0",
+                "best_use_case": "Fixture import validation.",
+                "weakness": "Synthetic.",
+                "retest_condition": "Never.",
+                "created_at": "2026-06-05T12:00:00",
+            }
+        ],
+    }
+    for table_name, rows in rows_by_table.items():
+        with (import_dir / "{}.csv".format(table_name)).open(
+            "w",
+            newline="",
+            encoding="utf-8",
+        ) as handle:
+            writer = csv.DictWriter(handle, fieldnames=csv_io.TABLE_FIELDS[table_name])
+            writer.writeheader()
+            writer.writerows(rows)
+    return import_dir
 
 
 class ModelDashboardQaTests(unittest.TestCase):
@@ -398,6 +472,11 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Security gate", html)
             self.assertIn("Download", html)
             self.assertIn("not_approved", html)
+            self.assertIn("Review artifact", html)
+            self.assertIn(
+                "automations/ai-lab-radar/security-reviews/watch-local-13b.md",
+                html,
+            )
             self.assertIn("Publisher, license, artifact path, and checksum are unknown.", html)
             self.assertNotIn("Ready Local 7B", html)
 
@@ -435,6 +514,97 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Ready Local 7B", html)
             self.assertIn("not imported", html)
             self.assertIn("Artifact not found", missing_html)
+
+    def test_artifact_detail_renders_import_guidance_disabled_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            eval_results = tmp_path / "eval_results"
+            run_id = "20260603-ready-local"
+            artifact_dir = eval_results / run_id
+            artifact_dir.mkdir(parents=True)
+            write_dashboard_import_fixture(artifact_dir, run_id)
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(registry_path)
+
+            old_eval_results_dir = server.EVAL_RESULTS_DIR
+            try:
+                server.EVAL_RESULTS_DIR = eval_results
+                with db.connect(db_path) as conn:
+                    html = server._artifact_detail(
+                        conn,
+                        run_id,
+                        registry_path=registry_path,
+                        database_path=db_path,
+                    )
+            finally:
+                server.EVAL_RESULTS_DIR = old_eval_results_dir
+
+        self.assertIn("Dashboard Import", html)
+        self.assertIn("<button type=\"button\" disabled>Import Artifact</button>", html)
+        self.assertIn("--enable-import-actions", html)
+        self.assertIn("python3", html)
+        self.assertIn("apps/model-dashboard/run_dashboard.py", html)
+        self.assertIn("import-csv", html)
+        self.assertIn("dashboard-import/models.csv", html)
+        self.assertIn("report", html)
+
+    def test_artifact_import_action_imports_existing_dashboard_csvs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            eval_results = tmp_path / "eval_results"
+            run_id = "20260605-import-fixture"
+            artifact_dir = eval_results / run_id
+            artifact_dir.mkdir(parents=True)
+            write_dashboard_import_fixture(artifact_dir, run_id)
+
+            result = server._import_artifact(run_id, db_path, eval_results)
+
+            self.assertEqual(
+                result["counts"],
+                {
+                    "models": 1,
+                    "model_runs": 1,
+                    "eval_scores": 1,
+                    "decisions": 1,
+                },
+            )
+            with db.connect(db_path) as conn:
+                self.assertEqual(db.table_count(conn, "models"), 1)
+                self.assertEqual(db.table_count(conn, "model_runs"), 1)
+                self.assertEqual(db.table_count(conn, "eval_scores"), 1)
+                self.assertEqual(db.table_count(conn, "decisions"), 1)
+
+    def test_artifact_import_control_enabled_only_with_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            eval_results = tmp_path / "eval_results"
+            run_id = "20260605-import-fixture"
+            artifact_dir = eval_results / run_id
+            artifact_dir.mkdir(parents=True)
+            write_dashboard_import_fixture(artifact_dir, run_id)
+
+            disabled_html = server._artifact_import_control(
+                run_id,
+                enable_import_actions=False,
+                action_token="fixture-token",
+                eval_results_dir=eval_results,
+            )
+            enabled_html = server._artifact_import_control(
+                run_id,
+                enable_import_actions=True,
+                action_token="fixture-token",
+                eval_results_dir=eval_results,
+            )
+
+        self.assertIn("disabled", disabled_html)
+        self.assertIn("--enable-import-actions", disabled_html)
+        self.assertNotIn('method="post"', disabled_html)
+        self.assertIn('method="post" action="/actions/import-artifact"', enabled_html)
+        self.assertIn('name="token" value="fixture-token"', enabled_html)
+        self.assertIn('name="benchmark_run_id" value="20260605-import-fixture"', enabled_html)
 
     def test_dashboard_loop_links_imported_runs_to_artifacts_and_decisions(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -630,7 +800,7 @@ class ModelDashboardQaTests(unittest.TestCase):
             (artifact_dir / "raw_responses.jsonl").write_text(
                 '{"prompt_id": "LLMCORE-v0.1-001"}\n', encoding="utf-8"
             )
-            (artifact_dir / "dashboard-import").mkdir()
+            write_dashboard_import_fixture(artifact_dir, "20260603-ready-local")
 
             db.init_db(db_path, reset=True)
             write_candidate_registry(registry_path)
@@ -650,6 +820,9 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("/artifacts/20260603-ready-local", html)
             self.assertIn("Benchmark Artifacts", html)
             self.assertIn("Run button disabled", html)
+            self.assertIn("Import Artifact", html)
+            self.assertIn("--enable-import-actions", html)
+            self.assertIn("import-csv", html)
             self.assertIn("ready-local-7b", html)
 
     def test_lab_dashboard_can_enable_run_test_button_for_local_models(self):
@@ -749,6 +922,33 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("Detected Models (1 of 2)", html)
         self.assertNotIn("unregistered:latest", html)
 
+    def test_inventory_filesystem_only_rows_do_not_show_run_button(self):
+        result = {
+            "checked_at": "2026-06-05T12:00:00-07:00",
+            "checks": [],
+            "models": [
+                {
+                    "runtime": "LM Studio",
+                    "model_id": "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
+                    "display_name": "Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
+                    "status": "filesystem_only",
+                    "source_path": "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
+                },
+            ],
+        }
+
+        html = server._inventory(
+            {"status": ["filesystem_only"]},
+            inventory_result=result,
+            action_token="fixture-token",
+            enable_run_tests=True,
+        )
+
+        self.assertIn("filesystem_only", html)
+        self.assertIn("Filesystem-only; index/load in LM Studio first", html)
+        self.assertIn("20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit", html)
+        self.assertNotIn('action="/actions/run-test"', html)
+
     def test_inventory_parses_lmstudio_models_and_loaded_status(self):
         models = server._parse_lmstudio_inventory(
             """
@@ -757,7 +957,13 @@ class ModelDashboardQaTests(unittest.TestCase):
                 {
                   "modelKey": "qwen3-coder-30b-a3b-instruct-mlx",
                   "displayName": "Qwen3 Coder 30B",
+                  "path": "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
                   "quantization": {"name": "4bit", "bits": 4}
+                },
+                {
+                  "modelKey": "indexed-only-24b",
+                  "displayName": "Indexed Only 24B",
+                  "path": "example/Indexed-Only-24B"
                 }
               ]
             }
@@ -767,11 +973,35 @@ class ModelDashboardQaTests(unittest.TestCase):
             """,
         )
 
-        self.assertEqual(len(models), 1)
+        self.assertEqual(len(models), 2)
         self.assertEqual(models[0]["runtime"], "LM Studio")
         self.assertEqual(models[0]["model_id"], "qwen3-coder-30b-a3b-instruct-mlx")
         self.assertEqual(models[0]["status"], "loaded")
+        self.assertEqual(models[0]["source_path"], "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit")
+        self.assertEqual(models[1]["model_id"], "indexed-only-24b")
+        self.assertEqual(models[1]["status"], "indexed")
         self.assertNotIn("4bit", {row["model_id"] for row in models})
+
+    def test_inventory_scans_lmstudio_filesystem_only_models(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            indexed = root / "publisher" / "Indexed-Model"
+            filesystem_only = root / "publisher" / "Filesystem-Only-Model"
+            hidden = root / ".hidden" / "Ignored"
+            indexed.mkdir(parents=True)
+            filesystem_only.mkdir(parents=True)
+            hidden.mkdir(parents=True)
+
+            models = server._scan_lmstudio_filesystem_models(
+                root,
+                indexed_paths=["publisher/Indexed-Model"],
+            )
+
+        self.assertEqual(len(models), 1)
+        self.assertEqual(models[0]["runtime"], "LM Studio")
+        self.assertEqual(models[0]["model_id"], "publisher/Filesystem-Only-Model")
+        self.assertEqual(models[0]["status"], "filesystem_only")
+        self.assertEqual(models[0]["source_path"], "publisher/Filesystem-Only-Model")
 
     def test_inventory_parsers_handle_malformed_or_crash_output(self):
         self.assertEqual(server._parse_lmstudio_inventory("not json"), [])
@@ -819,6 +1049,7 @@ class ModelDashboardQaTests(unittest.TestCase):
                         "provenance_status": "source_metadata_only",
                         "security_notes": "Synthetic blocked specialty candidate.",
                         "isolation_notes": "Do not run.",
+                        "security_review_path": "",
                     },
                     {
                         "candidate_id": "20260605-dolphin3-llama31-8b-gguf",
@@ -839,6 +1070,9 @@ class ModelDashboardQaTests(unittest.TestCase):
                         "provenance_status": "source_metadata_only",
                         "security_notes": "Synthetic Dolphin candidate needs security review.",
                         "isolation_notes": "Use local runtime only after approval.",
+                        "security_review_path": (
+                            "automations/ai-lab-radar/security-reviews/dolphin3.md"
+                        ),
                     },
                 ],
             )
@@ -875,6 +1109,7 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Dolphin3.0-Llama3.1-8B-GGUF", dolphin_html)
             self.assertNotIn("Qwen3-8B-Abliterated-GGUF", dolphin_html)
             self.assertIn("Security gate", specialty_html)
+            self.assertIn("automations/ai-lab-radar/security-reviews/dolphin3.md", specialty_html)
             self.assertIn("Download", specialty_html)
             self.assertIn("blocked", specialty_html)
             self.assertIn("Specialty Candidates (1 of 2)", security_html)

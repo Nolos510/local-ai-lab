@@ -30,6 +30,7 @@ or benchmarked.
 | `provenance_status` | Required for registry rows | Examples: `source_metadata_only`, `local_inventory`, `unverified_local_inventory`, `unverified_local_note`, or `reviewed_artifact`. |
 | `security_notes` | Required for registry rows | Short notes about source trust, artifact format, checksum/hash needs, custom-code risk, and unresolved safety concerns. |
 | `isolation_notes` | Optional | Local runtime or sandbox guidance. Prefer LM Studio, Ollama, llama.cpp, or MLX paths that do not run untrusted model-card code. |
+| `security_review_path` | Optional | Repo-local Markdown review artifact for provenance, license, format, hash/checksum, runtime path, red flags, and approval state. |
 | `source_date` | Optional | Date of the source, not the discovery date. |
 | `discovered_at` | Required | ISO timestamp or date when added to radar. |
 | `why_interesting` | Required | Concise reason to track. |

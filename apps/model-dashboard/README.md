@@ -118,6 +118,14 @@ benchmark, score, import, or call cloud/model APIs. It only shows runtime,
 model id, installed/loaded status when available, registry match status, and a
 run-test action when an exact local runner and model id are configured.
 
+LM Studio inventory distinguishes:
+
+- `loaded`: returned by `lms ps --json`.
+- `indexed`: returned by `lms ls --json` but not currently loaded.
+- `filesystem_only`: found under `~/.lmstudio/models/<publisher>/<model-folder>`
+  but not returned by LM Studio inventory. These rows are never runnable from
+  the dashboard until LM Studio indexes or loads them.
+
 By default, the dashboard is read-only. To enable local run-test buttons for
 already-downloaded candidates with exact `local_runner` and `local_model_id`
 registry metadata, start it explicitly with:
@@ -133,6 +141,18 @@ decisions. For LM Studio CLI candidates, the button uses
 server responds with `401 Unauthorized`. The LM Studio CLI runner uses
 `--yes` and `--dont-fetch-catalog` so dashboard-triggered runs do not pause for
 interactive prompts or catalog fetches.
+
+Artifact import buttons are also disabled by default. Artifact pages and the Lab
+Dashboard show exact `import-csv` and `report` commands for existing
+`dashboard-import/*.csv` files. To enable local DB-writing import buttons, start
+the dashboard explicitly with:
+
+```bash
+python3 apps/model-dashboard/run_dashboard.py serve --enable-import-actions
+```
+
+Import actions require a localhost or loopback bind and import only existing
+CSV files from a benchmark artifact directory.
 
 The Overview page supports URL-backed filters for search text, final label, decision, and install status. Filtered views can be bookmarked or shared locally, for example:
 

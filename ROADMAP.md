@@ -11,6 +11,7 @@
   guardrails.
 - [x] Local LLM benchmark harness skeleton.
 - [x] First scored local Qwen benchmark artifact.
+- [x] Confirmed Qwen3 Coder LM Studio CLI benchmark artifact.
 - [x] Radar candidate dashboard view.
 - [x] GitHub project radar view.
 
@@ -27,7 +28,9 @@
 ## v1: Local AI Lab Product Loop
 
 - [ ] Approve one radar candidate from source packet to registry.
-- [ ] Run one additional real scored local benchmark.
+- [ ] Run one additional real scored local benchmark; next queued large-model
+  target is Dolphin-Mistral 24B after security review and exact local runtime
+  id confirmation.
 - [ ] Capture all prompt responses with source evidence.
 - [ ] Add local-judge draft score suggestions without overwriting confirmed
   scores.

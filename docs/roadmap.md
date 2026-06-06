@@ -21,9 +21,12 @@ Goal: prove a small local-first RAG path on Apple Silicon.
 
 ## v2: Evaluation and Benchmarking
 
+- [x] Add a local LLM benchmark harness for model-dashboard artifacts.
 - [ ] Add an evaluation harness for RAG answers and citations.
 - [ ] Track latency, retrieval scores, model/provider choices, and command outputs.
-- [ ] Add benchmark reports for local Apple Silicon model runtimes.
+- [x] Add benchmark reports for the first Qwen3 Coder LM Studio CLI run.
+- [ ] Add a second unique model benchmark; next queued target is
+  Dolphin-Mistral 24B after security and exact local runtime-id approval.
 - [ ] Compare Ollama, LM Studio, MLX-LM, and llama.cpp where appropriate.
 
 ## v3: MLX-LM Fine-Tuning Experiments

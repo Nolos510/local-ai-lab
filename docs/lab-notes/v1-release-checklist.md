@@ -14,7 +14,7 @@ candidate -> benchmark artifact -> raw responses -> scores -> dashboard import -
 
 - [x] `main` is the local working branch.
 - [x] `origin/main` and `origin/master` were aligned before v1 work began.
-- [ ] v1 commits are pushed to `origin/main`.
+- [x] v1 commits through `afe44f5` are pushed to `origin/main`.
 - [ ] Optional: tag the validated v1 release.
 
 ## Candidate Approval
@@ -25,27 +25,30 @@ candidate -> benchmark artifact -> raw responses -> scores -> dashboard import -
   `20260605-qwen3-30b-a3b-instruct-lmstudio`.
 - [x] Keep the abliterated Qwen3 30B candidate on watchlist until runtime
   identity is confirmed.
-- [ ] Confirm the exact LM Studio endpoint model id for
-  `Qwen3-30B-A3B-Instruct`.
+- [x] Confirm the exact LM Studio id for the installed Qwen3 Coder artifact:
+  `qwen3-coder-30b-a3b-instruct-mlx`.
+- [x] Confirm vanilla `Qwen3-30B-A3B-Instruct` is not installed or visible in
+  `lms ls --json` / `lms ps --json`; keep it unscored.
+- [ ] Keep Dolphin-Mistral 24B queued until a concrete local artifact and exact
+  runtime id are visible.
 
 ## Benchmark Capture
 
-- [ ] Confirm authorized local endpoint access to
-  `http://127.0.0.1:1234/v1/models`.
-- [ ] Run `20260605-qwen3-30b-a3b-instruct-lmstudio-r1` only after the exact
-  model id is visible.
-- [ ] Preserve `raw_responses.jsonl`.
-- [ ] Preserve `evidence.md`.
-- [ ] Do not create scores from runtime inventory or radar claims.
+- [x] Preserve Qwen3 Coder CLI retest `raw_responses.jsonl`.
+- [x] Preserve Qwen3 Coder CLI retest `evidence.md`.
+- [x] Do not create scores from runtime inventory or radar claims.
+- [ ] Run a second unique model benchmark only after the target model is
+  installed/indexed/loaded and has exact local runner metadata.
 
 ## Draft And Confirmed Scoring
 
 - [ ] Create `draft-scores.json` only from a separate local judge model, if one
   is available.
-- [ ] Human-review draft scores against raw responses.
-- [ ] Write confirmed `scores.json`.
-- [ ] Write `decision.json`.
-- [ ] Export confirmed dashboard CSVs.
+- [x] Human-review Qwen3 Coder CLI run against raw responses.
+- [x] Write confirmed Qwen3 Coder CLI `scores.json`.
+- [x] Write Qwen3 Coder CLI `decision.json`.
+- [x] Export confirmed Qwen3 Coder CLI dashboard CSVs.
+- [ ] Repeat confirmed scoring for one second unique model.
 
 ## Dashboard Loop
 

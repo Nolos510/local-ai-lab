@@ -59,6 +59,7 @@ def command_serve(args):
         host=args.host,
         port=args.port,
         enable_run_tests=args.enable_run_tests,
+        enable_import_actions=args.enable_import_actions,
         run_test_timeout=args.run_test_timeout,
         inventory_timeout=args.inventory_timeout,
     )
@@ -87,6 +88,11 @@ def build_parser():
         "--enable-run-tests",
         action="store_true",
         help="Enable local run-test buttons for candidates with exact runner metadata.",
+    )
+    serve_parser.add_argument(
+        "--enable-import-actions",
+        action="store_true",
+        help="Enable local artifact import buttons for existing dashboard CSV artifacts.",
     )
     serve_parser.add_argument(
         "--run-test-timeout",

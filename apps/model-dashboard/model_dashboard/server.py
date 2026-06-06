@@ -3,6 +3,7 @@
 import csv
 import ipaddress
 import json
+import shlex
 import shutil
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -13,7 +14,7 @@ import sys
 from datetime import date, datetime
 from urllib.parse import parse_qs, urlparse
 
-from . import db
+from . import csv_io, db
 from .reports import generate_markdown_report
 from .scoring import METRIC_FIELDS
 
@@ -22,6 +23,8 @@ CANDIDATE_REGISTRY_PATH = REPO_ROOT / "data" / "model_registry" / "candidates.cs
 PROJECT_REGISTRY_PATH = REPO_ROOT / "data" / "project_registry" / "github_repos.csv"
 EVAL_RESULTS_DIR = REPO_ROOT / "data" / "eval_results"
 HARNESS_PATH = REPO_ROOT / "evals" / "local-llm-benchmark" / "harness.py"
+DEFAULT_DASHBOARD_DB = REPO_ROOT / "data" / "dashboard" / "model_dashboard.sqlite"
+LMSTUDIO_MODELS_ROOT = Path.home() / ".lmstudio" / "models"
 SPECIALTY_LANE_TERMS = ("abliterated", "dolphin")
 SUPPORTED_LOCAL_RUNNERS = {
     "lmstudio-cli": "LM Studio CLI",
@@ -229,6 +232,7 @@ def _matches_candidate_search(row, search):
             "provenance_status",
             "security_notes",
             "isolation_notes",
+            "security_review_path",
         )
     )
     return search.lower() in haystack.lower()
@@ -638,11 +642,13 @@ def _candidate_security(row):
     provenance = row.get("provenance_status") or "unverified"
     notes = row.get("security_notes") or "No security review notes recorded."
     isolation = row.get("isolation_notes") or "Use local runtimes only; do not run untrusted install scripts."
+    review_path = row.get("security_review_path")
     return """
     <div class="cell-stack">
       <div><strong>Review</strong><br>{status}</div>
       <div><strong>Download</strong><br>{approval}</div>
       <div><strong>License / provenance</strong><br>{license_status} / {provenance}</div>
+      <div><strong>Review artifact</strong><br>{review_path}</div>
       <div><strong>Notes</strong><br>{notes}</div>
       <div><strong>Isolation</strong><br>{isolation}</div>
     </div>
@@ -651,6 +657,7 @@ def _candidate_security(row):
         approval=_text(approval),
         license_status=_text(license_status),
         provenance=_text(provenance),
+        review_path=_path_cell(review_path),
         notes=_text(notes),
         isolation=_text(isolation),
     )
@@ -820,6 +827,25 @@ def _looks_like_lmstudio_model(row):
     return bool(row.get("type") in ("llm", "embedding") and row.get("path"))
 
 
+def _lmstudio_identity_values(row):
+    values = []
+    for field in (
+        "modelKey",
+        "identifier",
+        "indexedModelIdentifier",
+        "model_id",
+        "modelId",
+        "id",
+        "path",
+        "name",
+        "displayName",
+    ):
+        value = row.get(field)
+        if value not in (None, ""):
+            values.append(str(value))
+    return values
+
+
 def _parse_lmstudio_inventory(ls_stdout, ps_stdout=""):
     loaded_ids = set()
     try:
@@ -829,21 +855,7 @@ def _parse_lmstudio_inventory(ls_stdout, ps_stdout=""):
     for row in _collect_json_objects(ps_data):
         if not _looks_like_lmstudio_model(row):
             continue
-        value = _first_value(
-            row,
-            (
-                "modelKey",
-                "identifier",
-                "indexedModelIdentifier",
-                "model_id",
-                "modelId",
-                "id",
-                "path",
-                "name",
-                "displayName",
-            ),
-        )
-        if value:
+        for value in _lmstudio_identity_values(row):
             loaded_ids.add(value.lower())
 
     try:
@@ -886,12 +898,11 @@ def _parse_lmstudio_inventory(ls_stdout, ps_stdout=""):
             continue
         seen.add(model_id.lower())
         path_id = str(row.get("path") or "").lower()
+        identities = {value.lower() for value in _lmstudio_identity_values(row)}
         status = (
             "loaded"
-            if model_id.lower() in loaded_ids
-            or display_name.lower() in loaded_ids
-            or (path_id and path_id in loaded_ids)
-            else "installed"
+            if identities & loaded_ids or (path_id and path_id in loaded_ids)
+            else "indexed"
         )
         models.append(
             {
@@ -899,8 +910,36 @@ def _parse_lmstudio_inventory(ls_stdout, ps_stdout=""):
                 "model_id": model_id,
                 "display_name": display_name or model_id,
                 "status": status,
+                "source_path": row.get("path") or "",
             }
         )
+    return models
+
+
+def _scan_lmstudio_filesystem_models(root=LMSTUDIO_MODELS_ROOT, indexed_paths=()):
+    root = Path(root)
+    if not root.exists():
+        return []
+    indexed = {str(path).strip().lower() for path in indexed_paths if path}
+    models = []
+    for publisher_dir in sorted(root.iterdir(), key=lambda item: item.name.lower()):
+        if not publisher_dir.is_dir() or publisher_dir.name.startswith("."):
+            continue
+        for model_dir in sorted(publisher_dir.iterdir(), key=lambda item: item.name.lower()):
+            if not model_dir.is_dir() or model_dir.name.startswith("."):
+                continue
+            relative_path = "{}/{}".format(publisher_dir.name, model_dir.name)
+            if relative_path.lower() in indexed:
+                continue
+            models.append(
+                {
+                    "runtime": "LM Studio",
+                    "model_id": relative_path,
+                    "display_name": model_dir.name,
+                    "status": "filesystem_only",
+                    "source_path": relative_path,
+                }
+            )
     return models
 
 
@@ -932,8 +971,15 @@ def _refresh_inventory(timeout=5):
         lm_ls = _command_result("LM Studio models", [lms_path, "ls", "--json"], timeout)
         lm_ps = _command_result("LM Studio loaded models", [lms_path, "ps", "--json"], timeout)
         checks.extend([lm_ls, lm_ps])
+        lmstudio_models = []
         if lm_ls["status"] == "ok":
-            models.extend(_parse_lmstudio_inventory(lm_ls["stdout"], lm_ps["stdout"]))
+            lmstudio_models = _parse_lmstudio_inventory(lm_ls["stdout"], lm_ps["stdout"])
+            models.extend(lmstudio_models)
+        models.extend(
+            _scan_lmstudio_filesystem_models(
+                indexed_paths=[model.get("source_path") for model in lmstudio_models]
+            )
+        )
     else:
         checks.append(
             {
@@ -972,17 +1018,33 @@ def _refresh_inventory(timeout=5):
 
 def _match_inventory_model(model, candidates):
     model_id = model["model_id"].lower()
+    source_path = model.get("source_path", "").lower()
     matches = [
         row
         for row in candidates
         if row.get("local_model_id", "").lower() == model_id
         or row.get("model_name", "").lower() == model_id
+        or (
+            source_path
+            and (
+                row.get("runtime_availability", "").lower() == source_path
+                or row.get("model_page_url", "").lower().rstrip("/").endswith(source_path)
+            )
+        )
     ]
     if len(matches) == 1:
         return "registered", matches[0]
     if len(matches) > 1:
         return "ambiguous", None
     return "unregistered", None
+
+
+def _inventory_run_allowed(model, candidate):
+    if not candidate or not _candidate_run_ready(candidate):
+        return False
+    if model.get("runtime") == "LM Studio":
+        return model.get("status") in ("indexed", "loaded")
+    return model.get("status") != "filesystem_only"
 
 
 def _inventory_filter_values(query):
@@ -1005,6 +1067,7 @@ def _matches_inventory_search(entry, search):
             model.get("model_id", ""),
             model.get("display_name", ""),
             model.get("status", ""),
+            model.get("source_path", ""),
             entry.get("match_state", ""),
             candidate.get("candidate_id", "") if candidate else "",
             candidate.get("model_name", "") if candidate else "",
@@ -1139,17 +1202,19 @@ def _inventory(
                 if candidate
                 else _pill(match_state)
             )
-            action_cell = (
-                _run_test_control(candidate, enable_run_tests, action_token)
-                if candidate and _candidate_run_ready(candidate)
-                else '<span class="empty">Register exact local model id first</span>'
-            )
+            if _inventory_run_allowed(model, candidate):
+                action_cell = _run_test_control(candidate, enable_run_tests, action_token)
+            elif model.get("status") == "filesystem_only":
+                action_cell = '<span class="empty">Filesystem-only; index/load in LM Studio first</span>'
+            else:
+                action_cell = '<span class="empty">Register exact local model id first</span>'
             model_rows.append(
                 [
                     _text(model["runtime"]),
                     "<code>{}</code>".format(_text(model["model_id"])),
                     _text(model["display_name"]),
                     _pill(model["status"]),
+                    _text(model.get("source_path", "")),
                     candidate_cell,
                     action_cell,
                 ]
@@ -1159,6 +1224,7 @@ def _inventory(
     <section class="panel" style="margin-bottom:16px">
       <h2>Installed Models</h2>
       <p>This page checks local runtime inventory on demand. It does not download, install, benchmark, score, or import models.</p>
+      <p>LM Studio rows distinguish <code>loaded</code>, <code>indexed</code>, and <code>filesystem_only</code>. Filesystem-only folders are visible on disk but are not runnable from the dashboard until LM Studio indexes or loads them.</p>
       <form class="inline-form" method="post" action="/actions/refresh-inventory">
         <input type="hidden" name="token" value="{token}">
         <button type="submit"{disabled}>Refresh Inventory</button>
@@ -1194,7 +1260,7 @@ def _inventory(
         ),
         filters=_inventory_filters(entries, filters),
         models=_table(
-            ["Runtime", "Model id", "Display name", "Status", "Registry match", "Action"],
+            ["Runtime", "Model id", "Display name", "Status", "Path", "Registry match", "Action"],
             model_rows,
             empty_message=(
                 "No inventory refresh has run yet."
@@ -1375,6 +1441,10 @@ def _command_block(command):
     return '<pre class="command">{}</pre>'.format(_text(command))
 
 
+def _command_lines(command):
+    return " ".join(shlex.quote(str(part)) for part in command)
+
+
 def _file_status(path):
     return "yes" if Path(path).exists() else "no"
 
@@ -1407,6 +1477,132 @@ def _artifact_summaries(eval_results_dir=EVAL_RESULTS_DIR):
             }
         )
     return artifacts
+
+
+def _artifact_csv_paths(benchmark_run_id, eval_results_dir=None):
+    eval_results_dir = EVAL_RESULTS_DIR if eval_results_dir is None else eval_results_dir
+    import_dir = Path(eval_results_dir) / benchmark_run_id / "dashboard-import"
+    return {
+        "models": import_dir / "models.csv",
+        "model_runs": import_dir / "model_runs.csv",
+        "eval_scores": import_dir / "eval_scores.csv",
+        "decisions": import_dir / "decisions.csv",
+    }
+
+
+def _artifact_import_ready(benchmark_run_id, eval_results_dir=None):
+    return all(path.exists() for path in _artifact_csv_paths(benchmark_run_id, eval_results_dir).values())
+
+
+def _artifact_import_command(
+    benchmark_run_id,
+    database_path=DEFAULT_DASHBOARD_DB,
+    eval_results_dir=None,
+):
+    paths = _artifact_csv_paths(benchmark_run_id, eval_results_dir)
+    return [
+        "python3",
+        "apps/model-dashboard/run_dashboard.py",
+        "import-csv",
+        "--db",
+        _relative_path(database_path),
+        "--models",
+        _relative_path(paths["models"]),
+        "--runs",
+        _relative_path(paths["model_runs"]),
+        "--scores",
+        _relative_path(paths["eval_scores"]),
+        "--decisions",
+        _relative_path(paths["decisions"]),
+    ]
+
+
+def _artifact_report_command(database_path=DEFAULT_DASHBOARD_DB):
+    return [
+        "python3",
+        "apps/model-dashboard/run_dashboard.py",
+        "report",
+        "--db",
+        _relative_path(database_path),
+    ]
+
+
+def _artifact_import_guidance(
+    benchmark_run_id,
+    database_path=DEFAULT_DASHBOARD_DB,
+    eval_results_dir=None,
+):
+    if not _artifact_import_ready(benchmark_run_id, eval_results_dir):
+        return '<span class="empty">Dashboard CSVs are incomplete.</span>'
+    return """
+    <div class="cell-stack">
+      <div><strong>Import</strong>{import_command}</div>
+      <div><strong>Report</strong>{report_command}</div>
+    </div>
+    """.format(
+        import_command=_command_block(
+            _command_lines(
+                _artifact_import_command(
+                    benchmark_run_id,
+                    database_path,
+                    eval_results_dir,
+                )
+            )
+        ),
+        report_command=_command_block(_command_lines(_artifact_report_command(database_path))),
+    )
+
+
+def _artifact_import_control(
+    benchmark_run_id,
+    enable_import_actions=False,
+    action_token="",
+    eval_results_dir=None,
+):
+    if not _artifact_import_ready(benchmark_run_id, eval_results_dir):
+        return '<span class="empty">No complete dashboard-import CSV set</span>'
+    if not enable_import_actions:
+        return (
+            '<div class="cell-stack">'
+            '<button type="button" disabled>Import Artifact</button>'
+            '<div class="empty">Restart with <code>--enable-import-actions</code></div>'
+            "</div>"
+        )
+    return """
+    <form class="inline-form" method="post" action="/actions/import-artifact">
+      <input type="hidden" name="token" value="{token}">
+      <input type="hidden" name="benchmark_run_id" value="{run_id}">
+      <button type="submit">Import Artifact</button>
+    </form>
+    """.format(token=_text(action_token), run_id=_text(benchmark_run_id))
+
+
+def _import_artifact(benchmark_run_id, database_path, eval_results_dir=None):
+    eval_results_dir = EVAL_RESULTS_DIR if eval_results_dir is None else eval_results_dir
+    artifact_dir = Path(eval_results_dir) / benchmark_run_id
+    if not artifact_dir.exists() or not artifact_dir.is_dir():
+        raise ValueError("Artifact not found: {}".format(benchmark_run_id))
+    paths = _artifact_csv_paths(benchmark_run_id, eval_results_dir)
+    missing = [name for name, path in paths.items() if not path.exists()]
+    if missing:
+        raise ValueError("Artifact is missing dashboard CSVs: {}".format(", ".join(missing)))
+    counts = csv_io.import_all(database_path, paths)
+    return {"benchmark_run_id": benchmark_run_id, "counts": counts}
+
+
+def _import_action_page(result):
+    body = """
+    <section class="panel">
+      <h2>Artifact Imported</h2>
+      <p><strong>Benchmark run:</strong> {artifact}</p>
+      <p><strong>Imported rows:</strong> <code>{counts}</code></p>
+      <p><a href="/runs">Inspect imported runs</a></p>
+    </section>
+    """.format(
+        artifact=_artifact_link(result["benchmark_run_id"]),
+        counts=_text(result["counts"]),
+    )
+    return _layout("Artifact Imported", "", body)
 
 
 def _score_status_counts(conn):
@@ -2211,7 +2407,9 @@ def _lab(
     eval_results_dir=EVAL_RESULTS_DIR,
     project_registry_path=PROJECT_REGISTRY_PATH,
     enable_run_tests=False,
+    enable_import_actions=False,
     action_token="",
+    database_path=DEFAULT_DASHBOARD_DB,
 ):
     candidates = _load_radar_candidates(registry_path)
     projects = _load_project_repos(project_registry_path)
@@ -2344,6 +2542,13 @@ def _lab(
                 _text(row["decision"]),
                 _text(row["dashboard_import"]),
                 dashboard_state,
+                _artifact_import_control(
+                    run_id,
+                    enable_import_actions,
+                    action_token,
+                    eval_results_dir,
+                ),
+                _artifact_import_guidance(run_id, database_path, eval_results_dir),
             ]
         )
 
@@ -2472,6 +2677,8 @@ def _lab(
                 "Decision",
                 "CSV",
                 "Dashboard",
+                "Import action",
+                "Import/report commands",
             ],
             artifact_rows,
             empty_message="No benchmark artifacts found.",
@@ -2912,7 +3119,14 @@ def _projects(query=None, registry_path=PROJECT_REGISTRY_PATH):
     return _layout("Project Radar", "/projects", body)
 
 
-def _artifact_detail(conn, benchmark_run_id, registry_path=CANDIDATE_REGISTRY_PATH):
+def _artifact_detail(
+    conn,
+    benchmark_run_id,
+    registry_path=CANDIDATE_REGISTRY_PATH,
+    database_path=DEFAULT_DASHBOARD_DB,
+    enable_import_actions=False,
+    action_token="",
+):
     candidates = _load_radar_candidates(registry_path)
     candidate = next(
         (row for row in candidates if row.get("benchmark_run_id") == benchmark_run_id),
@@ -2957,6 +3171,12 @@ def _artifact_detail(conn, benchmark_run_id, registry_path=CANDIDATE_REGISTRY_PA
         <p><strong>Report:</strong> {report}</p>
       </section>
     </div>
+    <section class="panel" style="margin-top:16px">
+      <h2>Dashboard Import</h2>
+      <p>This imports only existing local CSV files from this artifact's <code>dashboard-import</code> directory.</p>
+      {import_control}
+      {import_guidance}
+    </section>
     <section style="margin-top:16px"><h2>Artifact Files</h2>{files}</section>
     """.format(
         name=_text(artifact_name),
@@ -2965,6 +3185,17 @@ def _artifact_detail(conn, benchmark_run_id, registry_path=CANDIDATE_REGISTRY_PA
         dashboard_state=dashboard_state,
         source=_path_cell(candidate.get("source_packet_path") if candidate else ""),
         report=_path_cell(candidate.get("report_path") if candidate else ""),
+        import_control=_artifact_import_control(
+            benchmark_run_id,
+            enable_import_actions=enable_import_actions,
+            action_token=action_token,
+            eval_results_dir=EVAL_RESULTS_DIR,
+        ),
+        import_guidance=_artifact_import_guidance(
+            benchmark_run_id,
+            database_path,
+            EVAL_RESULTS_DIR,
+        ),
         files=_table(["Name", "Type", "Path"], file_rows, empty_message="Artifact directory not found."),
     )
     return _layout("Benchmark Artifact", "", body)
@@ -3167,6 +3398,7 @@ def _demo(conn):
 def make_handler(
     database_path,
     enable_run_tests=False,
+    enable_import_actions=False,
     action_token="",
     run_test_timeout=3600,
     inventory_timeout=5,
@@ -3192,7 +3424,11 @@ def make_handler(
         def do_POST(self):
             parsed = urlparse(self.path)
             try:
-                if parsed.path not in ("/actions/run-test", "/actions/refresh-inventory"):
+                if parsed.path not in (
+                    "/actions/run-test",
+                    "/actions/refresh-inventory",
+                    "/actions/import-artifact",
+                ):
                     html = _layout("Not Found", "", "<h2>Page not found</h2>")
                     self.send_response(404)
                 else:
@@ -3220,6 +3456,23 @@ def make_handler(
                                 enable_refresh=enable_inventory_refresh,
                             )
                             self.send_response(200)
+                    elif parsed.path == "/actions/import-artifact":
+                        if not enable_import_actions:
+                            html = _layout(
+                                "Import Actions Disabled",
+                                "",
+                                "<h2>Import actions disabled</h2><p>Restart the dashboard with <code>--enable-import-actions</code>.</p>",
+                            )
+                            self.send_response(403)
+                        else:
+                            benchmark_run_id = _query_value(form, "benchmark_run_id")
+                            result = _import_artifact(
+                                benchmark_run_id,
+                                database_path,
+                                EVAL_RESULTS_DIR,
+                            )
+                            html = _import_action_page(result)
+                            self.send_response(200)
                     elif not enable_run_tests:
                         html = _layout(
                             "Run Tests Disabled",
@@ -3238,7 +3491,7 @@ def make_handler(
                         html = _run_action_page(result)
                         self.send_response(200)
             except Exception as exc:
-                html = _layout("Run Test Error", "", "<h2>Run Test Error</h2><p>{}</p>".format(_text(exc)))
+                html = _layout("Action Error", "", "<h2>Action Error</h2><p>{}</p>".format(_text(exc)))
                 self.send_response(400)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
@@ -3252,7 +3505,9 @@ def make_handler(
                 return _lab(
                     conn,
                     enable_run_tests=enable_run_tests,
+                    enable_import_actions=enable_import_actions,
                     action_token=action_token,
+                    database_path=database_path,
                 )
             if path == "/":
                 return _overview(conn, query)
@@ -3282,7 +3537,13 @@ def make_handler(
                 return _demo(conn)
             if path.startswith("/artifacts/"):
                 benchmark_run_id = path.rsplit("/", 1)[-1]
-                return _artifact_detail(conn, benchmark_run_id)
+                return _artifact_detail(
+                    conn,
+                    benchmark_run_id,
+                    database_path=database_path,
+                    enable_import_actions=enable_import_actions,
+                    action_token=action_token,
+                )
             if path.startswith("/models/"):
                 model_id = int(path.rsplit("/", 1)[-1])
                 return _model_detail(conn, model_id)
@@ -3296,11 +3557,14 @@ def serve(
     host="127.0.0.1",
     port=8765,
     enable_run_tests=False,
+    enable_import_actions=False,
     run_test_timeout=3600,
     inventory_timeout=5,
 ):
     if enable_run_tests and not _is_loopback_host(host):
         raise ValueError("Run-test actions require a localhost or loopback bind host.")
+    if enable_import_actions and not _is_loopback_host(host):
+        raise ValueError("Import actions require a localhost or loopback bind host.")
     enable_inventory_refresh = _is_loopback_host(host)
     action_token = secrets.token_urlsafe(24)
     server = ThreadingHTTPServer(
@@ -3308,6 +3572,7 @@ def serve(
         make_handler(
             database_path,
             enable_run_tests=enable_run_tests,
+            enable_import_actions=enable_import_actions,
             action_token=action_token,
             run_test_timeout=run_test_timeout,
             inventory_timeout=inventory_timeout,
@@ -3317,6 +3582,8 @@ def serve(
     print("Serving Local Model Dashboard at http://{}:{}".format(host, port), flush=True)
     if enable_run_tests:
         print("Dashboard run-test actions enabled for local candidates.", flush=True)
+    if enable_import_actions:
+        print("Dashboard artifact import actions enabled for local CSV artifacts.", flush=True)
     if enable_inventory_refresh:
         print("Installed-model inventory refresh enabled for local runtimes.", flush=True)
     try:

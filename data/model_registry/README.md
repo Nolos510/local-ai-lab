@@ -45,6 +45,8 @@ Candidate rows also carry a lightweight security gate:
 - `security_notes` and `isolation_notes` capture due diligence such as source
   trust, checksum/hash needs, file-format risk, custom-code risk, and the local
   runtime path to use.
+- `security_review_path` links to a repo-local Markdown review artifact when a
+  candidate needs formal provenance/license/artifact approval before use.
 
 Rows may also include `local_runner`, `local_model_id`, and `default_endpoint`
 for models that are already available in the local runtime inventory. These
