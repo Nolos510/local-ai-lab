@@ -1,0 +1,16 @@
+flowchart LR
+    A["User-approved notes<br/>External metadata scans"] --> B["Radar source packets"]
+    B --> C["Candidate registry<br/>data/model_registry"]
+    B --> D["Project registry<br/>data/project_registry"]
+    C --> E["Security review gate"]
+    E --> F{"Approved exact local runtime?"}
+    F -->|"no"| G["Queue / watchlist<br/>no benchmark score"]
+    F -->|"yes"| H["Benchmark harness<br/>evals/local-llm-benchmark"]
+    H --> I["Raw responses<br/>evidence notes"]
+    I --> J["Confirmed scores<br/>decision artifact"]
+    J --> K["Dashboard CSV export"]
+    K --> L["SQLite dashboard import"]
+    L --> M["Lab / runs / models<br/>compare / reports"]
+    M --> N["keep / watchlist<br/>retest / skip"]
+    D --> O["Project Radar"]
+    O --> P["Learning, product,<br/>business tie-ins"]

@@ -14,7 +14,7 @@ candidate -> benchmark artifact -> raw responses -> scores -> dashboard import -
 
 - [x] `main` is the local working branch.
 - [x] `origin/main` and `origin/master` were aligned before v1 work began.
-- [x] v1 commits through `afe44f5` are pushed to `origin/main`.
+- [x] v1 commits through `4cccb2a` are pushed to `origin/main`.
 - [ ] Optional: tag the validated v1 release.
 
 ## Candidate Approval
@@ -39,6 +39,8 @@ candidate -> benchmark artifact -> raw responses -> scores -> dashboard import -
 - [x] Do not create scores from runtime inventory or radar claims.
 - [ ] Run a second unique model benchmark only after the target model is
   installed/indexed/loaded and has exact local runner metadata.
+- [x] Queue second benchmark target instead of creating a fake artifact when
+  LM Studio/Ollama inventory checks did not return an exact runnable model.
 
 ## Draft And Confirmed Scoring
 
@@ -58,6 +60,14 @@ candidate -> benchmark artifact -> raw responses -> scores -> dashboard import -
 - [x] `/runs` links imported runs back to benchmark artifacts.
 - [x] `/models/<id>` links run history back to benchmark artifacts.
 - [x] `/lab` shows candidate, artifact, import, and decision state.
+
+## Portfolio Package
+
+- [x] Add v1 portfolio case study.
+- [x] Add resume bullet draft.
+- [x] Add learning roadmap tied to the project.
+- [x] Add architecture diagram.
+- [x] Capture dashboard screenshots for lab, radar, projects, and reports.
 
 ## Local-First Guardrails
 

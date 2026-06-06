@@ -208,3 +208,15 @@ in the dashboard separately from model candidates and eval scores.
 ## Roadmap
 
 See `ROADMAP.md` and `docs/roadmap.md` for the staged plan.
+
+## Portfolio And Learning Pack
+
+The v1-facing portfolio package lives in:
+
+- `docs/portfolio-case-study.md`
+- `docs/resume-bullets.md`
+- `docs/learning-roadmap.md`
+- `docs/architecture-v1.md`
+- `docs/lab-notes/v1-second-benchmark-queue.md`
+
+Screenshots are stored under `docs/assets/screenshots/`.
