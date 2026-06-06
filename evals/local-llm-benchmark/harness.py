@@ -289,12 +289,13 @@ def _resolve_lms_path(path=None):
 def _parse_lms_stats(text):
     stats = {}
     tokens_per_sec = re.search(
-        r"([0-9]+(?:\.[0-9]+)?)\s*(?:tok/s|tokens/sec|tokens per second)",
+        r"(?:(?:tokens/second|tokens/sec|tokens per second):?[ \t]*([0-9]+(?:\.[0-9]+)?)|"
+        r"([0-9]+(?:\.[0-9]+)?)\s*(?:tok/s|tokens/sec|tokens per second))",
         text,
         flags=re.IGNORECASE,
     )
     if tokens_per_sec:
-        stats["tokens_per_sec"] = float(tokens_per_sec.group(1))
+        stats["tokens_per_sec"] = float(tokens_per_sec.group(1) or tokens_per_sec.group(2))
     input_pattern = (
         r"(?:([0-9]+)[ \t]*(?:input|prompt)[ \t]*tokens?|"
         r"(?:input|prompt)[ \t]*tokens?:[ \t]*([0-9]+))"
@@ -307,8 +308,8 @@ def _parse_lms_stats(text):
     if input_tokens:
         stats["input_tokens"] = int(input_tokens.group(1) or input_tokens.group(2))
     output_pattern = (
-        r"(?:([0-9]+)[ \t]*(?:output|completion)[ \t]*tokens?|"
-        r"(?:output|completion)[ \t]*tokens?:[ \t]*([0-9]+))"
+        r"(?:([0-9]+)[ \t]*(?:output|completion|predicted)[ \t]*tokens?|"
+        r"(?:output|completion|predicted)[ \t]*tokens?:[ \t]*([0-9]+))"
     )
     output_tokens = re.search(
         output_pattern,

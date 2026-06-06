@@ -1,0 +1,2 @@
+id,model_id,decision,keep_installed,best_use_case,weakness,retest_condition,created_at
+3,1,watchlist,1,"Fast local coding, debugging, business/SEO, and project-organization drafts that receive human review.","Local workflow advice violated no-install/no-download expectations, privacy sharing guidance was too permissive, and one coding test was not runnable as written.",Retest after tightening the benchmark/system framing around local-first security and compare against vanilla Qwen3 or DeepSeek once exact local model IDs are verified.,2026-06-06T02:18:06+00:00

@@ -387,6 +387,28 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertIn("fixture-model-id", records[0]["raw_response"])
             self.assertTrue((run_dir / "lms-cli-capture.log").exists())
 
+    def test_lmstudio_cli_parser_handles_lms_stats_labels(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("harness", HARNESS)
+        harness = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(harness)
+
+        stats = harness._parse_lms_stats(
+            "\n".join(
+                [
+                    "Prediction Stats:",
+                    "  Tokens/Second: 72.34",
+                    "  Prompt Tokens: 310",
+                    "  Predicted Tokens: 475",
+                ]
+            )
+        )
+
+        self.assertEqual(stats["tokens_per_sec"], 72.34)
+        self.assertEqual(stats["input_tokens"], 310)
+        self.assertEqual(stats["output_tokens"], 475)
+
     def test_suggest_scores_writes_draft_and_exports_draft_csv(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_id = "20260605-fixture-draft-scoring"
