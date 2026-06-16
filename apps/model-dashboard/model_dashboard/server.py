@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from . import charts, csv_io, db
+from .icons import icon as render_icon
 from .reports import generate_markdown_report
 from .scoring import METRIC_FIELDS
 
@@ -81,10 +82,10 @@ def _status_pill(value):
     return f'<span class="{class_name}">{_text(status.upper())}</span>'
 
 
-def _stat_card(label, value, icon):
+def _stat_card(label, value, icon_name):
     return (
         '<div class="stat">'
-        f'<i class="ti {_text(icon)}" aria-hidden="true"></i>'
+        f"{render_icon(icon_name)}"
         f'<div><div class="label">{_text(label)}</div><div class="value">{_text(value)}</div></div>'
         "</div>"
     )
@@ -2031,9 +2032,10 @@ def _layout(title, current_path, body):
     nav = []
     for path, label in NAV_ITEMS:
         active = " active" if current_path == path else ""
-        icon = NAV_ICONS.get(path, "ti-circle")
+        icon_name = NAV_ICONS.get(path, "ti-circle")
         nav.append(
-            f'<a class="nav{active}" href="{path}"><i class="ti {escape(icon)}" aria-hidden="true"></i><span>{escape(label)}</span></a>'
+            f'<a class="nav{active}" href="{path}">{render_icon(icon_name)}'
+            f"<span>{escape(label)}</span></a>"
         )
     return """<!doctype html>
 <html lang="en">
@@ -2041,7 +2043,6 @@ def _layout(title, current_path, body):
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{title} - Local Model Dashboard</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.26.0/dist/tabler-icons.min.css">
   <style>
     :root {{
       color-scheme: light dark;
@@ -2145,8 +2146,13 @@ def _layout(title, current_path, body):
     }}
     .nav .ti {{
       color: var(--accent);
-      font-size: 17px;
-      line-height: 1;
+      width: 1em;
+      height: 1em;
+      display: inline-block;
+      vertical-align: -0.125em;
+      fill: none;
+      stroke: currentColor;
+      flex: 0 0 auto;
     }}
     .nav.active {{
       border-color: transparent;
@@ -2211,8 +2217,12 @@ def _layout(title, current_path, body):
     }}
     .stat .ti {{
       color: var(--accent);
-      font-size: 20px;
-      line-height: 1;
+      width: 1.25em;
+      height: 1.25em;
+      display: inline-block;
+      vertical-align: -0.125em;
+      fill: none;
+      stroke: currentColor;
       margin-top: 3px;
     }}
     .stat .label {{
