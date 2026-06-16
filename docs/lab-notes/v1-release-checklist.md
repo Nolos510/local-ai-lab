@@ -34,7 +34,8 @@ candidate -> benchmark artifact -> raw responses -> scores -> dashboard import -
 
 ## Benchmark Capture
 
-- [x] Preserve Qwen3 Coder CLI retest `raw_responses.jsonl`.
+- [x] Preserve Qwen3 Coder CLI retest summaries; omit raw response files from
+  the GitHub copy.
 - [x] Preserve Qwen3 Coder CLI retest `evidence.md`.
 - [x] Do not create scores from runtime inventory or radar claims.
 - [ ] Run a second unique model benchmark only after the target model is

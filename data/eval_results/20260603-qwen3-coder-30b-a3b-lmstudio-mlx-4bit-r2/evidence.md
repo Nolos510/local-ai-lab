@@ -6,13 +6,13 @@ Model: `Qwen3-Coder-30B-A3B-Instruct-MLX-4bit`
 
 Backend: LM Studio CLI, loaded identifier `qwen3-coder-30b-a3b-instruct-mlx`
 
-Capture command shape: `lms chat qwen3-coder-30b-a3b-instruct-mlx -p <prompt> --stats --ttl 3600`
+Capture command shape: `lms chat qwen3-coder-30b-a3b-instruct-mlx -p "prompt text" --stats --ttl 3600`
 
 Raw responses:
 
-- `manual-responses.jsonl`
-- `raw_responses.jsonl`
-- `lms-cli-capture.log`
+- Omitted from the GitHub copy.
+- Regenerate locally when running benchmarks.
+- Dashboard CSVs and confirmed score summaries are preserved.
 
 Run summary:
 

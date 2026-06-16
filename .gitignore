@@ -23,6 +23,12 @@ data/dashboard/*.sqlite
 data/dashboard/*.sqlite-*
 data/dashboard/exports/
 
+# Benchmark run outputs that can contain raw prompts, raw model responses,
+# terminal logs, local paths, or machine-specific runtime details.
+data/eval_results/**/raw_responses.jsonl
+data/eval_results/**/manual-responses.jsonl
+data/eval_results/**/lms-cli-capture.log
+
 # Empty radar automation runs are runtime noise, not source history.
 automations/ai-lab-radar/reports/*no-new-source-packet.md
 automations/ai-lab-radar/reports/*no-new-approved-source-packet.md

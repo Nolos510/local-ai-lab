@@ -6,7 +6,8 @@ Preserve observations separately from raw responses. Do not paste private raw ou
 
 ## Run Status
 
-- Candidate source: local LM Studio model files at `/Users/nolos/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit`.
+- Candidate source: local LM Studio model artifact
+  `lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit`.
 - Radar status: no current radar report marks this exact real local model as `ready_for_eval`. The only radar `ready_for_eval` candidate found was `Model Boreal 13B`, which is not present as a real local model.
 - Backend attempt: launched LM Studio, then checked `lms ls`, `lms ps`, and `lms server status`.
 - Failure evidence: LM Studio CLI reported `Timed out waiting for LM Studio daemon to start` and `Failed to start or connect to local LM Studio API server`.

@@ -18,7 +18,7 @@ added, and no external source claims were inferred.
 | Source ID | Source type | Source date | Link or local reference | Notes |
 | --- | --- | --- | --- | --- |
 | A | local benchmark artifact | 2026-06-03 | `data/eval_results/20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit/metadata.json` | Records model name, backend, format, quantization, hardware, and benchmark artifact paths. |
-| B | local evidence note | 2026-06-03 | `data/eval_results/20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit/evidence.md` | Records local LM Studio model path and runtime failure. |
+| B | local evidence note | 2026-06-03 | `data/eval_results/20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit/evidence.md` | Records local LM Studio model artifact identity and runtime failure. |
 | C | lab note | 2026-06-03 | `docs/lab-notes/first-local-benchmark-result-qwen3-coder.md` | Summarizes failed-runtime benchmark attempt and `retest` decision. |
 
 ## Copied Notes Or Excerpts
@@ -38,8 +38,8 @@ Rubric version: ai-lab-local-llm-rubric-v0.1
 ### Source B
 
 ```text
-Candidate source: local LM Studio model files at
-/Users/nolos/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit.
+Candidate source: local LM Studio model artifact
+lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit.
 
 Failure evidence: LM Studio CLI reported Timed out waiting for LM Studio daemon
 to start and Failed to start or connect to local LM Studio API server.
@@ -70,7 +70,7 @@ local model can answer the full prompt set.
 | Format or runtime | MLX through LM Studio |
 | Claimed context window | unknown |
 | License | unknown |
-| Local artifact status | Installed local LM Studio model path recorded in benchmark evidence |
+| Local artifact status | Installed local LM Studio model artifact identity recorded in benchmark evidence |
 | Hardware fit | Attempted on Mac Studio Apple M3 Ultra, 256 GB RAM |
 | Claimed strengths | None added from external sources in this packet |
 | Risks or caveats | LM Studio daemon/server failed before prompt execution; no model responses captured; no score or final label exists |

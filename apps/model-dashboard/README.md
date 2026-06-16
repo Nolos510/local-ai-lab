@@ -124,7 +124,7 @@ LM Studio inventory distinguishes:
 
 - `loaded`: returned by `lms ps --json`.
 - `indexed`: returned by `lms ls --json` but not currently loaded.
-- `filesystem_only`: found under `~/.lmstudio/models/<publisher>/<model-folder>`
+- `filesystem_only`: found under `~/.lmstudio/models/publisher/model-folder`
   but not returned by LM Studio inventory. These rows are never runnable from
   the dashboard until LM Studio indexes or loads them.
 

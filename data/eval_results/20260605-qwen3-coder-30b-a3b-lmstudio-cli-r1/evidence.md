@@ -2,7 +2,7 @@
 
 Benchmark run: `20260605-qwen3-coder-30b-a3b-lmstudio-cli-r1`
 
-Source run promoted from dashboard-triggered artifact `20260605-qwen3-coder-30b-a3b-instruct-mlx-4bit-dashboard-test-r5`. Raw prompt responses are preserved in `raw_responses.jsonl`; evaluator notes below summarize scoring evidence without copying private raw output.
+Source run promoted from dashboard-triggered artifact `20260605-qwen3-coder-30b-a3b-instruct-mlx-4bit-dashboard-test-r5`. Raw prompt responses are omitted from the GitHub copy; evaluator notes below summarize scoring evidence without copying private raw output.
 
 ## Summary
 
@@ -49,6 +49,6 @@ Source run promoted from dashboard-triggered artifact `20260605-qwen3-coder-30b-
 
 ## LM Studio CLI Runner
 
-- Command shape: `lms chat <model-id> -p <prompt> --stats --ttl 3600 --yes --dont-fetch-catalog`
+- Command shape: `lms chat paste-model-id-here -p "prompt text" --stats --ttl 3600 --yes --dont-fetch-catalog`
 - Model id: `qwen3-coder-30b-a3b-instruct-mlx`
-- Capture log: `data/eval_results/20260605-qwen3-coder-30b-a3b-lmstudio-cli-r1/lms-cli-capture.log`
+- Capture log: omitted from the GitHub copy; regenerate locally when running benchmarks.

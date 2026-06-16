@@ -18,9 +18,9 @@ were executed and no model responses were captured.
 
 - No cloud APIs, external network calls, secrets, or model download logic were
   added for this result.
-- The attempted model source was a local LM Studio model path under the user's
-  machine.
-- Raw response artifacts are local files under
+- The attempted model source was a local LM Studio model artifact. Private
+  filesystem paths are intentionally omitted from the GitHub copy.
+- Raw response artifacts are generated local files under
   `data/eval_results/20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit/`.
 - `raw_responses.jsonl` contains one record per benchmark prompt with the
   runtime error and an empty `raw_response` field.
@@ -29,7 +29,8 @@ were executed and no model responses were captured.
 ## Evidence Quality
 
 - Evidence file: `evidence.md`.
-- Raw response file: `raw_responses.jsonl`.
+- Raw response file: `raw_responses.jsonl`, omitted from the GitHub copy and
+  regenerated locally during benchmark runs.
 - Each prompt record states: `LM Studio daemon failed to start; prompt was not run.`
 - No score file was created and `eval_scores.csv` remains header-only because
   there was no model-output evidence to score.

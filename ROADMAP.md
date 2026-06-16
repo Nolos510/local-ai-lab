@@ -72,4 +72,9 @@
   endpoints.
 - [ ] Add optional observability stack.
 - [ ] Add LangGraph/DSPy only after stable eval targets exist.
+- [ ] Add workspace cockpit degraded-state reporting.
+- [ ] Add model cookbook hardware-fit guidance for Apple Silicon.
+- [ ] Add blind model comparison with vote, reveal, tie, and history.
+- [ ] Add deep research, document intelligence, memory/skills, email/calendar,
+  task, browser, or MCP lanes only after ADR approval.
 - [ ] Turn completed tasks into portfolio and resume evidence.
