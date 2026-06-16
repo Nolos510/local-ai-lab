@@ -22,6 +22,8 @@ Goal: prove a small local-first RAG path on Apple Silicon.
 ## v2: Evaluation and Benchmarking
 
 - [x] Add a local LLM benchmark harness for model-dashboard artifacts.
+- [x] Compare at least two models in the dashboard with inline SVG charts for
+  score, throughput, RAM, and score dimensions.
 - [ ] Add an evaluation harness for RAG answers and citations.
 - [ ] Track latency, retrieval scores, model/provider choices, and command outputs.
 - [x] Add benchmark reports for the first Qwen3 Coder LM Studio CLI run.

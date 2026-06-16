@@ -8,6 +8,8 @@ A dependency-free local dashboard for reviewing model evaluation results in AI L
 - No runtime package install is required for the dashboard itself
 - The repo `dev` extra installs `pytest` for test validation
 - No API keys, cloud services, model downloads, or network calls are required
+- Icons are vendored as inline SVG paths from Tabler Icons v3.26.0 under the
+  MIT license, so the dashboard does not fetch icon fonts from a CDN.
 
 ## Quick Start
 
