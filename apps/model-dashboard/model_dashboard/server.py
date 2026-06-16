@@ -14,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import csv_io, db
+from . import charts, csv_io, db
 from .reports import generate_markdown_report
 from .scoring import METRIC_FIELDS
 
@@ -88,6 +88,26 @@ def _stat_card(label, value, icon):
         f'<div><div class="label">{_text(label)}</div><div class="value">{_text(value)}</div></div>'
         "</div>"
     )
+
+
+def _chart_panel(title, chart):
+    return f'<div class="panel chart-panel"><h2>{_text(title)}</h2>{chart}</div>'
+
+
+def _model_chart_label(row):
+    keys = row.keys()
+    backend = row["backend"] if "backend" in keys else ""
+    model_name = row["model_name"]
+    return f"{model_name} ({backend})" if backend else model_name
+
+
+def _average_metric_items(rows):
+    items = []
+    for field in METRIC_FIELDS:
+        values = [float(row[field]) for row in rows if row[field] not in (None, "")]
+        if values:
+            items.append((field.replace("_", " ").title(), sum(values) / len(values)))
+    return items
 
 
 def _table(headers, rows, empty_message="No rows yet.", table_class=""):
@@ -2154,6 +2174,35 @@ def _layout(title, current_path, body):
       padding: 18px;
       box-shadow: var(--shadow);
     }}
+    .chart-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 14px;
+      margin: 0 0 22px;
+    }}
+    .chart-panel {{
+      overflow: hidden;
+    }}
+    .chart {{
+      display: block;
+      width: 100%;
+      height: auto;
+    }}
+    .chart-bar {{
+      fill: var(--accent);
+    }}
+    .chart-label, .chart-value, .chart-empty-text {{
+      fill: var(--muted);
+      font-size: 14px;
+    }}
+    .chart-value {{
+      fill: var(--ink);
+      font-weight: 500;
+    }}
+    .chart-gridline {{
+      stroke: var(--line);
+      stroke-width: 1;
+    }}
     .stat {{
       display: grid;
       grid-template-columns: auto minmax(0, 1fr);
@@ -2431,6 +2480,23 @@ def _overview(conn, query=None):
     ]
     avg_score = sum(score_values) / len(score_values) if score_values else None
     keep_count = sum(1 for row in summaries if row["keep_installed"] == 1)
+    # v3: TTFT/latency once captured.
+    score_chart = charts.horizontal_bars(
+        [(_model_chart_label(row), row["total_score"]) for row in filtered_summaries],
+        value_format="{:.2f}",
+        max_value=10,
+        title="Model total scores",
+    )
+    throughput_chart = charts.horizontal_bars(
+        [(_model_chart_label(row), row["tokens_per_sec"]) for row in filtered_summaries],
+        value_format="{:.1f} tok/s",
+        title="Model throughput",
+    )
+    ram_chart = charts.horizontal_bars(
+        [(_model_chart_label(row), row["ram_usage_gb"]) for row in filtered_summaries],
+        value_format="{:.1f} GB",
+        title="Model RAM usage",
+    )
     rows = []
     for row in filtered_summaries:
         rows.append(
@@ -2457,6 +2523,11 @@ def _overview(conn, query=None):
       {avg_stat}
       {kept_stat}
     </section>
+    <section class="chart-grid" aria-label="Overview charts">
+      {score_chart}
+      {throughput_chart}
+      {ram_chart}
+    </section>
     <section>
       {filters}
       <h2>Ranked Local Models{filtered_count}</h2>
@@ -2468,6 +2539,9 @@ def _overview(conn, query=None):
         runs_stat=_stat_card("Runs", counts["model_runs"], "ti-player-play"),
         avg_stat=_stat_card("Average score", _number(avg_score, 1, "0.0"), "ti-chart-line"),
         kept_stat=_stat_card("Kept installed", keep_count, "ti-checkup-list"),
+        score_chart=_chart_panel("Total Score", score_chart),
+        throughput_chart=_chart_panel("Throughput", throughput_chart),
+        ram_chart=_chart_panel("RAM Footprint", ram_chart),
         filters=_overview_filters(summaries, filters),
         filtered_count=(
             f" ({len(filtered_summaries)} of {len(summaries)})" if any(filters.values()) else ""
@@ -2839,6 +2913,18 @@ def _compare(conn, query=None):
     scores = _real_rows(all_scores)
     filters = _score_filter_values(query or {})
     filtered_scores = _filter_scores(scores, filters)
+    score_chart = charts.horizontal_bars(
+        [(_model_chart_label(row), row["total_score"]) for row in filtered_scores],
+        value_format="{:.2f}",
+        max_value=10,
+        title="Compare total scores",
+    )
+    dimension_chart = charts.horizontal_bars(
+        _average_metric_items(filtered_scores),
+        value_format="{:.1f}",
+        max_value=10,
+        title="Average score dimensions",
+    )
     for row in filtered_scores:
         cells = [
             '<a href="/models/{id}">{name}</a>'.format(
@@ -2854,6 +2940,10 @@ def _compare(conn, query=None):
     {notice}
     {filters}
     <h2>Compare Models{filtered_count}</h2>
+    <section class="chart-grid" aria-label="Compare charts">
+      {score_chart}
+      {dimension_chart}
+    </section>
     {table}
     """.format(
         notice=_real_data_notice(len(_demo_rows(all_scores))),
@@ -2861,6 +2951,8 @@ def _compare(conn, query=None):
         filtered_count=(
             f" ({len(filtered_scores)} of {len(scores)})" if any(filters.values()) else ""
         ),
+        score_chart=_chart_panel("Total Score", score_chart),
+        dimension_chart=_chart_panel("Dimension Averages", dimension_chart),
         table=_table(
             headers,
             rows,
