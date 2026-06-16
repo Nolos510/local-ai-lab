@@ -947,6 +947,74 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit", html)
         self.assertNotIn('action="/actions/run-test"', html)
 
+    def test_cookbook_classifies_hardware_fit_and_runtime_readiness(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "candidates.csv"
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(
+                registry_path,
+                extra_rows=[
+                    {
+                        "candidate_id": "20260616-qwen3-coder-30b",
+                        "model_name": "Qwen3-Coder-30B-A3B-Instruct-MLX",
+                        "model_family": "Qwen",
+                        "provider_or_org": "local",
+                        "status": "ready_for_eval",
+                        "format_or_runtime": "MLX through LM Studio",
+                        "runtime_availability": "LM Studio MLX local artifact",
+                        "local_runner": "",
+                        "local_model_id": "",
+                        "why_interesting": "Serious coding model for Apple Silicon testing.",
+                        "risk_notes": "Needs exact local model ID before run.",
+                        "proposed_eval": "Run local benchmark after runtime ID is recorded.",
+                        "security_review_status": "local_inventory_reviewed",
+                        "download_approval": "not_needed_local",
+                        "license_review_status": "needs_review",
+                        "provenance_status": "local_inventory",
+                        "security_notes": "Already installed locally in this fixture.",
+                        "isolation_notes": "Loopback/local runner only.",
+                    }
+                ],
+            )
+
+            with db.connect(db_path) as conn:
+                html = server._cookbook(
+                    conn,
+                    {"fit": ["Mac Studio sweet spot"]},
+                    registry_path=registry_path,
+                )
+
+        self.assertIn("Model Cookbook", html)
+        self.assertIn("Cookbook Entries (1 of 3)", html)
+        self.assertIn("Qwen3-Coder-30B-A3B-Instruct-MLX", html)
+        self.assertIn("Mac Studio sweet spot", html)
+        self.assertIn("needs_runtime_id", html)
+        self.assertIn("curl -s http://localhost:1234/v1/models", html)
+        self.assertIn("ollama list", html)
+        self.assertNotIn("Watch Local 13B", html)
+
+    def test_cookbook_keeps_security_review_candidates_blocked_from_runtime(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "candidates.csv"
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(registry_path)
+
+            with db.connect(db_path) as conn:
+                html = server._cookbook(
+                    conn,
+                    {"readiness": ["security_review"]},
+                    registry_path=registry_path,
+                )
+
+        self.assertIn("Watch Local 13B", html)
+        self.assertIn("Security, license, provenance, and artifact approval", html)
+        self.assertIn("Do not install or run until provenance is reviewed.", html)
+        self.assertNotIn("Ready Local 7B", html)
+
     def test_inventory_parses_lmstudio_models_and_loaded_status(self):
         models = server._parse_lmstudio_inventory(
             """

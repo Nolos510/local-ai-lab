@@ -62,8 +62,9 @@ Current repo fit:
 
 - `local-ai-lab doctor` already checks selected provider readiness.
 - `docs/runtime-profiles.md` documents LM Studio and Ollama setup.
-- The dashboard can add a model-cookbook page after the model registry has
-  enough reviewed candidates.
+- The dashboard `/cookbook` page now provides a read-only model-cookbook slice
+  from registry metadata, hardware-fit heuristics, readiness labels, and
+  remediation commands.
 
 ### Degraded-State Reporting
 

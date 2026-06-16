@@ -3,6 +3,7 @@
 import csv
 import ipaddress
 import json
+import re
 import secrets
 import shlex
 import shutil
@@ -38,6 +39,7 @@ NAV_ITEMS = (
     ("/runs", "Model Runs"),
     ("/compare", "Compare Models"),
     ("/inventory", "Installed Models"),
+    ("/cookbook", "Model Cookbook"),
     ("/radar", "Radar Candidates"),
     ("/specialty", "Specialty Models"),
     ("/projects", "Project Radar"),
@@ -51,6 +53,7 @@ NAV_ICONS = {
     "/runs": "ti-player-play",
     "/compare": "ti-git-compare",
     "/inventory": "ti-device-desktop-analytics",
+    "/cookbook": "ti-checkup-list",
     "/radar": "ti-radar",
     "/specialty": "ti-sparkles",
     "/projects": "ti-brand-github",
@@ -607,6 +610,247 @@ def _specialty_filters(candidates, filters):
         status_options=status_options,
         all_lanes=_option("", "All lanes", filters["lane"]),
         lane_options=lane_options,
+        all_security=_option("", "All security states", filters["security"]),
+        security_options=security_options,
+        clear_link=clear_link,
+    )
+
+
+def _cookbook_filter_values(query):
+    return {
+        "q": _query_value(query, "q"),
+        "fit": _query_value(query, "fit"),
+        "readiness": _query_value(query, "readiness"),
+        "security": _query_value(query, "security"),
+    }
+
+
+def _candidate_parameter_count(row):
+    haystack = " ".join(
+        row.get(field, "")
+        for field in (
+            "candidate_id",
+            "model_name",
+            "model_family",
+            "format_or_runtime",
+            "runtime_availability",
+            "why_interesting",
+        )
+    )
+    values = []
+    for match in re.finditer(r"(?<!\d)(\d+(?:\.\d+)?)\s*b\b", haystack, flags=re.I):
+        try:
+            values.append(float(match.group(1)))
+        except ValueError:
+            continue
+    return max(values) if values else None
+
+
+def _candidate_fit_profile(row):
+    params_b = _candidate_parameter_count(row)
+    text = " ".join(
+        row.get(field, "")
+        for field in ("model_name", "model_family", "format_or_runtime", "runtime_availability")
+    ).lower()
+    sparse_note = " Treat MoE/sparse claims as unverified until active params are sourced."
+    if params_b is None:
+        return {
+            "label": "Needs metadata",
+            "detail": "Parameter count, context window, and exact runtime artifact are not recorded.",
+        }
+    if params_b <= 8:
+        detail = "Fast local loop candidate for quick prompts, smoke tests, and cheap retests."
+        label = "Fast loop"
+    elif params_b <= 14:
+        detail = "Daily-driver class for balanced local drafting and retrieval-assisted work."
+        label = "Daily driver"
+    elif params_b <= 32:
+        detail = "Mac Studio sweet spot for serious coding, reasoning, and local benchmark passes."
+        label = "Mac Studio sweet spot"
+    elif params_b <= 70:
+        detail = "Heavy local run; reserve for final-answer passes, overnight evals, or narrow tests."
+        label = "Heavy local"
+    else:
+        detail = "Special run; expect high latency and review context/concurrency before use."
+        label = "Special run"
+    if "moe" in text or "a3b" in text:
+        detail += sparse_note
+    return {"label": label, "detail": detail}
+
+
+def _candidate_readiness_profile(row):
+    security = _candidate_security_status(row)
+    approval = row.get("download_approval") or "not_approved"
+    if row.get("benchmark_run_id"):
+        return {
+            "label": "benchmarked",
+            "detail": "Benchmark artifact is linked; review scores, decision, and raw-artifact hygiene.",
+        }
+    if _candidate_run_ready(row):
+        return {
+            "label": "loadable",
+            "detail": "Exact local runner metadata exists; run-test can be enabled from localhost.",
+        }
+    if "blocked" in (security, approval):
+        return {
+            "label": "blocked",
+            "detail": "Security or download gate is blocked. Do not download, update, or run.",
+        }
+    if approval not in ("not_needed_local", "approved"):
+        return {
+            "label": "security_review",
+            "detail": "Security, license, provenance, and artifact approval are required first.",
+        }
+    if row.get("status") == "ready_for_eval":
+        return {
+            "label": "needs_runtime_id",
+            "detail": "Candidate is queued, but exact local runner/model ID is still missing.",
+        }
+    return {
+        "label": row.get("status") or "watchlist",
+        "detail": "Keep on watchlist until source, artifact, runtime, and eval scope are clear.",
+    }
+
+
+def _candidate_remediation(row, readiness):
+    runner = row.get("local_runner")
+    if readiness == "benchmarked":
+        return """
+        <div class="cell-stack">
+          <div>Review the linked benchmark artifact, score status, and decision before retesting.</div>
+          <div>{artifact}</div>
+        </div>
+        """.format(artifact=_artifact_link(row.get("benchmark_run_id")))
+    if readiness == "loadable":
+        if runner == "lmstudio-cli":
+            command = "python3 apps/model-dashboard/run_dashboard.py serve --enable-run-tests"
+            inspect = "lms ls --json"
+        elif runner == "openai-compatible":
+            command = "python3 apps/model-dashboard/run_dashboard.py serve --enable-run-tests"
+            inspect = "curl -s http://localhost:1234/v1/models | uv run python -m json.tool"
+        else:
+            command = "python3 apps/model-dashboard/run_dashboard.py serve --enable-run-tests"
+            inspect = "Confirm the configured local runner inventory."
+        inspect_block = _command_block(inspect)
+        command_block = _command_block(command)
+        return f"""
+        <div class="cell-stack">
+          <div><strong>Inspect</strong>{inspect_block}</div>
+          <div><strong>Enable</strong>{command_block}</div>
+        </div>
+        """
+    if readiness == "blocked":
+        return "Keep queued until the security review clears. Do not download, install, update, or run."
+    if readiness == "security_review":
+        return "Complete source, license, provenance, checksum, and isolation review before selecting a local artifact."
+    if readiness == "needs_runtime_id":
+        return """
+        <div class="cell-stack">
+          <div>Record an exact local runner, exact model ID, and approved endpoint before running.</div>
+          <div><strong>LM Studio IDs</strong>{lmstudio}</div>
+          <div><strong>Ollama IDs</strong>{ollama}</div>
+        </div>
+        """.format(
+            lmstudio=_command_block("curl -s http://localhost:1234/v1/models | uv run python -m json.tool"),
+            ollama=_command_block("ollama list"),
+        )
+    return "Keep as a radar/watchlist record until fit, runtime, and approval status are known."
+
+
+def _cookbook_model_links(row):
+    links = []
+    if row.get("benchmark_run_id"):
+        links.append(f"<div><strong>Artifact</strong><br>{_artifact_link(row.get('benchmark_run_id'))}</div>")
+    for field, label in (
+        ("source_packet_path", "Source packet"),
+        ("report_path", "Radar report"),
+        ("security_review_path", "Security review"),
+    ):
+        if row.get(field):
+            links.append(f"<div><strong>{_text(label)}</strong><br>{_path_cell(row.get(field))}</div>")
+    return "".join(links) if links else '<span class="empty">No linked evidence yet</span>'
+
+
+def _filter_cookbook_candidates(candidates, filters):
+    filtered = []
+    for row in candidates:
+        fit = _candidate_fit_profile(row)["label"]
+        readiness = _candidate_readiness_profile(row)["label"]
+        if filters["fit"] and fit != filters["fit"]:
+            continue
+        if filters["readiness"] and readiness != filters["readiness"]:
+            continue
+        if filters["security"] and _candidate_security_status(row) != filters["security"]:
+            continue
+        if not _matches_candidate_search(row, filters["q"]):
+            continue
+        filtered.append(row)
+    return filtered
+
+
+def _cookbook_filters(candidates, filters):
+    fit_options = "".join(
+        _option(fit, fit, filters["fit"])
+        for fit in sorted(
+            {_candidate_fit_profile(row)["label"] for row in candidates},
+            key=lambda value: value.lower(),
+        )
+    )
+    readiness_options = "".join(
+        _option(readiness, readiness, filters["readiness"])
+        for readiness in sorted(
+            {_candidate_readiness_profile(row)["label"] for row in candidates},
+            key=lambda value: value.lower(),
+        )
+    )
+    security_options = "".join(
+        _option(security, security, filters["security"])
+        for security in sorted(
+            {_candidate_security_status(row) for row in candidates},
+            key=lambda value: value.lower(),
+        )
+    )
+    clear_link = (
+        '<a class="clear-link" href="/cookbook">Clear</a>' if any(filters.values()) else ""
+    )
+    return """
+    <form class="filters" method="get" action="/cookbook">
+      <div class="field field-wide">
+        <label for="cookbook-q">Search</label>
+        <input id="cookbook-q" name="q" type="search" value="{q}">
+      </div>
+      <div class="field">
+        <label for="cookbook-fit">Hardware fit</label>
+        <select id="cookbook-fit" name="fit">
+          {all_fits}
+          {fit_options}
+        </select>
+      </div>
+      <div class="field">
+        <label for="cookbook-readiness">Readiness</label>
+        <select id="cookbook-readiness" name="readiness">
+          {all_readiness}
+          {readiness_options}
+        </select>
+      </div>
+      <div class="field">
+        <label for="cookbook-security">Security</label>
+        <select id="cookbook-security" name="security">
+          {all_security}
+          {security_options}
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button type="submit">Apply</button>
+        {clear_link}
+      </div>
+    </form>
+    """.format(
+        q=_text(filters["q"]),
+        all_fits=_option("", "All fits", filters["fit"]),
+        fit_options=fit_options,
+        all_readiness=_option("", "All readiness", filters["readiness"]),
+        readiness_options=readiness_options,
         all_security=_option("", "All security states", filters["security"]),
         security_options=security_options,
         clear_link=clear_link,
@@ -1298,6 +1542,132 @@ def _inventory(
         ),
     )
     return _layout("Installed Models", "/inventory", body)
+
+
+def _cookbook(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
+    del conn
+    candidates = _load_radar_candidates(registry_path)
+    filters = _cookbook_filter_values(query or {})
+    filtered_candidates = _filter_cookbook_candidates(candidates, filters)
+    fit_counts = {}
+    readiness_counts = {}
+    for row in candidates:
+        fit_label = _candidate_fit_profile(row)["label"]
+        readiness_label = _candidate_readiness_profile(row)["label"]
+        fit_counts[fit_label] = fit_counts.get(fit_label, 0) + 1
+        readiness_counts[readiness_label] = readiness_counts.get(readiness_label, 0) + 1
+
+    rows = []
+    for row in filtered_candidates:
+        fit = _candidate_fit_profile(row)
+        readiness = _candidate_readiness_profile(row)
+        params_b = _candidate_parameter_count(row)
+        model = """
+        <div class="cell-stack">
+          <div><strong>{name}</strong></div>
+          <code>{candidate_id}</code>
+          <div>{family}</div>
+        </div>
+        """.format(
+            name=_text(row.get("model_name")),
+            candidate_id=_text(row.get("candidate_id")),
+            family=_text(row.get("model_family") or "unknown family"),
+        )
+        fit_cell = """
+        <div class="cell-stack">
+          <div>{fit}</div>
+          <div><strong>Params</strong><br>{params}</div>
+          <div>{detail}</div>
+        </div>
+        """.format(
+            fit=_pill(fit["label"]),
+            params=_text(_number(params_b, 1, "unknown") if params_b is not None else "unknown"),
+            detail=_text(fit["detail"]),
+        )
+        runtime_cell = """
+        <div class="cell-stack">
+          <div><strong>Runtime</strong><br>{runtime}</div>
+          <div><strong>Availability</strong><br>{availability}</div>
+          <div><strong>Runner</strong><br>{runner}</div>
+          <div><strong>Model ID</strong><br><code>{model_id}</code></div>
+        </div>
+        """.format(
+            runtime=_text(row.get("format_or_runtime") or "unknown"),
+            availability=_text(row.get("runtime_availability") or "unknown"),
+            runner=_text(_candidate_runner_label(row)),
+            model_id=_text(row.get("local_model_id") or "not recorded"),
+        )
+        readiness_cell = """
+        <div class="cell-stack">
+          <div>{label}</div>
+          <div>{detail}</div>
+          <div><strong>Security</strong><br>{security}</div>
+        </div>
+        """.format(
+            label=_pill(readiness["label"]),
+            detail=_text(readiness["detail"]),
+            security=_candidate_security(row),
+        )
+        rows.append(
+            [
+                model,
+                fit_cell,
+                runtime_cell,
+                readiness_cell,
+                _candidate_remediation(row, readiness["label"]),
+                _cookbook_model_links(row),
+            ]
+        )
+
+    body = """
+    <section class="grid">
+      {total_stat}
+      {sweet_spot_stat}
+      {loadable_stat}
+      {benchmarked_stat}
+      {review_stat}
+    </section>
+    <section class="panel" style="margin-bottom:16px">
+      <h2>Apple Silicon Model Cookbook</h2>
+      <p>This page turns registry metadata into local runtime guidance. It does not scan runtimes, download models, run benchmarks, or convert candidates into scores.</p>
+      <p>Hardware-fit labels are planning heuristics for a 256 GB Apple Silicon Mac Studio. Treat them as routing guidance until a benchmark artifact exists.</p>
+    </section>
+    {filters}
+    <h2>Cookbook Entries{filtered_count}</h2>
+    {table}
+    """.format(
+        total_stat=_stat_card("Candidates", len(candidates), "ti-checkup-list"),
+        sweet_spot_stat=_stat_card(
+            "Mac Studio sweet spot",
+            fit_counts.get("Mac Studio sweet spot", 0),
+            "ti-cube",
+        ),
+        loadable_stat=_stat_card("Loadable metadata", readiness_counts.get("loadable", 0), "ti-server"),
+        benchmarked_stat=_stat_card("Benchmarked", readiness_counts.get("benchmarked", 0), "ti-chart-bar"),
+        review_stat=_stat_card(
+            "Security review first",
+            readiness_counts.get("security_review", 0) + readiness_counts.get("blocked", 0),
+            "ti-shield",
+        ),
+        filters=_cookbook_filters(candidates, filters),
+        filtered_count=(
+            f" ({len(filtered_candidates)} of {len(candidates)})" if any(filters.values()) else ""
+        ),
+        table=_table(
+            [
+                "Model",
+                "Hardware fit",
+                "Runtime profile",
+                "Readiness / gate",
+                "Remediation",
+                "Evidence",
+            ],
+            rows,
+            empty_message="No cookbook entries match these filters.",
+            table_class="cookbook-table",
+        ),
+    )
+    return _layout("Model Cookbook", "/cookbook", body)
 
 
 def _build_candidate_commands(row, run_id, eval_results_dir):
@@ -2462,6 +2832,25 @@ def _layout(title, current_path, body):
     .project-table th:nth-child(4),
     .project-table td:nth-child(4) {{
       width: 220px;
+    }}
+    .cookbook-table {{
+      min-width: 1480px;
+    }}
+    .cookbook-table th:nth-child(1),
+    .cookbook-table td:nth-child(1) {{
+      width: 210px;
+    }}
+    .cookbook-table th:nth-child(2),
+    .cookbook-table td:nth-child(2) {{
+      width: 210px;
+    }}
+    .cookbook-table th:nth-child(3),
+    .cookbook-table td:nth-child(3) {{
+      width: 260px;
+    }}
+    .cookbook-table th:nth-child(4),
+    .cookbook-table td:nth-child(4) {{
+      width: 300px;
     }}
     @media (max-width: 780px) {{
       .filters {{ grid-template-columns: 1fr; }}
@@ -3688,6 +4077,8 @@ def make_handler(
                     enable_run_tests=enable_run_tests,
                     enable_refresh=enable_inventory_refresh,
                 )
+            if path == "/cookbook":
+                return _cookbook(conn, query)
             if path == "/radar":
                 return _radar(conn, query)
             if path == "/specialty":

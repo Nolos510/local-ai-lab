@@ -76,18 +76,21 @@ Guardrails:
 
 Goal: make model selection and runtime setup obvious on Apple Silicon.
 
+Status: thin read-only slice implemented through `/cookbook`.
+
 Build:
 
-- Hardware-aware fit fields in model registry.
-- Runtime readiness for Ollama and LM Studio.
-- Exact remediation commands for missing models/endpoints.
-- Status labels such as installed, visible, loadable, benchmarked, keep,
-  watchlist, retest, and skip.
+- Hardware-aware fit guidance from existing registry metadata.
+- Runtime readiness from existing local runner/model ID fields.
+- Exact remediation commands for inspecting LM Studio and Ollama model IDs.
+- Status labels such as loadable, benchmarked, security review, blocked, and
+  needs runtime ID.
 
 Guardrails:
 
 - Do not infer license/safety claims without source evidence.
 - Do not turn candidate records into eval scores.
+- Do not scan local runtimes or run models from this page.
 
 ## Stage 4: Degraded-State Reporting
 

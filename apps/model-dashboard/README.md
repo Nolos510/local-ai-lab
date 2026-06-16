@@ -167,6 +167,7 @@ Additional URL-backed filters are available on:
 - `/runs` for search, backend, final label, and score status.
 - `/compare` for search, final label, and score status.
 - `/inventory` for search, runtime, installed/loaded status, and registry match.
+- `/cookbook` for search, Apple Silicon hardware fit, runtime readiness, and security review state.
 - `/radar` for search, status, family, runtime, and security review state.
 - `/specialty` for search, status, abliterated/Dolphin lane, and security review state.
 - `/storage` for search, decision, and keep-installed state.
@@ -192,6 +193,17 @@ license/provenance posture, and isolation notes. External candidates default to
 `needs_review` and `not_approved`; popularity or source claims do not make a
 model safe to download. Use `docs/model-security-vetting.md` before approving a
 new artifact, update, or runtime path.
+
+The Model Cookbook page is available at:
+
+```text
+http://127.0.0.1:8765/cookbook
+```
+
+It turns candidate registry metadata into Apple Silicon fit and runtime
+readiness guidance. It does not scan runtimes, download models, run models, or
+create eval scores. Hardware-fit labels are planning heuristics until benchmark
+artifacts exist.
 
 The radar and lab pages include an `Abliterated / Dolphin` count sourced from
 candidate registry rows whose names or families include abliterated or Dolphin

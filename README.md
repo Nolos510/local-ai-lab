@@ -202,6 +202,7 @@ Useful dashboard pages:
 - `/radar` - model candidates
 - `/projects` - GitHub project opportunities
 - `/compare` - model comparison
+- `/cookbook` - Apple Silicon model fit and runtime-readiness guidance
 - `/reports` - dashboard report view
 
 The dashboard MVP uses local SQLite/CSV artifacts. It does not download models,
