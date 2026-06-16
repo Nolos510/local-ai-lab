@@ -41,6 +41,11 @@ which local models and project opportunities are worth keeping.
   the dependency review gate below.
 - Treat `data/dashboard/*.sqlite` and dashboard export folders as local runtime
   state.
+- Treat benchmark artifacts and dashboard exports as private until explicitly
+  sanitized for GitHub.
+- Do not commit raw prompts, raw model responses, private local paths, API
+  keys, secrets, or local machine metadata unless they are intentionally
+  redacted sample fixtures.
 - Radar candidates are review records, not eval scores.
 - External Radar may gather public metadata on demand, but it must not download
   models, run models, call model APIs, add API clients, or register candidates
@@ -87,17 +92,22 @@ and `uv.lock`.
 - Prompt assembly with citations.
 - Ollama and LM Studio/OpenAI-compatible provider harnesses.
 - Deterministic/mock providers for tests and offline smoke checks.
-- Documentation, tests, CI, roadmaps, and TODOs.
+- Dashboard, benchmark, radar, documentation, tests, CI, roadmaps, and TODOs.
 
 ## 8. Forbidden v0 Scope
 
 - Agents or multi-agent orchestration in the RAG runtime.
 - Graph RAG.
+- MCP or browser automation.
 - Voice/STT/TTS workflows.
 - Auth systems.
 - Cloud deployment implementation.
 - Fine-tuning implementation.
+- Email, calendar, task, memory, or autonomous research implementation.
 - Large speculative abstractions or framework sprawl.
+
+Agent, research, email, calendar, MCP, browser automation, memory, and
+workspace automation features require a new ADR before implementation.
 
 ## 9. Coding And Documentation Standards
 
@@ -147,6 +157,12 @@ uv run local-ai-lab doctor
 uv run local-ai-lab ask "What is this lab for?"
 ```
 
+`uv run local-ai-lab doctor` performs live Qdrant and selected model-provider
+checks. It may fail when Qdrant, Ollama, LM Studio, or the configured local
+model is not running. If Ollama or LM Studio is selected and reachable but the
+configured model is missing, `doctor` must keep returning nonzero; document
+that exact model-availability reason instead of treating it as passed.
+
 Dashboard and benchmark checks:
 
 ```bash
@@ -179,6 +195,7 @@ it as passed.
 - Coordinate before editing files another agent is actively changing.
 - Do not rewrite unrelated files.
 - Do not introduce major new dependencies without explanation.
+- Do not change architecture direction without an ADR.
 - Prefer one main builder, multiple reviewers, and one integrator.
 - Review agents should be read-only unless explicitly asked to patch.
 - All PRs must describe what changed, why, how it was tested, and what was not
