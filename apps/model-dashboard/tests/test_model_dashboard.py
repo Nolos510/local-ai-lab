@@ -988,6 +988,10 @@ class ModelDashboardQaTests(unittest.TestCase):
                     "display_name": "Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
                     "status": "filesystem_only",
                     "source_path": "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
+                    "local_path": (
+                        "/Users/example/.lmstudio/models/"
+                        "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit"
+                    ),
                 },
             ],
         }
@@ -1000,33 +1004,41 @@ class ModelDashboardQaTests(unittest.TestCase):
         )
 
         self.assertIn("filesystem_only", html)
+        self.assertIn("Local file path", html)
+        self.assertIn(
+            "/Users/example/.lmstudio/models/"
+            "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
+            html,
+        )
         self.assertIn("Filesystem-only; index/load in LM Studio first", html)
         self.assertIn("20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit", html)
         self.assertNotIn('action="/actions/run-test"', html)
 
     def test_inventory_parses_lmstudio_models_and_loaded_status(self):
-        models = server._parse_lmstudio_inventory(
-            """
-            {
-              "models": [
+        with tempfile.TemporaryDirectory() as tmp:
+            models = server._parse_lmstudio_inventory(
+                """
                 {
-                  "modelKey": "qwen3-coder-30b-a3b-instruct-mlx",
-                  "displayName": "Qwen3 Coder 30B",
-                  "path": "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
-                  "quantization": {"name": "4bit", "bits": 4}
-                },
-                {
-                  "modelKey": "indexed-only-24b",
-                  "displayName": "Indexed Only 24B",
-                  "path": "example/Indexed-Only-24B"
+                  "models": [
+                    {
+                      "modelKey": "qwen3-coder-30b-a3b-instruct-mlx",
+                      "displayName": "Qwen3 Coder 30B",
+                      "path": "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
+                      "quantization": {"name": "4bit", "bits": 4}
+                    },
+                    {
+                      "modelKey": "indexed-only-24b",
+                      "displayName": "Indexed Only 24B",
+                      "path": "example/Indexed-Only-24B"
+                    }
+                  ]
                 }
-              ]
-            }
-            """,
-            """
-            {"loaded": [{"identifier": "qwen3-coder-30b-a3b-instruct-mlx"}]}
-            """,
-        )
+                """,
+                """
+                {"loaded": [{"identifier": "qwen3-coder-30b-a3b-instruct-mlx"}]}
+                """,
+                root=tmp,
+            )
 
         self.assertEqual(len(models), 2)
         self.assertEqual(models[0]["runtime"], "LM Studio")
@@ -1035,6 +1047,10 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertEqual(
             models[0]["source_path"],
             "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
+        )
+        self.assertEqual(
+            models[0]["local_path"],
+            str(Path(tmp) / "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit"),
         )
         self.assertEqual(models[1]["model_id"], "indexed-only-24b")
         self.assertEqual(models[1]["status"], "indexed")
@@ -1060,6 +1076,7 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertEqual(models[0]["model_id"], "publisher/Filesystem-Only-Model")
         self.assertEqual(models[0]["status"], "filesystem_only")
         self.assertEqual(models[0]["source_path"], "publisher/Filesystem-Only-Model")
+        self.assertEqual(models[0]["local_path"], str(filesystem_only))
 
     def test_inventory_parsers_handle_malformed_or_crash_output(self):
         self.assertEqual(server._parse_lmstudio_inventory("not json"), [])
@@ -1076,6 +1093,7 @@ class ModelDashboardQaTests(unittest.TestCase):
 
         self.assertEqual(models[0]["runtime"], "Ollama")
         self.assertEqual(models[0]["model_id"], "qwen3:30b")
+        self.assertTrue(models[0]["local_path"].endswith(".ollama/models/manifests/registry.ollama.ai/library/qwen3/30b"))
 
     def test_lab_dashboard_shows_abliterated_dolphin_lane(self):
         with tempfile.TemporaryDirectory() as tmp:

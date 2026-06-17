@@ -27,6 +27,7 @@ EVAL_RESULTS_DIR = REPO_ROOT / "data" / "eval_results"
 HARNESS_PATH = REPO_ROOT / "evals" / "local-llm-benchmark" / "harness.py"
 DEFAULT_DASHBOARD_DB = REPO_ROOT / "data" / "dashboard" / "model_dashboard.sqlite"
 LMSTUDIO_MODELS_ROOT = Path.home() / ".lmstudio" / "models"
+OLLAMA_MODELS_ROOT = Path.home() / ".ollama" / "models"
 SPECIALTY_LANE_TERMS = ("abliterated", "dolphin")
 SUPPORTED_LOCAL_RUNNERS = {
     "lmstudio-cli": "LM Studio CLI",
@@ -876,7 +877,31 @@ def _lmstudio_identity_values(row):
     return values
 
 
-def _parse_lmstudio_inventory(ls_stdout, ps_stdout=""):
+def _local_path_from_source(root, source_path):
+    if not source_path:
+        return ""
+    path = Path(str(source_path)).expanduser()
+    if path.is_absolute():
+        return str(path)
+    return str(Path(root).expanduser() / path)
+
+
+def _ollama_manifest_path(model_id, root=OLLAMA_MODELS_ROOT):
+    if not model_id:
+        return ""
+    name, _, tag = model_id.partition(":")
+    tag = tag or "latest"
+    parts = [part for part in name.split("/") if part]
+    if len(parts) == 1:
+        manifest_parts = ["registry.ollama.ai", "library", parts[0], tag]
+    elif len(parts) == 2:
+        manifest_parts = ["registry.ollama.ai", parts[0], parts[1], tag]
+    else:
+        manifest_parts = [*parts, tag]
+    return str(Path(root).expanduser() / "manifests" / Path(*manifest_parts))
+
+
+def _parse_lmstudio_inventory(ls_stdout, ps_stdout="", root=LMSTUDIO_MODELS_ROOT):
     loaded_ids = set()
     try:
         ps_data = json.loads(ps_stdout) if ps_stdout.strip() else []
@@ -934,13 +959,15 @@ def _parse_lmstudio_inventory(ls_stdout, ps_stdout=""):
             if identities & loaded_ids or (path_id and path_id in loaded_ids)
             else "indexed"
         )
+        source_path = row.get("path") or ""
         models.append(
             {
                 "runtime": "LM Studio",
                 "model_id": model_id,
                 "display_name": display_name or model_id,
                 "status": status,
-                "source_path": row.get("path") or "",
+                "source_path": source_path,
+                "local_path": _local_path_from_source(root, source_path),
             }
         )
     return models
@@ -968,6 +995,7 @@ def _scan_lmstudio_filesystem_models(root=LMSTUDIO_MODELS_ROOT, indexed_paths=()
                     "display_name": model_dir.name,
                     "status": "filesystem_only",
                     "source_path": relative_path,
+                    "local_path": str(model_dir),
                 }
             )
     return models
@@ -988,6 +1016,8 @@ def _parse_ollama_inventory(stdout):
                     "model_id": model_id,
                     "display_name": model_id,
                     "status": "installed",
+                    "source_path": "",
+                    "local_path": _ollama_manifest_path(model_id),
                 }
             )
     return models
@@ -1098,6 +1128,7 @@ def _matches_inventory_search(entry, search):
             model.get("display_name", ""),
             model.get("status", ""),
             model.get("source_path", ""),
+            model.get("local_path", ""),
             entry.get("match_state", ""),
             candidate.get("candidate_id", "") if candidate else "",
             candidate.get("model_name", "") if candidate else "",
@@ -1195,6 +1226,17 @@ def _inventory_filters(entries, filters):
     )
 
 
+def _inventory_paths_cell(model):
+    source_path = model.get("source_path") or "Not reported by runtime."
+    local_path = model.get("local_path") or "Not reported by runtime."
+    return f"""
+    <div class="cell-stack">
+      <div><strong>Runtime source</strong><br><code>{_text(source_path)}</code></div>
+      <div><strong>Local file path</strong><br><code>{_text(local_path)}</code></div>
+    </div>
+    """
+
+
 def _inventory(
     query=None,
     inventory_result=None,
@@ -1252,7 +1294,7 @@ def _inventory(
                     "<code>{}</code>".format(_text(model["model_id"])),
                     _text(model["display_name"]),
                     _pill(model["status"]),
-                    _text(model.get("source_path", "")),
+                    _inventory_paths_cell(model),
                     candidate_cell,
                     action_cell,
                 ]
@@ -1263,6 +1305,7 @@ def _inventory(
       <h2>Installed Models</h2>
       <p>This page checks local runtime inventory on demand. It does not download, install, benchmark, score, or import models.</p>
       <p>LM Studio rows distinguish <code>loaded</code>, <code>indexed</code>, and <code>filesystem_only</code>. Filesystem-only folders are visible on disk but are not runnable from the dashboard until LM Studio indexes or loads them.</p>
+      <p>Use <strong>Local file path</strong> to locate leftover model folders in Finder. The dashboard does not delete model files.</p>
       <form class="inline-form" method="post" action="/actions/refresh-inventory">
         <input type="hidden" name="token" value="{token}">
         <button type="submit"{disabled}>Refresh Inventory</button>
@@ -1295,7 +1338,15 @@ def _inventory(
         ),
         filters=_inventory_filters(entries, filters),
         models=_table(
-            ["Runtime", "Model id", "Display name", "Status", "Path", "Registry match", "Action"],
+            [
+                "Runtime",
+                "Model id",
+                "Display name",
+                "Status",
+                "Paths",
+                "Registry match",
+                "Action",
+            ],
             model_rows,
             empty_message=(
                 "No inventory refresh has run yet."
