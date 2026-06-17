@@ -36,4 +36,5 @@ def test_rag_service_ask_returns_answer_and_citations() -> None:
 
     assert "Mock local answer" in result.answer
     assert result.citations[0].source_name == "sample.md"
-    assert result.retrieved_chunks[0]["id"] == "chunk-1"
+    assert not hasattr(result.citations[0], "source_path")
+    assert not hasattr(result, "retrieved_chunks")

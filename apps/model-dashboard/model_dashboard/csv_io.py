@@ -65,6 +65,7 @@ REAL_FIELDS = {
     "total_score",
     *METRIC_FIELDS,
 }
+FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 
 def _blank_to_none(value):
@@ -101,6 +102,15 @@ def _coerce_bool(value):
     if normalized in ("0", "false", "no", "n", "delete"):
         return 0
     raise ValueError(f"Cannot parse boolean value: {value!r}")
+
+
+def _safe_csv_cell(value):
+    if value is None:
+        return value
+    text = str(value)
+    if text.startswith(FORMULA_PREFIXES):
+        return "'" + text
+    return value
 
 
 def _insert_row(conn, table_name, row):
@@ -173,7 +183,7 @@ def export_table(conn, table_name, output_dir):
             "SELECT {} FROM {} ORDER BY id".format(", ".join(fields), table_name)
         ).fetchall()
         for row in rows:
-            writer.writerow({field: row[field] for field in fields})
+            writer.writerow({field: _safe_csv_cell(row[field]) for field in fields})
     return output_path
 
 

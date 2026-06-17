@@ -42,6 +42,8 @@ class DashboardHttpHandlerTests(unittest.TestCase):
                 body = response.read().decode("utf-8")
 
             self.assertEqual(response.status, 200)
+            self.assertEqual(response.headers["X-Frame-Options"], "DENY")
+            self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
             self.assertIn("Local Model Performance Dashboard", body)
             self.assertIn("Lab Dashboard", body)
 

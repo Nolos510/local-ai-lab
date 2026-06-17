@@ -1,6 +1,7 @@
 from functools import lru_cache
+from urllib.parse import urlsplit
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -32,10 +33,21 @@ class Settings(BaseSettings):
     lm_studio_base_url: str = "http://localhost:1234/v1"
     lm_studio_model: str = "local-model"
 
-    top_k: int = Field(default=5, ge=1)
+    top_k: int = Field(default=5, ge=1, le=20)
     chunk_size: int = Field(default=900, ge=100)
     chunk_overlap: int = Field(default=120, ge=0)
     request_timeout_seconds: float = Field(default=120.0, gt=0)
+
+    @field_validator("qdrant_url", "ollama_base_url", "lm_studio_base_url")
+    @classmethod
+    def _require_loopback_service_url(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme not in {"http", "https"} or not host:
+            raise ValueError("local service URLs must use http(s) and include a host")
+        if host in {"localhost", "127.0.0.1", "::1"}:
+            return value
+        raise ValueError("local service URLs must use localhost or a loopback IP")
 
 
 @lru_cache

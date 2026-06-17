@@ -203,6 +203,46 @@ class CsvImportTests(unittest.TestCase):
                 row = conn.execute("SELECT score_status FROM eval_scores").fetchone()
             self.assertEqual(row["score_status"], "confirmed")
 
+    def test_export_neutralizes_spreadsheet_formula_prefixes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            db_path = tmp_path / "dashboard.sqlite"
+            csv_dir = tmp_path / "input"
+            export_dir = tmp_path / "export"
+            write_table(
+                csv_dir / "models.csv",
+                "models",
+                [
+                    {
+                        "id": 1,
+                        "model_name": "=cmd|' /C calc'!A0",
+                        "model_family": "Formula",
+                    }
+                ],
+            )
+            write_table(
+                csv_dir / "model_runs.csv",
+                "model_runs",
+                [{"id": 1, "model_id": 1, "date_tested": "2026-06-05", "backend": "LM Studio"}],
+            )
+            write_table(csv_dir / "eval_scores.csv", "eval_scores", [])
+            write_table(csv_dir / "decisions.csv", "decisions", [])
+            csv_io.import_all(
+                db_path,
+                {
+                    "models": csv_dir / "models.csv",
+                    "model_runs": csv_dir / "model_runs.csv",
+                    "eval_scores": csv_dir / "eval_scores.csv",
+                    "decisions": csv_dir / "decisions.csv",
+                },
+            )
+
+            exported = csv_io.export_all(db_path, export_dir)
+
+            with exported["models"].open(newline="", encoding="utf-8") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual(rows[0]["model_name"], "'=cmd|' /C calc'!A0")
+
 
 if __name__ == "__main__":
     unittest.main()

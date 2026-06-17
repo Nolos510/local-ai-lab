@@ -1,2 +1,0 @@
-id,run_id,instruction_following,truthfulness_uncertainty,reasoning,coding_debugging,agent_planning,local_ai_lab_usefulness,research_synthesis,business_seo_strategy,long_context,creativity,speed_practicality,total_score,final_label,score_status
-2,3,76.0,72.0,86.0,64.0,70.0,55.0,77.0,82.0,80.0,73.0,76.0,72.5,WATCHLIST,confirmed

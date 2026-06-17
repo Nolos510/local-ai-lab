@@ -54,7 +54,6 @@ def main() -> int:
                     {
                         "answer": result.answer,
                         "citations": [citation.__dict__ for citation in result.citations],
-                        "retrieved_chunks": result.retrieved_chunks,
                     },
                     indent=2,
                 )
