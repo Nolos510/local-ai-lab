@@ -44,10 +44,20 @@ def _iter_supported_files(path: Path) -> list[Path]:
     if path.is_file():
         return [path] if path.suffix.lower() in SUPPORTED_SUFFIXES else []
 
+    root = path.resolve()
     return sorted(
         file_path
         for file_path in path.rglob("*")
         if file_path.is_file()
         and file_path.suffix.lower() in SUPPORTED_SUFFIXES
         and not any(part.startswith(".") for part in file_path.parts)
+        and _is_within_root(file_path, root)
     )
+
+
+def _is_within_root(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root)
+    except ValueError:
+        return False
+    return True

@@ -271,7 +271,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertEqual(summaries[0]["model_name"], "Fixture Model")
             self.assertEqual(summaries[0]["final_label"], "WATCHLIST")
 
-    def test_run_local_captures_all_prompts_and_rejects_public_endpoint(self):
+    def test_run_local_captures_all_prompts_and_rejects_non_loopback_endpoint(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_id = "20260605-fixture-local-runner"
             self.run_harness(
@@ -318,11 +318,29 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
                 "--run-dir",
                 str(run_dir),
                 "--endpoint",
-                "https://8.8.8.8/v1",
+                "http://192.168.1.10/v1",
                 "--force",
             )
             self.assertEqual(failed.returncode, 2)
-            self.assertIn("public IP", failed.stderr)
+            self.assertIn("loopback", failed.stderr)
+
+    def test_init_run_rejects_traversal_run_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            failed = self.run_harness_raw(
+                "init-run",
+                "--benchmark-run-id",
+                "../outside",
+                "--model-name",
+                "Traversal Model",
+                "--backend",
+                "llama.cpp",
+                "--output-root",
+                tmp,
+            )
+
+            self.assertEqual(failed.returncode, 2)
+            self.assertIn("Invalid benchmark_run_id", failed.stderr)
+            self.assertFalse((Path(tmp).parent / "outside").exists())
 
     def test_run_lmstudio_cli_captures_all_prompts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -343,6 +361,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
                         "    if candidate in prompt:",
                         "        prompt_id = candidate",
                         "print('mock lms response for {} using {}'.format(prompt_id, model_id))",
+                        "print('\\x1b[31mred\\x1b[0m')",
                         "print('prompt tokens: 10')",
                         "print('completion tokens: 5')",
                         "print('12.5 tok/s')",
@@ -387,7 +406,9 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertEqual(records[0]["output_tokens"], 5)
             self.assertEqual(records[0]["tokens_per_sec"], 12.5)
             self.assertIn("fixture-model-id", records[0]["raw_response"])
-            self.assertTrue((run_dir / "lms-cli-capture.log").exists())
+            log_text = (run_dir / "lms-cli-capture.log").read_text(encoding="utf-8")
+            self.assertIn("\\x1b[31mred\\x1b[0m", log_text)
+            self.assertNotIn("\x1b[31mred", log_text)
 
     def test_lmstudio_cli_parser_handles_lms_stats_labels(self):
         import importlib.util
@@ -482,6 +503,29 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             ) as handle:
                 rows = list(csv.DictReader(handle))
             self.assertEqual(rows[0]["score_status"], "draft")
+
+    def test_dashboard_csv_export_neutralizes_formula_prefixes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_id = "20260605-fixture-formula"
+            self.run_harness(
+                "init-run",
+                "--benchmark-run-id",
+                run_id,
+                "--model-name",
+                "=cmd|' /C calc'!A0",
+                "--backend",
+                "LM Studio",
+                "--output-root",
+                tmp,
+            )
+            run_dir = Path(tmp) / run_id
+
+            with (run_dir / "dashboard-import" / "models.csv").open(
+                newline="", encoding="utf-8"
+            ) as handle:
+                rows = list(csv.DictReader(handle))
+
+            self.assertEqual(rows[0]["model_name"], "'=cmd|' /C calc'!A0")
 
 
 if __name__ == "__main__":

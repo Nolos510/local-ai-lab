@@ -20,11 +20,13 @@ def create_app() -> FastAPI:
         try:
             result = service.ask(request.question, top_k=request.top_k)
         except ChatProviderError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=502,
+                detail="Local chat provider failed. Run `uv run local-ai-lab doctor`.",
+            ) from exc
         return AskResponse(
             answer=result.answer,
             citations=[citation.__dict__ for citation in result.citations],
-            retrieved_chunks=result.retrieved_chunks,
         )
 
     return app

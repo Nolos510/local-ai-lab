@@ -14,18 +14,15 @@ from local_ai_lab.vectorstores.base import RetrievedChunk
 @dataclass(frozen=True)
 class Citation:
     chunk_id: str
-    source_path: str
     source_name: str
     chunk_index: int | str
     score: float
-    preview: str
 
 
 @dataclass(frozen=True)
 class AskResult:
     answer: str
     citations: list[Citation]
-    retrieved_chunks: list[dict[str, Any]]
 
 
 class RAGService:
@@ -61,25 +58,13 @@ class RAGService:
         return AskResult(
             answer=answer,
             citations=[_to_citation(chunk) for chunk in retrieved],
-            retrieved_chunks=[_to_retrieved_payload(chunk) for chunk in retrieved],
         )
 
 
 def _to_citation(chunk: RetrievedChunk) -> Citation:
     return Citation(
         chunk_id=chunk.id,
-        source_path=str(chunk.metadata.get("source_path", "")),
         source_name=str(chunk.metadata.get("source_name", "")),
         chunk_index=chunk.metadata.get("chunk_index", "?"),
         score=chunk.score,
-        preview=" ".join(chunk.text.split())[:240],
     )
-
-
-def _to_retrieved_payload(chunk: RetrievedChunk) -> dict[str, Any]:
-    return {
-        "id": chunk.id,
-        "score": chunk.score,
-        "text": chunk.text,
-        "metadata": chunk.metadata,
-    }

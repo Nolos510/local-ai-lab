@@ -3,6 +3,7 @@
 import csv
 import ipaddress
 import json
+import re
 import secrets
 import shlex
 import shutil
@@ -31,6 +32,7 @@ SUPPORTED_LOCAL_RUNNERS = {
     "lmstudio-cli": "LM Studio CLI",
     "openai-compatible": "OpenAI-compatible local endpoint",
 }
+SAFE_ARTIFACT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 NAV_ITEMS = (
     ("/lab", "Lab Dashboard"),
@@ -626,6 +628,16 @@ def _external_link(url, label):
     parsed = urlparse(value)
     if parsed.scheme not in ("http", "https"):
         return '<span class="empty">Unsupported link</span>'
+    return f'<a href="{_text(value)}" target="_blank" rel="noreferrer">{_text(label)}</a>'
+
+
+def _external_link_or_text(url, label):
+    value = str(url or "").strip()
+    if not value:
+        return '<span class="empty">None</span>'
+    parsed = urlparse(value)
+    if parsed.scheme not in ("http", "https"):
+        return _text(label or value)
     return f'<a href="{_text(value)}" target="_blank" rel="noreferrer">{_text(label)}</a>'
 
 
@@ -1501,8 +1513,8 @@ def _artifact_summaries(eval_results_dir=EVAL_RESULTS_DIR):
 
 
 def _artifact_csv_paths(benchmark_run_id, eval_results_dir=None):
-    eval_results_dir = EVAL_RESULTS_DIR if eval_results_dir is None else eval_results_dir
-    import_dir = Path(eval_results_dir) / benchmark_run_id / "dashboard-import"
+    artifact_dir = _safe_artifact_dir(benchmark_run_id, eval_results_dir)
+    import_dir = artifact_dir / "dashboard-import"
     return {
         "models": import_dir / "models.csv",
         "model_runs": import_dir / "model_runs.csv",
@@ -1512,9 +1524,13 @@ def _artifact_csv_paths(benchmark_run_id, eval_results_dir=None):
 
 
 def _artifact_import_ready(benchmark_run_id, eval_results_dir=None):
-    return all(
-        path.exists() for path in _artifact_csv_paths(benchmark_run_id, eval_results_dir).values()
-    )
+    try:
+        return all(
+            path.exists()
+            for path in _artifact_csv_paths(benchmark_run_id, eval_results_dir).values()
+        )
+    except ValueError:
+        return False
 
 
 def _artifact_import_command(
@@ -1601,8 +1617,7 @@ def _artifact_import_control(
 
 
 def _import_artifact(benchmark_run_id, database_path, eval_results_dir=None):
-    eval_results_dir = EVAL_RESULTS_DIR if eval_results_dir is None else eval_results_dir
-    artifact_dir = Path(eval_results_dir) / benchmark_run_id
+    artifact_dir = _safe_artifact_dir(benchmark_run_id, eval_results_dir)
     if not artifact_dir.exists() or not artifact_dir.is_dir():
         raise ValueError(f"Artifact not found: {benchmark_run_id}")
     paths = _artifact_csv_paths(benchmark_run_id, eval_results_dir)
@@ -1611,6 +1626,19 @@ def _import_artifact(benchmark_run_id, database_path, eval_results_dir=None):
         raise ValueError("Artifact is missing dashboard CSVs: {}".format(", ".join(missing)))
     counts = csv_io.import_all(database_path, paths)
     return {"benchmark_run_id": benchmark_run_id, "counts": counts}
+
+
+def _safe_artifact_dir(benchmark_run_id, eval_results_dir=None):
+    benchmark_run_id = str(benchmark_run_id or "")
+    if not SAFE_ARTIFACT_ID_RE.fullmatch(benchmark_run_id):
+        raise ValueError(f"Invalid benchmark artifact id: {benchmark_run_id}")
+    root = Path(EVAL_RESULTS_DIR if eval_results_dir is None else eval_results_dir).resolve()
+    artifact_dir = (root / benchmark_run_id).resolve()
+    try:
+        artifact_dir.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"Invalid benchmark artifact id: {benchmark_run_id}") from exc
+    return artifact_dir
 
 
 def _import_action_page(result):
@@ -2655,20 +2683,37 @@ def _lab(
         proposed_run_id = run_id or "YYYYMMDD-{}-local".format(
             row.get("candidate_id", "candidate").replace("_", "-")
         )
-        command = "\n".join(
+        init_command = [
+            "python3",
+            "evals/local-llm-benchmark/harness.py",
+            "init-run",
+            "--benchmark-run-id",
+            proposed_run_id,
+            "--model-name",
+            row.get("model_name", ""),
+            "--backend",
+            "Local OpenAI-compatible",
+            "--temperature",
+            "0.2",
+            "--top-p",
+            "0.9",
+        ]
+        run_command = [
+            "python3",
+            "evals/local-llm-benchmark/harness.py",
+            "run-local",
+            "--run-dir",
+            f"data/eval_results/{proposed_run_id}",
+            "--endpoint",
+            "http://127.0.0.1:1234/v1",
+            "--model",
+            row.get("model_name", ""),
+            "--force",
+        ]
+        command = "\n\n".join(
             [
-                "python3 evals/local-llm-benchmark/harness.py init-run \\",
-                f"  --benchmark-run-id {proposed_run_id} \\",
-                '  --model-name "{}" \\'.format(row.get("model_name", "")),
-                '  --backend "Local OpenAI-compatible" \\',
-                "  --temperature 0.2 \\",
-                "  --top-p 0.9",
-                "",
-                "python3 evals/local-llm-benchmark/harness.py run-local \\",
-                f"  --run-dir data/eval_results/{proposed_run_id} \\",
-                "  --endpoint http://127.0.0.1:1234/v1 \\",
-                '  --model "{}" \\'.format(row.get("model_name", "")),
-                "  --force",
+                _command_lines(init_command),
+                _command_lines(run_command),
             ]
         )
         queue_rows.append(
@@ -2752,9 +2797,8 @@ def _lab(
     for row in ready_projects:
         project_rows.append(
             [
-                '<div class="cell-stack"><a href="{url}">{repo}</a><code>{owner}</code></div>'.format(
-                    url=_text(row.get("repo_url"), "#"),
-                    repo=_text(row.get("repo_name")),
+                '<div class="cell-stack">{repo}<code>{owner}</code></div>'.format(
+                    repo=_external_link_or_text(row.get("repo_url"), row.get("repo_name")),
                     owner=_text(row.get("owner")),
                 ),
                 '<div class="cell-stack"><div>{category}</div><span class="pill">{stars}</span></div>'.format(
@@ -3187,10 +3231,7 @@ def _projects(query=None, registry_path=PROJECT_REGISTRY_PATH):
 
     rows = []
     for row in filtered_projects:
-        repo = '<a href="{url}">{name}</a>'.format(
-            url=_text(row.get("repo_url"), "#"),
-            name=_text(row.get("repo_name")),
-        )
+        repo = _external_link_or_text(row.get("repo_url"), row.get("repo_name"))
         identity = '<div class="cell-stack"><div>{repo}</div><code>{owner}</code></div>'.format(
             repo=repo,
             owner=_text(row.get("owner")),
@@ -3300,7 +3341,10 @@ def _artifact_detail(
         (row for row in candidates if row.get("benchmark_run_id") == benchmark_run_id),
         None,
     )
-    artifact_dir = EVAL_RESULTS_DIR / benchmark_run_id
+    try:
+        artifact_dir = _safe_artifact_dir(benchmark_run_id)
+    except ValueError:
+        return _layout("Benchmark Artifact", "", "<h2>Artifact not found</h2>")
     if candidate is None and not artifact_dir.exists():
         return _layout("Benchmark Artifact", "", "<h2>Artifact not found</h2>")
 
@@ -3424,7 +3468,7 @@ def _model_detail(conn, model_id):
         <p><strong>Provider:</strong> {provider}</p>
         <p><strong>Parameters:</strong> {params}B</p>
         <p><strong>License:</strong> {license}</p>
-        <p><strong>Source:</strong> <a href="{source}">{source}</a></p>
+        <p><strong>Source:</strong> {source}</p>
         <p>{notes}</p>
       </section>
       <section class="panel">
@@ -3440,7 +3484,7 @@ def _model_detail(conn, model_id):
         provider=_text(model["provider"]),
         params=_number(model["params_b"], 1),
         license=_text(model["license"]),
-        source=_text(model["source_url"], "#"),
+        source=_external_link_or_text(model["source_url"], model["source_url"]),
         notes=_text(model["notes"]),
         summary=_text(detail["decisions"][0]["best_use_case"] if detail["decisions"] else ""),
         runs=_table(
@@ -3583,6 +3627,8 @@ def make_handler(
                 html = _layout("Error", "", f"<h2>Error</h2><p>{_text(exc)}</p>")
                 self.send_response(500)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
             self.end_headers()
             self.wfile.write(html.encode("utf-8"))
 
@@ -3659,6 +3705,8 @@ def make_handler(
                 html = _layout("Action Error", "", f"<h2>Action Error</h2><p>{_text(exc)}</p>")
                 self.send_response(400)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
             self.end_headers()
             self.wfile.write(html.encode("utf-8"))
 
@@ -3726,10 +3774,8 @@ def serve(
     run_test_timeout=3600,
     inventory_timeout=5,
 ):
-    if enable_run_tests and not _is_loopback_host(host):
-        raise ValueError("Run-test actions require a localhost or loopback bind host.")
-    if enable_import_actions and not _is_loopback_host(host):
-        raise ValueError("Import actions require a localhost or loopback bind host.")
+    if not _is_loopback_host(host):
+        raise ValueError("Dashboard serving requires a localhost or loopback bind host.")
     enable_inventory_refresh = _is_loopback_host(host)
     action_token = secrets.token_urlsafe(24)
     server = ThreadingHTTPServer(

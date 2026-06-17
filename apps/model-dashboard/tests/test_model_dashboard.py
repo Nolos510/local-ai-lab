@@ -575,6 +575,29 @@ class ModelDashboardQaTests(unittest.TestCase):
                 self.assertEqual(db.table_count(conn, "eval_scores"), 1)
                 self.assertEqual(db.table_count(conn, "decisions"), 1)
 
+    def test_artifact_import_rejects_traversal_run_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            eval_results = tmp_path / "eval_results"
+            outside = tmp_path / "outside"
+            outside.mkdir(parents=True)
+            write_dashboard_import_fixture(outside, "outside")
+
+            with self.assertRaises(ValueError):
+                server._import_artifact("../outside", db_path, eval_results)
+
+    def test_artifact_detail_rejects_traversal_run_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+
+            with db.connect(db_path) as conn:
+                html = server._artifact_detail(conn, "../")
+
+            self.assertIn("Artifact not found", html)
+
     def test_artifact_import_control_enabled_only_with_flag(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -603,6 +626,40 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn('method="post" action="/actions/import-artifact"', enabled_html)
         self.assertIn('name="token" value="fixture-token"', enabled_html)
         self.assertIn('name="benchmark_run_id" value="20260605-import-fixture"', enabled_html)
+
+    def test_model_detail_renders_unsafe_source_url_as_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with db.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO models (id, model_name, provider, source_url)
+                    VALUES (1, 'Unsafe Source Model', 'local', 'javascript:alert(1)')
+                    """
+                )
+                html = server._model_detail(conn, 1)
+
+            self.assertIn("Unsafe Source Model", html)
+            self.assertNotIn('href="javascript:alert(1)"', html)
+
+    def test_project_repo_url_rejects_unsafe_scheme(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "github_repos.csv"
+            write_project_registry(registry_path)
+            with registry_path.open(newline="", encoding="utf-8") as handle:
+                rows = list(csv.DictReader(handle))
+            rows[0]["repo_url"] = "javascript:alert(1)"
+            with registry_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=PROJECT_FIELDS)
+                writer.writeheader()
+                writer.writerows(rows)
+
+            html = server._projects(registry_path=registry_path)
+
+            self.assertIn("Local Runtime", html)
+            self.assertNotIn('href="javascript:alert(1)"', html)
 
     def test_dashboard_loop_links_imported_runs_to_artifacts_and_decisions(self):
         with tempfile.TemporaryDirectory() as tmp:

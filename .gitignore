@@ -36,6 +36,8 @@ data/chunked/*
 !data/chunked/README.md
 data/eval/*
 !data/eval/README.md
+data/eval_results/*
+!data/eval_results/.gitkeep
 data/synthetic/*
 !data/synthetic/README.md
 models/base/*

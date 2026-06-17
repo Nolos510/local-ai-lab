@@ -45,6 +45,11 @@ class ReportTests(unittest.TestCase):
             self.assertIn("Demo fixture models hidden: 0", text)
             self.assertIn("Qwen2.5-Coder 14B Instruct", text)
 
+    def test_report_markdown_cells_escape_active_syntax(self):
+        escaped = reports._markdown_cell("![x](http://example.test)|<b>")
+
+        self.assertEqual(escaped, "\\!\\[x\\]\\(http://example.test\\)\\|&lt;b&gt;")
+
 
 if __name__ == "__main__":
     unittest.main()

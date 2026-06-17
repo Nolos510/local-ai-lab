@@ -7,7 +7,23 @@ from . import db
 
 
 def _value(value, fallback=""):
-    return fallback if value is None else str(value)
+    return fallback if value is None else _markdown_cell(value)
+
+
+def _markdown_cell(value):
+    text = str(value).replace("\n", " ").replace("\r", " ")
+    replacements = {
+        "\\": "\\\\",
+        "|": "\\|",
+        "[": "\\[",
+        "]": "\\]",
+        "(": "\\(",
+        ")": "\\)",
+        "<": "&lt;",
+        ">": "&gt;",
+        "!": "\\!",
+    }
+    return "".join(replacements.get(char, char) for char in text)
 
 
 def _score(value):

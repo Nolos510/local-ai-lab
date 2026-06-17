@@ -1,7 +1,0 @@
-{
-  "best_use_case": "Not established; LM Studio daemon failed before prompt execution.",
-  "decision": "retest",
-  "keep_installed": 1,
-  "retest_condition": "Retest after LM Studio daemon/server starts and the installed local model can answer the full prompt set.",
-  "weakness": "Runtime unavailable during benchmark attempt."
-}

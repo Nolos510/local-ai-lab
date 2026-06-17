@@ -14,14 +14,11 @@ class FakeRAGService:
             citations=[
                 Citation(
                     chunk_id="chunk-1",
-                    source_path="data/sample_docs/README.md",
                     source_name="README.md",
                     chunk_index=0,
                     score=0.9,
-                    preview="Local AI engineering.",
                 )
             ],
-            retrieved_chunks=[],
         )
 
 
@@ -46,6 +43,18 @@ def test_ask_endpoint_returns_answer(monkeypatch) -> None:
     payload = response.json()
     assert payload["answer"] == "It is for local AI engineering."
     assert payload["citations"][0]["source_name"] == "README.md"
+    assert "retrieved_chunks" not in payload
+    assert "source_path" not in payload["citations"][0]
+    assert "preview" not in payload["citations"][0]
+
+
+def test_ask_endpoint_rejects_large_top_k(monkeypatch) -> None:
+    monkeypatch.setattr("local_ai_lab.api.app.build_rag_service", lambda settings: FakeRAGService())
+    client = TestClient(create_app())
+
+    response = client.post("/ask", json={"question": "What is this lab for?", "top_k": 21})
+
+    assert response.status_code == 422
 
 
 def test_ask_endpoint_returns_502_for_provider_error(monkeypatch) -> None:
@@ -59,8 +68,9 @@ def test_ask_endpoint_returns_502_for_provider_error(monkeypatch) -> None:
 
     assert response.status_code == 502
     detail = response.json()["detail"]
-    assert "LM Studio/OpenAI-compatible provider failed" in detail
-    assert "http://localhost:1234" in detail
+    assert "Local chat provider failed" in detail
+    assert "http://localhost:1234" not in detail
+    assert "local-model" not in detail
     assert "uv run local-ai-lab doctor" in detail
     assert "PRIVATE_PROMPT_TEXT" not in detail
     assert "secret" not in detail

@@ -111,6 +111,8 @@ RESPONSE_FIELDS = (
     "raw_response",
     "evaluator_notes",
 )
+SAFE_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 
 class HarnessError(RuntimeError):
@@ -164,6 +166,14 @@ def _blank(value):
     return "" if value is None else value
 
 
+def _safe_csv_cell(value):
+    value = _blank(value)
+    text = str(value)
+    if text.startswith(FORMULA_PREFIXES):
+        return "'" + text
+    return value
+
+
 def _display_path(path):
     path = Path(path).resolve()
     try:
@@ -195,11 +205,11 @@ def _validate_local_endpoint(endpoint):
         address = ipaddress.ip_address(host)
     except ValueError as exc:
         raise HarnessError(
-            "Endpoint host must be localhost, loopback IP, or literal private LAN IP."
+            "Endpoint host must be localhost or a loopback IP."
         ) from exc
-    if address.is_loopback or address.is_private:
+    if address.is_loopback:
         return parsed
-    raise HarnessError("Endpoint host must not be a public IP address.")
+    raise HarnessError("Endpoint host must be localhost or a loopback IP.")
 
 
 def _chat_completions_url(endpoint):
@@ -388,7 +398,16 @@ def _prompt_lookup(prompt_set):
 
 
 def _run_dir(output_root, benchmark_run_id):
-    return Path(output_root).resolve() / benchmark_run_id
+    benchmark_run_id = str(benchmark_run_id or "")
+    if not SAFE_RUN_ID_RE.fullmatch(benchmark_run_id):
+        raise HarnessError(f"Invalid benchmark_run_id: {benchmark_run_id}")
+    root = Path(output_root).resolve()
+    run_dir = (root / benchmark_run_id).resolve()
+    try:
+        run_dir.relative_to(root)
+    except ValueError as exc:
+        raise HarnessError(f"Invalid benchmark_run_id: {benchmark_run_id}") from exc
+    return run_dir
 
 
 def _require_absent_or_force(path, force):
@@ -547,7 +566,7 @@ def _write_csv(path, fields, rows):
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
         for row in rows:
-            writer.writerow({field: _blank(row.get(field)) for field in fields})
+            writer.writerow({field: _safe_csv_cell(row.get(field)) for field in fields})
 
 
 def _validate_score(value, field):
@@ -847,9 +866,9 @@ def run_lmstudio_cli(args):
                 f"latency_ms={latency_ms}",
                 "error={}".format(result["error"] or ""),
                 "stdout:",
-                result["stdout"].rstrip(),
+                _neutralize_terminal(result["stdout"].rstrip()),
                 "stderr:",
-                result["stderr"].rstrip(),
+                _neutralize_terminal(result["stderr"].rstrip()),
                 "",
             ]
         )
@@ -869,6 +888,13 @@ def run_lmstudio_cli(args):
         handle.write(f"- Prompt records: `{len(records)}`\n")
         handle.write(f"- Capture log: `{_display_path(log_path)}`\n")
     return raw_path
+
+
+def _neutralize_terminal(value):
+    return "".join(
+        char if char in ("\n", "\t") or ord(char) >= 32 else f"\\x{ord(char):02x}"
+        for char in str(value)
+    )
 
 
 def _judge_prompt(metadata, raw_records, rubric):
