@@ -20,8 +20,8 @@ which local models and project opportunities are worth keeping.
 
 ## 3. Non-Negotiable Local-First Rules
 
-- Do not add hidden cloud calls, cloud API clients, model download logic, or
-  secrets.
+- Do not add hidden cloud calls, cloud API clients, ungated model download
+  logic, or secrets.
 - Keep Open WebUI optional and parallel; the FastAPI RAG harness must not
   depend on it.
 - Use Qdrant as the v0 vector database.
@@ -50,6 +50,9 @@ which local models and project opportunities are worth keeping.
 - External Radar may gather public metadata on demand, but it must not download
   models, run models, call model APIs, add API clients, or register candidates
   without explicit approval.
+- Dashboard model actions must remain explicit, localhost-only, token-protected,
+  disabled by default, and limited to approved registry rows or local inventory
+  maintenance paths.
 - Candidate-only project records belong under `data/project_registry`; do not
   turn GitHub project opportunities into model eval scores.
 

@@ -45,6 +45,7 @@ Goal: prove a small local-first RAG path on Apple Silicon.
 - [ ] Add agent workflows only after the non-agent RAG backbone is measured and reliable.
 - [ ] Add workspace cockpit degraded-state reporting.
 - [x] Add model cookbook hardware-fit guidance for Apple Silicon.
+- [x] Add gated dashboard model ops and local master ledger.
 - [ ] Add blind model-compare workflow with vote/reveal/history.
 - [ ] Add deep research, document, memory, email/calendar/task, browser, or MCP
   lanes only after new ADRs.

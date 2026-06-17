@@ -26,8 +26,31 @@ PROJECT_REGISTRY_PATH = REPO_ROOT / "data" / "project_registry" / "github_repos.
 EVAL_RESULTS_DIR = REPO_ROOT / "data" / "eval_results"
 HARNESS_PATH = REPO_ROOT / "evals" / "local-llm-benchmark" / "harness.py"
 DEFAULT_DASHBOARD_DB = REPO_ROOT / "data" / "dashboard" / "model_dashboard.sqlite"
+DEFAULT_MASTER_LEDGER = REPO_ROOT / "data" / "dashboard" / "master-ledger.csv"
+DOWNLOAD_REQUESTS_PATH = REPO_ROOT / "data" / "dashboard" / "download-requests.csv"
 LMSTUDIO_MODELS_ROOT = Path.home() / ".lmstudio" / "models"
 SPECIALTY_LANE_TERMS = ("abliterated", "dolphin")
+MASTER_LEDGER_FIELDS = (
+    "timestamp",
+    "action",
+    "runtime",
+    "model_id",
+    "candidate_id",
+    "approval_state",
+    "artifact_id",
+    "status",
+    "exit_code",
+    "dashboard_link",
+    "note",
+)
+DOWNLOAD_REQUEST_FIELDS = (
+    "timestamp",
+    "source",
+    "runtime",
+    "requested_model",
+    "approval_state",
+    "suggested_command",
+)
 SUPPORTED_LOCAL_RUNNERS = {
     "lmstudio-cli": "LM Studio CLI",
     "openai-compatible": "OpenAI-compatible local endpoint",
@@ -898,6 +921,180 @@ def _candidate_availability(row):
     """
 
 
+def _safe_model_id(value, allow_url=False):
+    value = str(value or "").strip()
+    if not value or len(value) > 300:
+        return False
+    if any(char.isspace() for char in value) or ".." in value:
+        return False
+    if "://" in value:
+        parsed = urlparse(value)
+        return (
+            allow_url
+            and parsed.scheme in ("http", "https")
+            and bool(parsed.netloc)
+            and not parsed.query
+            and not parsed.fragment
+        )
+    return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,299}", value))
+
+
+def _safe_relative_model_path(value):
+    value = str(value or "").strip()
+    if not value or "\x00" in value:
+        return False
+    path = Path(value)
+    return not path.is_absolute() and ".." not in path.parts
+
+
+def _candidate_download_state(row):
+    approval = row.get("download_approval") or "not_approved"
+    security = _candidate_security_status(row)
+    if "blocked" in (approval, security):
+        return "blocked"
+    if approval == "approved":
+        return "approved"
+    if approval == "not_needed_local":
+        return "local-only"
+    return "needs_review"
+
+
+def _candidate_download_runtime(row):
+    text = " ".join(
+        row.get(field, "")
+        for field in (
+            "format_or_runtime",
+            "runtime_availability",
+            "local_runner",
+            "lm_studio_url",
+            "ollama_url",
+        )
+    ).lower()
+    if row.get("ollama_url") or "ollama" in text:
+        return "ollama"
+    if row.get("lm_studio_url") or "lm studio" in text or "mlx" in text or "gguf" in text:
+        return "lm_studio"
+    return ""
+
+
+def _ollama_model_from_url(url):
+    value = str(url or "").strip()
+    if not value:
+        return ""
+    parsed = urlparse(value)
+    if parsed.scheme and parsed.netloc:
+        parts = [part for part in parsed.path.split("/") if part]
+        if parts and parts[0] == "library":
+            parts = parts[1:]
+        return "/".join(parts)
+    return value
+
+
+def _candidate_download_target(row, runtime):
+    if runtime == "ollama":
+        return (
+            _ollama_model_from_url(row.get("ollama_url"))
+            or row.get("local_model_id")
+            or row.get("model_name")
+            or ""
+        )
+    if runtime == "lm_studio":
+        return (
+            row.get("lm_studio_url")
+            or row.get("model_page_url")
+            or row.get("local_model_id")
+            or row.get("model_name")
+            or ""
+        )
+    return ""
+
+
+def _candidate_download_command(row):
+    state = _candidate_download_state(row)
+    runtime = _candidate_download_runtime(row)
+    if state != "approved":
+        return {
+            "enabled": False,
+            "state": state,
+            "runtime": runtime,
+            "target": "",
+            "command": [],
+            "reason": "Direct download requires download_approval=approved.",
+        }
+    target = _candidate_download_target(row, runtime)
+    if runtime == "ollama":
+        if not _safe_model_id(target):
+            raise ValueError("Unsafe or missing Ollama model id.")
+        return {
+            "enabled": True,
+            "state": state,
+            "runtime": runtime,
+            "target": target,
+            "command": ["ollama", "pull", target],
+            "reason": "",
+        }
+    if runtime == "lm_studio":
+        if not _safe_model_id(target, allow_url=True):
+            raise ValueError("Unsafe or missing LM Studio download target.")
+        command = ["lms", "get", target, "--yes"]
+        format_text = " ".join(
+            [row.get("format_or_runtime", ""), row.get("runtime_availability", "")]
+        ).lower()
+        if "mlx" in format_text:
+            command.append("--mlx")
+        elif "gguf" in format_text:
+            command.append("--gguf")
+        return {
+            "enabled": True,
+            "state": state,
+            "runtime": runtime,
+            "target": target,
+            "command": command,
+            "reason": "",
+        }
+    return {
+        "enabled": False,
+        "state": state,
+        "runtime": runtime,
+        "target": "",
+        "command": [],
+        "reason": "No supported download runtime is recorded.",
+    }
+
+
+def _append_csv_row(path, fieldnames, row):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_header = not path.exists() or path.stat().st_size == 0
+    with path.open("a", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        if write_header:
+            writer.writeheader()
+        writer.writerow({field: str(row.get(field, "")) for field in fieldnames})
+
+
+def _append_master_ledger(path, **row):
+    row.setdefault("timestamp", datetime.now().astimezone().isoformat(timespec="seconds"))
+    _append_csv_row(path, MASTER_LEDGER_FIELDS, row)
+
+
+def _append_download_request(path, **row):
+    row.setdefault("timestamp", datetime.now().astimezone().isoformat(timespec="seconds"))
+    row.setdefault("approval_state", "needs_review")
+    _append_csv_row(path, DOWNLOAD_REQUEST_FIELDS, row)
+
+
+def _find_candidate(candidate_id, registry_path=CANDIDATE_REGISTRY_PATH):
+    return next(
+        (
+            row
+            for row in _load_radar_candidates(registry_path)
+            if row.get("candidate_id") == candidate_id
+        ),
+        None,
+    )
+
+
 def _candidate_security_status(row):
     return row.get("security_review_status") or "unreviewed"
 
@@ -985,6 +1182,152 @@ def _run_test_control(row, enable_run_tests=False, action_token=""):
         runner=_text(_candidate_runner_label(row)),
         model_id=_text(row.get("local_model_id") or row.get("model_name")),
     )
+
+
+def _download_control(row, enable_model_actions=False, action_token=""):
+    try:
+        plan = _candidate_download_command(row)
+    except ValueError as exc:
+        return (
+            '<div class="cell-stack">'
+            f"{_pill('needs_review')}"
+            f"<div>{_text(exc)}</div>"
+            "</div>"
+        )
+    state = plan["state"]
+    if not plan["enabled"]:
+        reason = plan["reason"]
+        if state == "local-only":
+            reason = "Local inventory record; no new download is approved or needed."
+        return (
+            '<div class="cell-stack">'
+            f"{_pill(state)}"
+            f"<div>{_text(reason)}</div>"
+            "</div>"
+        )
+    command = _command_lines(plan["command"])
+    if not enable_model_actions:
+        return (
+            '<div class="cell-stack">'
+            f"{_pill(state)}"
+            '<button type="button" disabled>Download Model</button>'
+            "<div>Restart with <code>--enable-model-actions</code></div>"
+            f"<div>{_command_block(command)}</div>"
+            "</div>"
+        )
+    return """
+    <form class="inline-form" method="post" action="/actions/download-model">
+      <input type="hidden" name="token" value="{token}">
+      <input type="hidden" name="candidate_id" value="{candidate_id}">
+      <button type="submit">Download Model</button>
+      <div>{state}</div>
+      <div>{runtime}</div>
+      <div>{command}</div>
+    </form>
+    """.format(
+        token=_text(action_token),
+        candidate_id=_text(row.get("candidate_id")),
+        state=_pill(state),
+        runtime=_text(plan["runtime"]),
+        command=_command_block(command),
+    )
+
+
+def _inventory_model_ops_control(model, candidate, enable_model_actions=False, action_token=""):
+    runtime = model.get("runtime", "")
+    model_id = model.get("model_id", "")
+    if runtime == "Ollama":
+        if not _safe_model_id(model_id):
+            return '<span class="empty">Unsafe model id; remove manually after inspection.</span>'
+        if not enable_model_actions:
+            return (
+                '<div class="cell-stack">'
+                '<button type="button" disabled>Remove Ollama Model</button>'
+                "<div>Restart with <code>--enable-model-actions</code></div>"
+                f"<div><code>ollama rm {_text(model_id)}</code></div>"
+                "</div>"
+            )
+        return """
+        <form class="inline-form" method="post" action="/actions/remove-ollama-model">
+          <input type="hidden" name="token" value="{token}">
+          <input type="hidden" name="model_id" value="{model_id}">
+          <input type="hidden" name="candidate_id" value="{candidate_id}">
+          <button type="submit">Remove Ollama Model</button>
+          <div><code>ollama rm {model_id}</code></div>
+        </form>
+        """.format(
+            token=_text(action_token),
+            model_id=_text(model_id),
+            candidate_id=_text(candidate.get("candidate_id") if candidate else ""),
+        )
+    if runtime == "LM Studio":
+        source_path = model.get("source_path") or model_id
+        if not _safe_relative_model_path(source_path):
+            return '<span class="empty">Unsafe path; reveal manually in LM Studio.</span>'
+        if not enable_model_actions:
+            return (
+                '<div class="cell-stack">'
+                '<button type="button" disabled>Reveal in Finder</button>'
+                "<div>Restart with <code>--enable-model-actions</code></div>"
+                "<div>LM Studio has no safe CLI delete command here.</div>"
+                "</div>"
+            )
+        return """
+        <form class="inline-form" method="post" action="/actions/reveal-model">
+          <input type="hidden" name="token" value="{token}">
+          <input type="hidden" name="model_id" value="{model_id}">
+          <input type="hidden" name="source_path" value="{source_path}">
+          <input type="hidden" name="candidate_id" value="{candidate_id}">
+          <button type="submit">Reveal in Finder</button>
+          <div class="empty">Delete from Finder or LM Studio after review.</div>
+        </form>
+        """.format(
+            token=_text(action_token),
+            model_id=_text(model_id),
+            source_path=_text(source_path),
+            candidate_id=_text(candidate.get("candidate_id") if candidate else ""),
+        )
+    return '<span class="empty">No model ops for this runtime.</span>'
+
+
+def _download_intake_form(enable_model_actions=False, action_token=""):
+    disabled = "" if enable_model_actions else " disabled"
+    note = (
+        ""
+        if enable_model_actions
+        else '<p class="empty">Restart with <code>--enable-model-actions</code> to record download requests.</p>'
+    )
+    return f"""
+    <section class="panel" style="margin-bottom:16px">
+      <h2>Download Intake</h2>
+      <p>Pasted IDs and catalog ideas are recorded as <code>needs_review</code>. They do not download until a registry row is approved.</p>
+      <form class="filters" method="post" action="/actions/queue-download-request">
+        <input type="hidden" name="token" value="{_text(action_token)}">
+        <div class="field">
+          <label for="download-source">Source</label>
+          <select id="download-source" name="source"{disabled}>
+            <option value="paste">Pasted model ID or URL</option>
+            <option value="catalog">Catalog search idea</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="download-runtime">Runtime</label>
+          <select id="download-runtime" name="runtime"{disabled}>
+            <option value="lm_studio">LM Studio</option>
+            <option value="ollama">Ollama</option>
+          </select>
+        </div>
+        <div class="field field-wide">
+          <label for="requested-model">Model ID, URL, or search term</label>
+          <input id="requested-model" name="requested_model" type="text"{disabled}>
+        </div>
+        <div class="filter-actions">
+          <button type="submit"{disabled}>Queue Review</button>
+        </div>
+      </form>
+      {note}
+    </section>
+    """
 
 
 def _next_dashboard_run_id(row, eval_results_dir=EVAL_RESULTS_DIR):
@@ -1432,6 +1775,7 @@ def _inventory(
     inventory_result=None,
     action_token="",
     enable_run_tests=False,
+    enable_model_actions=False,
     enable_refresh=True,
 ):
     candidates = _load_radar_candidates()
@@ -1478,6 +1822,12 @@ def _inventory(
                 )
             else:
                 action_cell = '<span class="empty">Register exact local model id first</span>'
+            model_ops = _inventory_model_ops_control(
+                model,
+                candidate,
+                enable_model_actions,
+                action_token,
+            )
             model_rows.append(
                 [
                     _text(model["runtime"]),
@@ -1487,13 +1837,14 @@ def _inventory(
                     _text(model.get("source_path", "")),
                     candidate_cell,
                     action_cell,
+                    model_ops,
                 ]
             )
 
     body = """
     <section class="panel" style="margin-bottom:16px">
       <h2>Installed Models</h2>
-      <p>This page checks local runtime inventory on demand. It does not download, install, benchmark, score, or import models.</p>
+      <p>This page checks local runtime inventory on demand. Model mutation buttons are disabled unless the dashboard is started with <code>--enable-model-actions</code>.</p>
       <p>LM Studio rows distinguish <code>loaded</code>, <code>indexed</code>, and <code>filesystem_only</code>. Filesystem-only folders are visible on disk but are not runnable from the dashboard until LM Studio indexes or loads them.</p>
       <form class="inline-form" method="post" action="/actions/refresh-inventory">
         <input type="hidden" name="token" value="{token}">
@@ -1527,7 +1878,16 @@ def _inventory(
         ),
         filters=_inventory_filters(entries, filters),
         models=_table(
-            ["Runtime", "Model id", "Display name", "Status", "Path", "Registry match", "Action"],
+            [
+                "Runtime",
+                "Model id",
+                "Display name",
+                "Status",
+                "Path",
+                "Registry match",
+                "Run",
+                "Model ops",
+            ],
             model_rows,
             empty_message=(
                 "No inventory refresh has run yet."
@@ -1544,7 +1904,13 @@ def _inventory(
     return _layout("Installed Models", "/inventory", body)
 
 
-def _cookbook(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
+def _cookbook(
+    conn,
+    query=None,
+    registry_path=CANDIDATE_REGISTRY_PATH,
+    enable_model_actions=False,
+    action_token="",
+):
     del conn
     candidates = _load_radar_candidates(registry_path)
     filters = _cookbook_filter_values(query or {})
@@ -1615,6 +1981,7 @@ def _cookbook(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
                 runtime_cell,
                 readiness_cell,
                 _candidate_remediation(row, readiness["label"]),
+                _download_control(row, enable_model_actions, action_token),
                 _cookbook_model_links(row),
             ]
         )
@@ -1632,6 +1999,7 @@ def _cookbook(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
       <p>This page turns registry metadata into local runtime guidance. It does not scan runtimes, download models, run benchmarks, or convert candidates into scores.</p>
       <p>Hardware-fit labels are planning heuristics for a 256 GB Apple Silicon Mac Studio. Treat them as routing guidance until a benchmark artifact exists.</p>
     </section>
+    {intake}
     {filters}
     <h2>Cookbook Entries{filtered_count}</h2>
     {table}
@@ -1650,6 +2018,7 @@ def _cookbook(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
             "ti-shield",
         ),
         filters=_cookbook_filters(candidates, filters),
+        intake=_download_intake_form(enable_model_actions, action_token),
         filtered_count=(
             f" ({len(filtered_candidates)} of {len(candidates)})" if any(filters.values()) else ""
         ),
@@ -1660,6 +2029,7 @@ def _cookbook(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
                 "Runtime profile",
                 "Readiness / gate",
                 "Remediation",
+                "Download ops",
                 "Evidence",
             ],
             rows,
@@ -1751,6 +2121,174 @@ def _run_candidate_test(candidate_id, registry_path, eval_results_dir, timeout):
         "init": init_result,
         "capture": capture_result,
     }
+
+
+def _run_model_download(candidate_id, registry_path, timeout):
+    row = _find_candidate(candidate_id, registry_path)
+    if row is None:
+        raise ValueError(f"Candidate not found: {candidate_id}")
+    plan = _candidate_download_command(row)
+    if not plan["enabled"]:
+        raise ValueError(plan["reason"])
+    command = list(plan["command"])
+    if command[0] == "ollama":
+        executable = shutil.which("ollama")
+    elif command[0] == "lms":
+        executable = _lmstudio_cli_path()
+    else:
+        executable = None
+    if not executable:
+        raise ValueError(f"{command[0]} CLI not found.")
+    command[0] = executable
+    result = _run_subprocess(command, timeout)
+    return {
+        "action": "download_model",
+        "runtime": plan["runtime"],
+        "model_id": plan["target"],
+        "candidate": row,
+        "approval_state": plan["state"],
+        "command": command,
+        "result": result,
+        "dashboard_link": f"/radar?q={row.get('candidate_id', '')}",
+    }
+
+
+def _remove_ollama_model(model_id, candidate_id, timeout):
+    if not _safe_model_id(model_id):
+        raise ValueError("Unsafe Ollama model id.")
+    executable = shutil.which("ollama")
+    if not executable:
+        raise ValueError("ollama CLI not found.")
+    command = [executable, "rm", model_id]
+    result = _run_subprocess(command, timeout)
+    return {
+        "action": "remove_ollama_model",
+        "runtime": "ollama",
+        "model_id": model_id,
+        "candidate_id": candidate_id,
+        "approval_state": "local_inventory",
+        "command": command,
+        "result": result,
+        "dashboard_link": "/inventory",
+    }
+
+
+def _reveal_lmstudio_model(model_id, source_path, timeout, models_root=LMSTUDIO_MODELS_ROOT):
+    source_path = source_path or model_id
+    if not _safe_relative_model_path(source_path):
+        raise ValueError("Unsafe LM Studio model path.")
+    model_path = Path(models_root) / source_path
+    if not model_path.exists():
+        raise ValueError("LM Studio model path is not present on disk.")
+    command = ["open", "-R", str(model_path)]
+    result = _run_subprocess(command, timeout)
+    return {
+        "action": "reveal_model",
+        "runtime": "lm_studio",
+        "model_id": model_id,
+        "candidate_id": "",
+        "approval_state": "local_inventory",
+        "command": ["open", "-R", source_path],
+        "result": result,
+        "dashboard_link": "/inventory",
+    }
+
+
+def _queue_download_request(source, runtime, requested_model, requests_path):
+    source = source if source in ("paste", "catalog") else "paste"
+    runtime = runtime if runtime in ("lm_studio", "ollama") else "lm_studio"
+    requested_model = str(requested_model or "").strip()
+    if (
+        not requested_model
+        or len(requested_model) > 300
+        or "\n" in requested_model
+        or "\r" in requested_model
+    ):
+        raise ValueError("Model request is missing or too long.")
+    if runtime == "ollama":
+        suggested = f"ollama pull {requested_model}"
+    else:
+        suggested = f"lms get {requested_model} --select"
+    _append_download_request(
+        requests_path,
+        source=source,
+        runtime=runtime,
+        requested_model=requested_model,
+        approval_state="needs_review",
+        suggested_command=suggested,
+    )
+    return {
+        "action": "queue_download_request",
+        "runtime": runtime,
+        "model_id": requested_model,
+        "candidate_id": "",
+        "approval_state": "needs_review",
+        "command": [],
+        "result": None,
+        "dashboard_link": "/cookbook",
+        "note": "Recorded for review; no download was started.",
+    }
+
+
+def _ledger_status(result):
+    completed = result.get("result")
+    if completed is None:
+        return "queued", ""
+    return ("ok" if completed.returncode == 0 else "error", completed.returncode)
+
+
+def _write_action_ledger(master_ledger_path, result, artifact_id=""):
+    status, exit_code = _ledger_status(result)
+    candidate = result.get("candidate") or {}
+    _append_master_ledger(
+        master_ledger_path,
+        action=result.get("action", ""),
+        runtime=result.get("runtime", ""),
+        model_id=result.get("model_id", ""),
+        candidate_id=result.get("candidate_id") or candidate.get("candidate_id", ""),
+        approval_state=result.get("approval_state", ""),
+        artifact_id=artifact_id,
+        status=status,
+        exit_code=exit_code,
+        dashboard_link=result.get("dashboard_link", ""),
+        note=result.get("note", ""),
+    )
+
+
+def _model_action_page(title, result):
+    completed = result.get("result")
+    command = _command_lines(result.get("command", [])) if result.get("command") else ""
+    status, exit_code = _ledger_status(result)
+    body = """
+    <section class="panel">
+      <h2>{title}</h2>
+      <p><strong>Status:</strong> {status}</p>
+      <p><strong>Runtime:</strong> {runtime}</p>
+      <p><strong>Model:</strong> <code>{model}</code></p>
+      <p><strong>Approval:</strong> {approval}</p>
+      <p><strong>Exit:</strong> <code>{exit_code}</code></p>
+      {command}
+      <p>{note}</p>
+      <p><a href="{link}">Return to dashboard context</a></p>
+    </section>
+    {output_note}
+    """.format(
+        title=_text(title),
+        status=_pill(status),
+        runtime=_text(result.get("runtime", "")),
+        model=_text(result.get("model_id", "")),
+        approval=_pill(result.get("approval_state", "")),
+        exit_code=_text(exit_code),
+        command=_command_block(command) if command else "",
+        note=_text(result.get("note", "")),
+        link=_text(result.get("dashboard_link", "/lab")),
+        output_note=(
+            '<p class="empty">Command output is intentionally not displayed or logged by the dashboard.</p>'
+            if completed is not None
+            else ""
+        ),
+    )
+    return _layout(title, "", body)
 
 
 def _result_block(label, result):
@@ -2972,8 +3510,10 @@ def _lab(
     project_registry_path=PROJECT_REGISTRY_PATH,
     enable_run_tests=False,
     enable_import_actions=False,
+    enable_model_actions=False,
     action_token="",
     database_path=DEFAULT_DASHBOARD_DB,
+    master_ledger_path=DEFAULT_MASTER_LEDGER,
 ):
     candidates = _load_radar_candidates(registry_path)
     projects = _load_project_repos(project_registry_path)
@@ -3026,6 +3566,12 @@ def _lab(
             _pill("local"),
             "{} real decisions logged".format(real_counts["decisions"]),
             '<a href="/storage">Review keep/watch/retest state</a>',
+        ],
+        [
+            "Model Ops",
+            _pill("enabled" if enable_model_actions else "disabled"),
+            f"ledger: {_relative_path(master_ledger_path)}",
+            '<a href="/cookbook">Review download approvals</a>',
         ],
     ]
 
@@ -3179,6 +3725,12 @@ def _lab(
       {stages}
     </section>
     <section style="margin-top:16px">
+      <h2>Dashboard Ops</h2>
+      <p>Download/delete/reveal actions are {ops_state}. Run-test and import actions keep their own explicit flags.</p>
+      <p><strong>Master ledger:</strong> <code>{ledger}</code></p>
+      <p><strong>Report command:</strong>{report_command}</p>
+    </section>
+    <section style="margin-top:16px">
       <h2>Abliterated / Dolphin Lane</h2>
       {specialty_table}
     </section>
@@ -3220,6 +3772,9 @@ def _lab(
             empty_message="No GitHub projects are ready for review yet.",
             table_class="project-table",
         ),
+        ops_state=_text("enabled" if enable_model_actions else "disabled"),
+        ledger=_text(_relative_path(master_ledger_path)),
+        report_command=_command_block(_command_lines(_artifact_report_command(database_path))),
         queue=_table(
             ["Candidate", "Status", "State", "Run", "Next command"],
             queue_rows,
@@ -3245,7 +3800,7 @@ def _lab(
     return _layout("Lab Dashboard", "/lab", body)
 
 
-def _runs(conn, query=None):
+def _runs(conn, query=None, database_path=DEFAULT_DASHBOARD_DB):
     rows = []
     all_runs = db.list_runs(conn)
     runs = _real_rows(all_runs)
@@ -3273,11 +3828,17 @@ def _runs(conn, query=None):
         )
     body = """
     {notice}
+    <section class="panel" style="margin-bottom:16px">
+      <h2>Run Evidence</h2>
+      <p>Runs appear here after dashboard CSV import. Raw model responses stay in local artifact directories; scores are valid only after review/import.</p>
+      <p><strong>Generate report:</strong>{report_command}</p>
+    </section>
     {filters}
     <h2>Model Runs{filtered_count}</h2>
     {table}
     """.format(
         notice=_real_data_notice(len(_demo_rows(all_runs))),
+        report_command=_command_block(_command_lines(_artifact_report_command(database_path))),
         filters=_runs_filters(runs, filters),
         filtered_count=(f" ({len(filtered_runs)} of {len(runs)})" if any(filters.values()) else ""),
         table=_table(
@@ -3303,7 +3864,7 @@ def _runs(conn, query=None):
     return _layout("Model Runs", "/runs", body)
 
 
-def _compare(conn, query=None):
+def _compare(conn, query=None, database_path=DEFAULT_DASHBOARD_DB):
     headers = ["Model", "Score", "Status", "Label"] + [
         field.replace("_", " ").title() for field in METRIC_FIELDS
     ]
@@ -3337,6 +3898,11 @@ def _compare(conn, query=None):
         rows.append(cells)
     body = """
     {notice}
+    <section class="panel" style="margin-bottom:16px">
+      <h2>Comparison Evidence</h2>
+      <p>Comparisons rank imported confirmed or draft scores. The dashboard does not declare a winner from raw responses alone.</p>
+      <p><strong>Generate report:</strong>{report_command}</p>
+    </section>
     {filters}
     <h2>Compare Models{filtered_count}</h2>
     <section class="chart-grid" aria-label="Compare charts">
@@ -3346,6 +3912,7 @@ def _compare(conn, query=None):
     {table}
     """.format(
         notice=_real_data_notice(len(_demo_rows(all_scores))),
+        report_command=_command_block(_command_lines(_artifact_report_command(database_path))),
         filters=_compare_filters(scores, filters),
         filtered_count=(
             f" ({len(filtered_scores)} of {len(scores)})" if any(filters.values()) else ""
@@ -3953,10 +4520,14 @@ def make_handler(
     database_path,
     enable_run_tests=False,
     enable_import_actions=False,
+    enable_model_actions=False,
     action_token="",
     run_test_timeout=3600,
+    model_action_timeout=3600,
     inventory_timeout=5,
     enable_inventory_refresh=True,
+    master_ledger_path=DEFAULT_MASTER_LEDGER,
+    download_requests_path=DOWNLOAD_REQUESTS_PATH,
 ):
     inventory_cache = {"result": None}
 
@@ -3982,6 +4553,10 @@ def make_handler(
                     "/actions/run-test",
                     "/actions/refresh-inventory",
                     "/actions/import-artifact",
+                    "/actions/download-model",
+                    "/actions/remove-ollama-model",
+                    "/actions/reveal-model",
+                    "/actions/queue-download-request",
                 ):
                     html = _layout("Not Found", "", "<h2>Page not found</h2>")
                     self.send_response(404)
@@ -4007,8 +4582,79 @@ def make_handler(
                                 inventory_result=inventory_cache["result"],
                                 action_token=action_token,
                                 enable_run_tests=enable_run_tests,
+                                enable_model_actions=enable_model_actions,
                                 enable_refresh=enable_inventory_refresh,
                             )
+                            self.send_response(200)
+                    elif parsed.path == "/actions/download-model":
+                        if not enable_model_actions:
+                            html = _layout(
+                                "Model Actions Disabled",
+                                "",
+                                "<h2>Model actions disabled</h2><p>Restart the dashboard with <code>--enable-model-actions</code>.</p>",
+                            )
+                            self.send_response(403)
+                        else:
+                            result = _run_model_download(
+                                _query_value(form, "candidate_id"),
+                                CANDIDATE_REGISTRY_PATH,
+                                model_action_timeout,
+                            )
+                            _write_action_ledger(master_ledger_path, result)
+                            html = _model_action_page("Download Model", result)
+                            self.send_response(200)
+                    elif parsed.path == "/actions/remove-ollama-model":
+                        if not enable_model_actions:
+                            html = _layout(
+                                "Model Actions Disabled",
+                                "",
+                                "<h2>Model actions disabled</h2><p>Restart the dashboard with <code>--enable-model-actions</code>.</p>",
+                            )
+                            self.send_response(403)
+                        else:
+                            result = _remove_ollama_model(
+                                _query_value(form, "model_id"),
+                                _query_value(form, "candidate_id"),
+                                model_action_timeout,
+                            )
+                            _write_action_ledger(master_ledger_path, result)
+                            html = _model_action_page("Remove Ollama Model", result)
+                            self.send_response(200)
+                    elif parsed.path == "/actions/reveal-model":
+                        if not enable_model_actions:
+                            html = _layout(
+                                "Model Actions Disabled",
+                                "",
+                                "<h2>Model actions disabled</h2><p>Restart the dashboard with <code>--enable-model-actions</code>.</p>",
+                            )
+                            self.send_response(403)
+                        else:
+                            result = _reveal_lmstudio_model(
+                                _query_value(form, "model_id"),
+                                _query_value(form, "source_path"),
+                                model_action_timeout,
+                            )
+                            result["candidate_id"] = _query_value(form, "candidate_id")
+                            _write_action_ledger(master_ledger_path, result)
+                            html = _model_action_page("Reveal Model", result)
+                            self.send_response(200)
+                    elif parsed.path == "/actions/queue-download-request":
+                        if not enable_model_actions:
+                            html = _layout(
+                                "Model Actions Disabled",
+                                "",
+                                "<h2>Model actions disabled</h2><p>Restart the dashboard with <code>--enable-model-actions</code>.</p>",
+                            )
+                            self.send_response(403)
+                        else:
+                            result = _queue_download_request(
+                                _query_value(form, "source"),
+                                _query_value(form, "runtime"),
+                                _query_value(form, "requested_model"),
+                                download_requests_path,
+                            )
+                            _write_action_ledger(master_ledger_path, result)
+                            html = _model_action_page("Download Request Queued", result)
                             self.send_response(200)
                     elif parsed.path == "/actions/import-artifact":
                         if not enable_import_actions:
@@ -4024,6 +4670,15 @@ def make_handler(
                                 benchmark_run_id,
                                 database_path,
                                 EVAL_RESULTS_DIR,
+                            )
+                            _append_master_ledger(
+                                master_ledger_path,
+                                action="import_artifact",
+                                runtime="dashboard",
+                                artifact_id=benchmark_run_id,
+                                status="ok",
+                                dashboard_link=f"/artifacts/{benchmark_run_id}",
+                                note=str(result["counts"]),
                             )
                             html = _import_action_page(result)
                             self.send_response(200)
@@ -4041,6 +4696,27 @@ def make_handler(
                             CANDIDATE_REGISTRY_PATH,
                             EVAL_RESULTS_DIR,
                             run_test_timeout,
+                        )
+                        init_code = result["init"].returncode if result.get("init") else ""
+                        capture = result.get("capture")
+                        capture_code = capture.returncode if capture else init_code
+                        _append_master_ledger(
+                            master_ledger_path,
+                            action="run_test",
+                            runtime=_candidate_runner_label(result["candidate"]),
+                            model_id=result["candidate"].get("local_model_id")
+                            or result["candidate"].get("model_name"),
+                            candidate_id=result["candidate"].get("candidate_id"),
+                            approval_state=_candidate_download_state(result["candidate"]),
+                            artifact_id=result["run_id"],
+                            status=(
+                                "ok"
+                                if init_code == 0 and (capture is None or capture_code == 0)
+                                else "error"
+                            ),
+                            exit_code=capture_code,
+                            dashboard_link=f"/artifacts/{result['run_id']}",
+                            note="Raw local artifact; scores require review/import.",
                         )
                         html = _run_action_page(result)
                         self.send_response(200)
@@ -4060,25 +4736,33 @@ def make_handler(
                     conn,
                     enable_run_tests=enable_run_tests,
                     enable_import_actions=enable_import_actions,
+                    enable_model_actions=enable_model_actions,
                     action_token=action_token,
                     database_path=database_path,
+                    master_ledger_path=master_ledger_path,
                 )
             if path == "/":
                 return _overview(conn, query)
             if path == "/runs":
-                return _runs(conn, query)
+                return _runs(conn, query, database_path)
             if path == "/compare":
-                return _compare(conn, query)
+                return _compare(conn, query, database_path)
             if path == "/inventory":
                 return _inventory(
                     query=query,
                     inventory_result=inventory_cache["result"],
                     action_token=action_token,
                     enable_run_tests=enable_run_tests,
+                    enable_model_actions=enable_model_actions,
                     enable_refresh=enable_inventory_refresh,
                 )
             if path == "/cookbook":
-                return _cookbook(conn, query)
+                return _cookbook(
+                    conn,
+                    query,
+                    enable_model_actions=enable_model_actions,
+                    action_token=action_token,
+                )
             if path == "/radar":
                 return _radar(conn, query)
             if path == "/specialty":
@@ -4114,13 +4798,18 @@ def serve(
     port=8765,
     enable_run_tests=False,
     enable_import_actions=False,
+    enable_model_actions=False,
     run_test_timeout=3600,
+    model_action_timeout=3600,
     inventory_timeout=5,
+    master_ledger_path=DEFAULT_MASTER_LEDGER,
 ):
     if enable_run_tests and not _is_loopback_host(host):
         raise ValueError("Run-test actions require a localhost or loopback bind host.")
     if enable_import_actions and not _is_loopback_host(host):
         raise ValueError("Import actions require a localhost or loopback bind host.")
+    if enable_model_actions and not _is_loopback_host(host):
+        raise ValueError("Model actions require a localhost or loopback bind host.")
     enable_inventory_refresh = _is_loopback_host(host)
     action_token = secrets.token_urlsafe(24)
     server = ThreadingHTTPServer(
@@ -4129,10 +4818,13 @@ def serve(
             database_path,
             enable_run_tests=enable_run_tests,
             enable_import_actions=enable_import_actions,
+            enable_model_actions=enable_model_actions,
             action_token=action_token,
             run_test_timeout=run_test_timeout,
+            model_action_timeout=model_action_timeout,
             inventory_timeout=inventory_timeout,
             enable_inventory_refresh=enable_inventory_refresh,
+            master_ledger_path=master_ledger_path,
         ),
     )
     print(f"Serving Local Model Dashboard at http://{host}:{port}", flush=True)
@@ -4140,6 +4832,9 @@ def serve(
         print("Dashboard run-test actions enabled for local candidates.", flush=True)
     if enable_import_actions:
         print("Dashboard artifact import actions enabled for local CSV artifacts.", flush=True)
+    if enable_model_actions:
+        print("Dashboard model actions enabled for approved local model ops.", flush=True)
+        print(f"Dashboard master ledger: {master_ledger_path}", flush=True)
     if enable_inventory_refresh:
         print("Installed-model inventory refresh enabled for local runtimes.", flush=True)
     try:

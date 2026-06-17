@@ -206,7 +206,18 @@ Useful dashboard pages:
 - `/reports` - dashboard report view
 
 The dashboard MVP uses local SQLite/CSV artifacts. It does not download models,
-call cloud APIs, or require secrets.
+call cloud APIs, or require secrets by default. Approved local model actions are
+available only when the dashboard is started with explicit ops flags:
+
+```bash
+python3 apps/model-dashboard/run_dashboard.py serve \
+  --enable-model-actions \
+  --enable-run-tests \
+  --enable-import-actions
+```
+
+Ops mode remains localhost-only and writes sanitized summaries to the local
+ignored master ledger at `data/dashboard/master-ledger.csv`.
 
 ## Benchmark Harness
 

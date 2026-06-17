@@ -74,6 +74,7 @@
 - [ ] Add LangGraph/DSPy only after stable eval targets exist.
 - [ ] Add workspace cockpit degraded-state reporting.
 - [x] Add model cookbook hardware-fit guidance for Apple Silicon.
+- [x] Add gated dashboard model ops and local master ledger.
 - [ ] Add blind model comparison with vote, reveal, tie, and history.
 - [ ] Add deep research, document intelligence, memory/skills, email/calendar,
   task, browser, or MCP lanes only after ADR approval.

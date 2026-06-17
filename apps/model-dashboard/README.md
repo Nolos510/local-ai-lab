@@ -156,6 +156,32 @@ python3 apps/model-dashboard/run_dashboard.py serve --enable-import-actions
 Import actions require a localhost or loopback bind and import only existing
 CSV files from a benchmark artifact directory.
 
+Model download/remove/reveal actions are disabled by default. To enable the
+gated local model-ops lane, start the dashboard explicitly with:
+
+```bash
+python3 apps/model-dashboard/run_dashboard.py serve \
+  --enable-model-actions \
+  --enable-run-tests \
+  --enable-import-actions
+```
+
+Model actions require a localhost or loopback bind and write sanitized action
+summaries to `data/dashboard/master-ledger.csv`, which is local runtime state
+and ignored by git. Approved registry rows can expose direct download actions:
+
+- Ollama downloads run `ollama pull <model>`.
+- Ollama removals run `ollama rm <model>` from detected installed inventory.
+- LM Studio downloads run `lms get <model-or-url> --yes`, with `--mlx` or
+  `--gguf` when registry metadata is explicit.
+- LM Studio delete is a Finder pathway only: the dashboard can reveal the model
+  folder with `open -R`, but it does not delete LM Studio model directories.
+
+Pasted model IDs, URLs, and catalog ideas are recorded in
+`data/dashboard/download-requests.csv` as `needs_review`; they do not download
+until a registry row is explicitly approved. The master ledger and request CSV
+must not be committed.
+
 The Overview page supports URL-backed filters for search text, final label, decision, and install status. Filtered views can be bookmarked or shared locally, for example:
 
 ```text
@@ -202,8 +228,8 @@ http://127.0.0.1:8765/cookbook
 
 It turns candidate registry metadata into Apple Silicon fit and runtime
 readiness guidance. It does not scan runtimes, download models, run models, or
-create eval scores. Hardware-fit labels are planning heuristics until benchmark
-artifacts exist.
+create eval scores unless model actions are explicitly enabled. Hardware-fit
+labels are planning heuristics until benchmark artifacts exist.
 
 The radar and lab pages include an `Abliterated / Dolphin` count sourced from
 candidate registry rows whose names or families include abliterated or Dolphin

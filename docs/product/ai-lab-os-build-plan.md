@@ -76,7 +76,8 @@ Guardrails:
 
 Goal: make model selection and runtime setup obvious on Apple Silicon.
 
-Status: thin read-only slice implemented through `/cookbook`.
+Status: cookbook slice implemented through `/cookbook`; gated model-ops actions
+implemented only for approved registry rows and local inventory maintenance.
 
 Build:
 
@@ -85,12 +86,16 @@ Build:
 - Exact remediation commands for inspecting LM Studio and Ollama model IDs.
 - Status labels such as loadable, benchmarked, security review, blocked, and
   needs runtime ID.
+- Gated model actions for approved downloads, Ollama removal, LM Studio Finder
+  reveal, and local action ledger entries.
 
 Guardrails:
 
 - Do not infer license/safety claims without source evidence.
 - Do not turn candidate records into eval scores.
-- Do not scan local runtimes or run models from this page.
+- Do not run model actions unless the dashboard is started in explicit local ops
+  mode.
+- Do not download unapproved pasted or catalog candidates; queue them for review.
 
 ## Stage 4: Degraded-State Reporting
 

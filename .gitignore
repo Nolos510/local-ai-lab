@@ -21,6 +21,7 @@ open_webui_data/
 # Dashboard local runtime state
 data/dashboard/*.sqlite
 data/dashboard/*.sqlite-*
+data/dashboard/*.csv
 data/dashboard/exports/
 
 # Benchmark run outputs that can contain raw prompts, raw model responses,
