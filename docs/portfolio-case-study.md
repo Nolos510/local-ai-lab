@@ -1,145 +1,151 @@
 # AI Lab OS Portfolio Case Study
 
-## Project Summary
+## Summary
 
-AI Lab OS is a local-first evaluation and decision system for personal AI
-infrastructure on Apple Silicon. It helps answer a practical question:
+AI Lab OS is a local-first Apple Silicon AI lab for evaluating which local
+models, model runtimes, and AI-adjacent projects are worth installing, testing,
+keeping, or learning from. The project is built around a Mac Studio with 256 GB
+unified memory and keeps the default workflow private, auditable, and local.
+
+The product loop is:
 
 ```text
-Which local models and AI projects are worth installing, testing, keeping,
-or learning from?
+source packet -> radar candidate -> security gate -> benchmark artifact
+-> raw responses -> confirmed scores -> dashboard import -> comparison
+-> keep/watchlist/retest/skip decision
 ```
-
-The system combines model radar, security review, local benchmark artifacts,
-confirmed scoring, dashboard import, model comparison, and final keep/watchlist/
-retest/skip decisions. It is designed for a Mac Studio with 256 GB unified
-memory, while keeping the default operating model private and local.
 
 ## Problem
 
-Local AI work can get messy quickly:
+Local AI evaluation gets unreliable when discovery, installation, benchmark
+evidence, scoring, and final decisions are tracked in separate places. The
+dashboard originally had useful pieces, but it was easy to confuse demo rows,
+installed inventory, radar candidates, and real benchmark results.
 
-- Model recommendations arrive from Hugging Face, GitHub, LM Studio, Ollama,
-  blog posts, and community notes.
-- Installed inventory is not the same thing as benchmarked performance.
-- Demo rows can be mistaken for real local models.
-- Security due diligence is easy to skip when a model looks popular.
-- Raw benchmark responses, scoring, and final decisions often drift apart.
+AI Lab OS solves that by separating each state:
 
-AI Lab OS turns that into a traceable workflow:
-
-```text
-candidate -> security gate -> benchmark artifact -> raw responses -> confirmed scores
--> dashboard import -> comparison -> decision
-```
+- Radar candidates are possible models to review, not scores.
+- Installed inventory is detected local runtime state, not benchmark evidence.
+- Benchmark artifacts preserve raw responses, scores, decisions, and import CSVs.
+- Dashboard model rankings come from imported benchmark results only.
+- Security review is explicit before new external or specialty models are
+  approved for download or execution.
 
 ## What Was Built
 
-- Local model dashboard with lab, radar, specialty, project, inventory, runs,
-  compare, reports, artifacts, and storage views.
-- Candidate registry for local and external radar sources.
-- Project radar for GitHub repositories that may connect to business, product,
-  automation, or learning goals.
-- Local benchmark harness with raw response preservation, evidence notes,
-  score templates, decision records, and dashboard CSV export.
-- Security gate for provenance, license, artifact format, checksum, runtime
-  path, and approval state.
-- Manual installed-model inventory checks for LM Studio and Ollama.
-- Fixture/demo data isolation so demo rankings are not confused with installed
-  local models.
-- HTTP handler tests for dashboard routes and POST action safeguards.
-- Ruff lint coverage widened to include dashboard, benchmark harness, and smoke
-  scripts.
-
-## Current Evidence
-
-- Real scored benchmark: `Qwen3-Coder-30B-A3B-Instruct-MLX-4bit`
-- Confirmed dashboard artifact:
-  `data/eval_results/20260605-qwen3-coder-30b-a3b-lmstudio-cli-r1/`
-- Validation suite:
-  - `uv run ruff check .`
-  - `uv run ruff format --check .`
-  - `python3 -m unittest discover -s apps/model-dashboard/tests`
-  - `python3 -m unittest discover -s evals/local-llm-benchmark/tests`
-  - `python3 scripts/model_dashboard_smoke.py`
-  - `uv run pytest`
-
-## Product Screenshots
-
-These screenshots show dashboard UX and workflow structure. Demo rows may appear
-in screenshot views when the dashboard is launched with `--demo`; benchmark
-claims still require real artifacts and confirmed scores.
-
-![AI Lab OS lab cockpit](assets/screenshots/v1-lab.png)
-
-![AI Lab OS radar candidates](assets/screenshots/v1-radar.png)
-
-![AI Lab OS project radar](assets/screenshots/v1-projects.png)
-
-![AI Lab OS reports view](assets/screenshots/v1-reports.png)
+- A dependency-light model dashboard using Python stdlib HTTP serving, SQLite,
+  CSV import/export, inline SVG charts, local reports, and route/action tests.
+- An AI Lab Radar lane for model candidates and a Project Radar lane for GitHub
+  repositories with business, product, learning, or local-runtime relevance.
+- An installed-model inventory page that manually checks LM Studio and Ollama,
+  separates loaded/indexed/filesystem-only state, and shows local file paths.
+- A local benchmark harness that preserves evidence, raw responses, scores,
+  decisions, and dashboard-compatible CSV artifacts.
+- A unified `ai-lab` CLI for local status, radar listing, hardware snapshots,
+  benchmark matrix planning, benchmark artifact prep, import, report, and
+  dashboard launch.
+- A read-only `/capability` dashboard page that summarizes hardware profile
+  examples, candidate readiness, benchmark artifact counts, score/run signals,
+  and the next benchmark matrix command.
+- Local-first guardrails: no hidden cloud calls, no model downloads from radar,
+  no committed secrets, and write actions disabled unless explicitly enabled.
 
 ## Architecture
 
-See [architecture.md](architecture.md) for the full diagram.
-
-At a high level:
-
-```text
-source packets
-  -> candidate/project registries
-  -> security review
-  -> local benchmark harness
-  -> dashboard CSV import
-  -> SQLite dashboard
-  -> reports and decisions
+```mermaid
+flowchart LR
+  A["Source packets and notes"] --> B["Model and project registries"]
+  B --> C["Security review gate"]
+  C --> D["Local benchmark harness"]
+  D --> E["Benchmark artifact folder"]
+  E --> F["Dashboard CSV import"]
+  F --> G["SQLite dashboard"]
+  G --> H["Compare, reports, and decisions"]
+  B --> I["Radar and Project Radar views"]
+  E --> J["Artifact detail pages"]
+  K["ai-lab CLI"] --> B
+  K --> D
+  K --> F
+  K --> G
 ```
 
-## Engineering Decisions
+## Current Evidence
 
-- Local-first by default: no hidden cloud calls, no model downloads from radar,
-  and no committed secrets.
-- Candidate claims do not become scores. Scores require raw responses and a
-  confirmed scoring artifact.
-- Demo data is hidden from real views by default.
-- Run-test and import actions are disabled unless explicitly enabled by server
-  flags.
-- Dashboard remains dependency-light and uses stdlib server/SQLite/CSV paths.
-- External radar produces review packets first; registry entry requires user
-  approval.
+- Confirmed local benchmark artifact:
+  `data/eval_results/20260605-qwen3-coder-30b-a3b-lmstudio-cli-r1/`
+- Existing scored Qwen retest artifact:
+  `data/eval_results/20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit-r2/`
+- Current dashboard validation:
+  - `python3 -m unittest discover -s apps/model-dashboard/tests`
+    - 64 tests pass.
+  - `python3 -m unittest discover -s evals/local-llm-benchmark/tests`
+    - 8 tests pass.
+  - `python3 scripts/model_dashboard_smoke.py`
+    - Dashboard smoke passes.
+  - `uv run pytest -q`
+    - 134 tests pass.
+  - `uv run ruff check .`
+    - All checks pass.
+
+## Screenshots
+
+Portfolio screenshots live under `docs/assets/screenshots/` when captured. The
+dashboard itself is reproducible locally with:
+
+```bash
+python3 apps/model-dashboard/run_dashboard.py serve --demo
+```
+
+Useful views to capture:
+
+- `/lab` for the product loop.
+- `/capability` for readiness and capability context.
+- `/radar` for model candidates.
+- `/projects` for GitHub project radar.
+- `/inventory` for installed-model detection.
+- `/reports` for report explanation.
 
 ## Security Story
 
-The model recommendation workflow treats popularity as context, not trust.
-Before a model can be approved for download or execution, it needs review of:
+AI Lab OS treats popularity as metadata, not approval. Before a model should be
+downloaded or executed, the registry and review artifacts should record:
 
-- provenance
-- license
-- artifact format
-- checksum/hash evidence
-- runtime path
-- install/update approval
-- red flags such as custom code, untrusted scripts, notebooks, or unclear
-  publisher chains
+- provenance and source URL;
+- license posture;
+- artifact format and runtime path;
+- checksum/hash status when available;
+- download approval state;
+- isolation notes and red flags;
+- exact local runtime id before any benchmark run.
 
-This is important because the project is intentionally designed for large local
-models and specialty/low-refusal candidates, where download and runtime safety
-matter.
+The current system keeps external radar metadata separate from registry approval
+and keeps candidate-only records separate from eval scores.
 
-## Measurable Outcomes
+## Engineering Decisions
 
-- Real scored local benchmark captured and imported.
-- Dashboard distinguishes installed inventory, radar candidates, demo fixtures,
-  benchmark artifacts, model runs, and final decisions.
-- Full test suite currently passes with 95 tests.
-- Lint now covers the previously excluded dashboard and benchmark paths.
-- Portfolio-ready screenshots and documentation are available in-repo.
+- Use stdlib-first Python for dashboard and harness paths.
+- Keep dashboard render-time behavior local and non-networked.
+- Separate demo fixture data from real dashboard views by default.
+- Keep run-test and import actions off by default behind explicit server flags.
+- Avoid model downloads, cloud SDKs, API keys, telemetry, and hidden network
+  calls.
+- Store benchmark evidence as inspectable local JSONL, JSON, CSV, and Markdown.
 
-## Next Product Milestones
+## Current Limits
 
-1. Add a second real confirmed benchmark so Compare becomes genuinely useful.
-2. Finish Dolphin-Mistral 24B security/runtime approval or choose another exact
-   installed model.
-3. Tag `v1.0.0` after either the second benchmark lands or the release is
-   explicitly defined as a single-model baseline.
-4. Add an import-ready page or safe local import button as a v1.1 improvement.
-5. Add retrieval evaluation fixtures for the RAG lane.
+- A second unique confirmed model benchmark is still needed for stronger
+  cross-model comparison.
+- Approval-gated benchmark execution from the unified `ai-lab` CLI is planned
+  but not claimed as complete here.
+- Latency/TTFT series are not yet first-class dashboard metrics.
+- RAG retrieval quality evaluation still needs fixtures and scoring.
+
+## Next Skill Plan
+
+1. Hardware profiling: keep sanitized snapshots tied to benchmark evidence.
+2. Local eval design: improve scoring rubrics and draft-score review flow.
+3. Runtime comparison: benchmark LM Studio, Ollama, MLX/MLX-LM, and llama.cpp
+   when exact local model ids are approved.
+4. RAG quality: add retrieval eval fixtures and citation-quality checks.
+5. Portfolio publishing: capture screenshots, tag a release, and keep resume
+   bullets tied to committed evidence.

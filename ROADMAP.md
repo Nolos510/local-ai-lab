@@ -14,6 +14,12 @@
 - [x] Confirmed Qwen3 Coder LM Studio CLI benchmark artifact.
 - [x] Radar candidate dashboard view.
 - [x] GitHub project radar view.
+- [x] Unified `ai-lab` CLI for local status, radar listing, hardware snapshot,
+  benchmark matrix planning, benchmark artifact prep, dashboard import/report,
+  and dashboard launch.
+- [x] Read-only dashboard capability view with candidate readiness, artifact
+  counts, hardware profile context, and benchmark matrix guidance.
+- [x] Portfolio case study and resume evidence pack.
 
 ## v0: Runnable Local RAG Baseline
 
@@ -42,8 +48,14 @@
 - [ ] Keep candidate-only records visually separate from eval scores.
 - [x] Add a unified `ai-lab` CLI for status, radar, benchmark prep, import,
   report, and dashboard launch.
+- [x] Add `ai-lab hardware snapshot` for sanitized local hardware/runtime
+  context.
+- [x] Add `ai-lab bench matrix` for read-only benchmark queue planning.
+- [x] Add a read-only dashboard capability view.
 - [x] Gate dashboard tests, eval harness tests, dashboard smoke, and repo-wide
   ruff in CI.
+- [x] Convert current work into portfolio/resume evidence.
+- [ ] Add approval-gated local benchmark execution to the unified `ai-lab` CLI.
 - [ ] Tag a pushed v1 release with validation evidence.
 
 ## v2: Retrieval Quality
@@ -61,6 +73,8 @@
 
 - [ ] Benchmark Ollama, MLX-LM, LM Studio, and llama.cpp where practical.
 - [ ] Track TTFT, tokens/sec, total latency, memory pressure, and swap behavior.
+- [ ] Add first-class dashboard fields and charts for TTFT and total latency
+  after the approval-gated execution path lands.
 - [ ] Add benchmark report templates and plotting utilities.
 - [ ] Publish reproducible benchmark methodology.
 - [ ] Expand the model registry for large 24B, 30B, 70B-class, and specialty

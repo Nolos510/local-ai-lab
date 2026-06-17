@@ -1,67 +1,73 @@
 # AI Lab OS Resume Bullets
 
-Use these as raw material. Pick the version that matches the role and seniority
-level you are targeting.
+Use these as source material. Pick the bullets that match the role and keep the
+claims aligned with the current repository state.
 
-## Short Version
+## One-Line Summary
 
-- Built a local-first AI evaluation dashboard for Apple Silicon that tracks
-  model candidates, security review, benchmark artifacts, confirmed scores,
-  model comparisons, and keep/watchlist/retest/skip decisions.
+- Built AI Lab OS, a local-first Apple Silicon AI evaluation workflow for model
+  discovery, security review, benchmark evidence, dashboard comparison, and
+  keep/watchlist/retest/skip decisions.
 
-## Engineering-Focused
+## Software Engineering
 
-- Designed and implemented AI Lab OS, a local-first model evaluation platform
-  using Python, SQLite, CSV artifacts, stdlib HTTP serving, and benchmark
-  evidence workflows for LM Studio/Ollama-style local runtimes.
-- Built a benchmark harness that preserves raw model responses, evidence notes,
-  score templates, confirmed scoring artifacts, and dashboard-compatible import
-  CSVs without cloud APIs or model download logic.
-- Added dashboard safeguards that separate demo fixtures, installed inventory,
-  radar candidates, benchmark artifacts, imported runs, and final model
-  decisions to prevent false rankings.
-- Implemented security review metadata for model recommendations, including
-  provenance, license, artifact format, checksum status, runtime path, and
-  approval state before download or execution.
-- Expanded automated quality coverage by enabling Ruff linting across dashboard
-  and benchmark code, adding HTTP handler route/action tests, and maintaining a
-  passing 95-test suite.
+- Designed and implemented a dependency-light Python dashboard using stdlib HTTP
+  serving, SQLite, CSV import/export, inline SVG charts, and route/action tests
+  for local AI benchmark review.
+- Built a unified `ai-lab` CLI for repo-local lab operations including status,
+  radar listing, sanitized hardware snapshots, benchmark matrix planning,
+  benchmark artifact prep, dashboard import/report, and dashboard launch.
+- Added a read-only dashboard capability view that summarizes hardware profile
+  examples, candidate readiness, benchmark artifact counts, score/run signals,
+  and next benchmark commands without runtime network calls.
+- Implemented installed-model inventory handling for LM Studio and Ollama that
+  distinguishes loaded, indexed, filesystem-only, registered, unregistered, and
+  ambiguous model states.
+- Maintained a validation gate covering 64 dashboard unit tests, 8 benchmark
+  harness tests, 134 repo tests, dashboard smoke, and repo-wide Ruff lint.
 
-## Product / AI Ops Version
+## AI / Evaluation Engineering
 
-- Created a personal AI lab operating system that turns model discovery into a
-  repeatable product loop: candidate review, security gate, benchmark capture,
-  scoring, dashboard import, comparison, and deployment decision.
-- Built project radar for evaluating AI-related GitHub repositories by local fit,
-  business tie-in, priority score, and learning value.
-- Developed a dashboard cockpit that makes local model evaluation actionable for
-  daily-driver selection, specialty model review, and future automation
-  workflows.
+- Built a local benchmark artifact workflow that preserves raw responses,
+  evidence notes, score templates, confirmed scores, decisions, and dashboard
+  CSV imports for reproducible model evaluation.
+- Separated radar candidates, installed runtime inventory, demo fixtures,
+  benchmark artifacts, imported runs, and confirmed model decisions to prevent
+  false rankings.
+- Added candidate readiness and benchmark matrix planning so local benchmark
+  targets can be reviewed before any model execution occurs.
+- Created a security-review workflow for AI model recommendations covering
+  provenance, license posture, artifact format, checksum status, runtime path,
+  isolation notes, and approval state.
 
-## Security-Aware Version
+## Product / AI Ops
 
-- Added local-first security controls for AI model evaluation, including
-  approval gates for external candidates, no-download radar rules, disabled
-  write actions by default, loopback-only local actions, CSRF-style POST tokens,
-  and capped request bodies.
-- Documented a model vetting workflow that treats model popularity as metadata,
-  not approval, requiring provenance, license, artifact, checksum, and runtime
-  review before local execution.
+- Turned model discovery into a practical product loop: source packet, candidate
+  registry, security gate, benchmark artifact, raw evidence, confirmed scoring,
+  dashboard comparison, and final decision.
+- Added GitHub Project Radar to evaluate AI-adjacent repositories by priority,
+  business tie-in, local fit, learning value, and risk notes.
+- Built dashboard views for lab cockpit, capability context, radar candidates,
+  specialty abliterated/Dolphin models, project radar, installed inventory,
+  model runs, compare, reports, and storage decisions.
 
-## Portfolio Summary
+## Security-Aware
 
-AI Lab OS is a local-first AI engineering platform for private model evaluation
-on Apple Silicon. It combines candidate radar, model security review, benchmark
-capture, confirmed scoring, SQLite dashboarding, and decision tracking so local
-models can be compared with evidence instead of hype.
+- Enforced local-first guardrails: no hidden cloud calls, no model download logic
+  in radar, no committed secrets, no runtime API SDK dependency drift, and
+  disabled write actions by default.
+- Added dashboard action safeguards for local-only workflows, including explicit
+  server flags, action tokens, capped POST bodies, and loopback-only runtime
+  controls.
+- Documented model vetting practices that treat popularity as context rather
+  than approval before downloading or executing local AI artifacts.
 
 ## Interview Talking Points
 
-- Why installed inventory is not the same as benchmarked performance.
-- Why radar candidates should not automatically become scores.
-- How local-first constraints shaped the architecture.
-- How the project protects against fake/demo data being mistaken for real
-  benchmark evidence.
-- Why model security review matters before downloading or running large or
-  specialty models.
-- How a personal project became a structured AI operations workflow.
+- Why installed model inventory is not the same as benchmarked model quality.
+- How demo fixture isolation prevents misleading dashboard rankings.
+- Why radar candidates must not automatically become scores or decisions.
+- How local-first constraints shaped the CLI, dashboard, benchmark, and security
+  review architecture.
+- What remains before v1.0.0: second unique benchmark, approval-gated execution
+  flow, latency/perf series, and release tagging.
