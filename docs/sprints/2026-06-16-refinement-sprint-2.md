@@ -5,14 +5,15 @@ one **loop** at a time, validation gate green, commit, stop, report.
 
 ## Where we are (status)
 
-Sprint 1 delivered 2 of 4 iterations, then stopped:
+Sprint 1 delivered 2 of 4 iterations, then stopped; Sprint 2 completed the
+carryover work:
 
 | Sprint 1 iteration | State |
 |---|---|
 | 1. Inline SVG charts | ✅ shipped (`3d171c4`), verified green |
 | 2. Vendor icons offline | ✅ shipped (`538adf5`), verified green, no external assets |
-| 3. CI gate | ❌ not done — **carried into Sprint 2** |
-| 4. `ai-lab` CLI | ❌ not done — **carried into Sprint 2** |
+| 3. CI gate | ✅ shipped in Sprint 2 |
+| 4. `ai-lab` CLI | ✅ shipped in Sprint 2 |
 
 **Security/privacy hardening shipped in commit `33d3554`.** Follow-up doc
 freshness work should keep the ADR/API docs and sprint notes aligned with that
@@ -28,14 +29,14 @@ landed behavior before continuing to CI and CLI carryover work.
    drops `retrieved_chunks`, and `Citation`/`CitationResponse` drop `source_path`
    and `preview` (privacy-motivated, aligns with AGENTS.md §3 "no retrieved-chunk
    dumps"). Keep the ADR + docs current. (Iteration 1 follow-up)
-4. **No CI gate.** The 61 dashboard + 8 eval tests still don't gate PRs; CI also
-   doesn't run `ruff` over everything — which is exactly why issue #2 slipped in.
-   (Iteration 2)
-5. **No unified operating surface.** The loop is still driven by scattered
-   commands. (Iteration 3)
-6. **Repo hygiene drift.** Two roadmaps (`ROADMAP.md` vs `docs/roadmap.md`) are
-   diverging; `docs/sprints/` and the Discord learning-assistant idea need to be
-   tracked in an explicit docs location. (Iteration 4)
+4. **CI gate shipped.** Dashboard tests, eval harness tests, dashboard smoke,
+   and repo-wide ruff now gate PR/push CI. (Iteration 2)
+5. **Unified operating surface shipped.** The `ai-lab` CLI now provides status,
+   radar listing, benchmark artifact prep, import, report, and dashboard launch.
+   (Iteration 3)
+6. **Repo hygiene reconciled.** `ROADMAP.md` is canonical, `docs/roadmap.md` is a
+   compatibility pointer, sprint docs are tracked, and the Discord learning
+   assistant proposal is under `docs/ideas/`. (Iteration 4)
 
 ## Operating rules
 
@@ -112,7 +113,7 @@ an ADR + doc update; pass is in git history.
 
 ---
 
-## Iteration 2 — CI gate (carryover from Sprint 1, now doubly justified)
+## Iteration 2 — CI gate (SHIPPED)
 
 **Objective.** Make CI run the dashboard, eval, and smoke suites **and** `ruff`
 over the whole repo, so a red lint or a broken dashboard test can never land
@@ -132,7 +133,7 @@ a deliberately broken dashboard test or a lint error fails CI.
 
 ---
 
-## Iteration 3 — Unified `ai-lab` CLI (carryover from Sprint 1)
+## Iteration 3 — Unified `ai-lab` CLI (SHIPPED)
 
 Build exactly as specified in
 [Sprint 1, Iteration 4](2026-06-16-refinement-sprint.md#iteration-4--unified-ai-lab-cli):
@@ -145,7 +146,7 @@ status. Add `tests/test_lab_cli.py`. Add an ADR for the new operating surface.
 
 ---
 
-## Iteration 4 — Repo hygiene
+## Iteration 4 — Repo hygiene (SHIPPED)
 
 **Objective.** Remove the drift that makes the repo harder to reason about.
 

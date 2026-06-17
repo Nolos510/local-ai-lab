@@ -18,8 +18,8 @@ START HERE:
 CURRENT STATE (important):
 - Sprint 1 shipped inline SVG charts (commit 3d171c4) and offline icons (538adf5).
 - The security/privacy hardening pass shipped in commit 33d3554.
-- A follow-up documentation pass should keep the ADR/API docs and sprint notes
-  aligned with that shipped hardening work before continuing to CI/CLI/hygiene.
+- Sprint 2 completed the CI gate, unified `ai-lab` CLI, roadmap reconciliation,
+  tracked sprint docs, and docs/ideas placement.
 
 HARD CONSTRAINTS:
 - No new runtime dependencies. Dashboard + harness stay stdlib-only.
@@ -51,21 +51,17 @@ LOOP PROTOCOL (per iteration):
 THE FOUR ITERATIONS (full detail in the sprint-2 doc):
 1. security/privacy: SHIPPED.
    - Commit 33d3554 landed the hardening pass.
-   - Follow-up docs should keep the `/ask` privacy ADR, README/API docs, and
-     sprint notes current.
+   - `/ask` privacy ADR and docs are current.
 2. ci: Add dashboard-tests, eval-harness-tests, and dashboard-smoke steps to
-   .github/workflows/ci.yml (existence-guarded like current steps). Ensure ruff
-   lints the whole repo. No --probe-server. This gate would have caught the
-   Iteration 1 lint error — make it real.
+   .github/workflows/ci.yml (existence-guarded like current steps). SHIPPED.
 3. cli: Build the `ai-lab` console script per Sprint 1 Iteration 4
    (src/local_ai_lab/cli/lab.py; register in pyproject [project.scripts];
    subcommands status/radar list/bench run/import/report/dashboard; subprocess
    for actions, stdlib reads for status; tests/test_lab_cli.py; ADR for the new
-   operating surface).
+   operating surface). SHIPPED.
 4. docs: Repo hygiene — reconcile ROADMAP.md vs docs/roadmap.md into ONE
    canonical roadmap; `git add docs/sprints/`; keep the Discord learning
-   assistant proposal under docs/ideas/. Leave no stray untracked docs at docs/
-   root.
+   assistant proposal under docs/ideas/. SHIPPED.
 
 If a validation command cannot run in your environment, document the exact
 reason — never claim a command passed unless it was run. Begin with the first
@@ -79,7 +75,7 @@ remaining unshipped iteration.
 - A Claude Code `/loop` integrator is running again: on each Codex commit it
   re-runs the full gate, checks Definition-of-Done in the sprint-2 doc, and flags
   regressions / new deps / new network calls / local-first violations.
-- Iteration 1 is now shipped; the next builder should start from CI unless a doc
-  freshness issue is found.
+- Sprint 2 is complete; the next builder should start a new sprint focused on
+  hardware profiling, benchmark matrix expansion, or portfolio evidence.
 - The breaking `/ask` change has a durable ADR/docs requirement; keep downstream
   consumers from relying on `retrieved_chunks`, `source_path`, or `preview`.

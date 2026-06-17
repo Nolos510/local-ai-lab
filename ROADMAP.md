@@ -35,19 +35,27 @@
 - [ ] Add local-judge draft score suggestions without overwriting confirmed
   scores.
 - [ ] Import confirmed benchmark CSVs into the dashboard.
-- [ ] Compare at least two models in the dashboard.
+- [x] Compare at least two models in the dashboard with inline SVG charts for
+  score, throughput, RAM, and score dimensions.
 - [ ] Link candidate -> source packet/report -> benchmark artifact -> dashboard
   result.
 - [ ] Keep candidate-only records visually separate from eval scores.
+- [x] Add a unified `ai-lab` CLI for status, radar, benchmark prep, import,
+  report, and dashboard launch.
+- [x] Gate dashboard tests, eval harness tests, dashboard smoke, and repo-wide
+  ruff in CI.
 - [ ] Tag a pushed v1 release with validation evidence.
 
 ## v2: Retrieval Quality
 
-- [ ] Add a real local embedding backend, likely BGE-M3.
+- [x] Add a real local embedding backend.
+- [ ] Add retrieval evaluation fixtures.
 - [ ] Add sparse or hybrid retrieval in Qdrant.
 - [ ] Add reranker abstraction and BGE/Jina reranker integrations.
 - [ ] Add source-aware citation rendering and retrieval inspection reports.
 - [ ] Add RAG evaluation set format and scoring scripts.
+- [ ] Consider hybrid retrieval after the basic path is measured.
+- [ ] Add reranking only when retrieval failure analysis justifies it.
 
 ## v3: Benchmarking Lab
 
@@ -57,19 +65,26 @@
 - [ ] Publish reproducible benchmark methodology.
 - [ ] Expand the model registry for large 24B, 30B, 70B-class, and specialty
   abliterated/Dolphin candidates that fit the 256 GB RAM environment.
+- [ ] Add an evaluation harness for RAG answers and citations.
+- [ ] Track retrieval scores, model/provider choices, and command outputs.
+- [ ] Add a second unique model benchmark after security and exact local
+  runtime-id approval.
 
 ## v4: MLX-LM Fine-Tuning Experiments
 
-- [ ] Add dataset manifest format.
-- [ ] Add LoRA/QLoRA experiment templates.
-- [ ] Track dataset hash, base model, adapter config, prompt template, and eval
+- [ ] Add dataset manifest conventions.
+- [ ] Add LoRA/adapter experiment templates.
+- [ ] Track dataset hash, base model, adapter config, prompt version, and eval
   results.
 - [ ] Document adapter export and serving options.
+- [ ] Keep fine-tuning experiments separate from the v0 RAG harness.
 
 ## Later
 
 - [ ] Add cloud portability profiles for Qdrant, API, and hosted model
   endpoints.
 - [ ] Add optional observability stack.
+- [ ] Add agent workflows only after the non-agent RAG backbone is measured and
+  reliable.
 - [ ] Add LangGraph/DSPy only after stable eval targets exist.
 - [ ] Turn completed tasks into portfolio and resume evidence.
