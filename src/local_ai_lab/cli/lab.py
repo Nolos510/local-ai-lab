@@ -17,6 +17,12 @@ import sys
 from datetime import date
 from pathlib import Path
 
+from local_ai_lab.cli.bench_matrix import (
+    build_matrix,
+    format_json,
+    format_markdown,
+    load_candidates,
+)
 from local_ai_lab.cli.hardware import collect_hardware_snapshot, format_snapshot, write_snapshot
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -169,6 +175,16 @@ def command_bench_run(args: argparse.Namespace) -> int:
     return _run(command)
 
 
+def command_bench_matrix(args: argparse.Namespace) -> int:
+    rows = load_candidates(args.registry)
+    matrix = build_matrix(rows, statuses=args.status, runner=args.runner, limit=args.limit)
+    if args.json:
+        print(format_json(matrix))
+    else:
+        print(format_markdown(matrix))
+    return 0
+
+
 def command_import(args: argparse.Namespace) -> int:
     run_id = _safe_id(args.run, label="benchmark run id")
     import_dir = args.eval_results / run_id / "dashboard-import"
@@ -286,6 +302,20 @@ def build_parser() -> argparse.ArgumentParser:
     bench_run.add_argument("--output-root", type=Path, default=DEFAULT_EVAL_RESULTS)
     bench_run.add_argument("--force", action="store_true")
     bench_run.set_defaults(func=command_bench_run)
+    bench_matrix = bench_subparsers.add_parser(
+        "matrix",
+        help="Show a read-only benchmark planning matrix; does not call models.",
+    )
+    bench_matrix.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
+    bench_matrix.add_argument(
+        "--status",
+        action="append",
+        help="Candidate status to include. Defaults to ready_for_eval; use all for every status.",
+    )
+    bench_matrix.add_argument("--runner", help="Only include candidates with this local_runner.")
+    bench_matrix.add_argument("--limit", type=int, default=0)
+    bench_matrix.add_argument("--json", action="store_true")
+    bench_matrix.set_defaults(func=command_bench_matrix)
 
     import_parser = subparsers.add_parser("import", help="Import benchmark CSVs.")
     import_parser.add_argument("--run", required=True)
