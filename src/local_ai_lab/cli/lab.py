@@ -17,6 +17,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
+from local_ai_lab.cli.hardware import collect_hardware_snapshot, format_snapshot, write_snapshot
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_REGISTRY = REPO_ROOT / "data" / "model_registry" / "candidates.csv"
 DEFAULT_EVAL_RESULTS = REPO_ROOT / "data" / "eval_results"
@@ -96,8 +98,7 @@ def command_status(args: argparse.Namespace) -> int:
     if counts:
         print(f"Dashboard DB: {args.db}")
         row_summary = (
-            "models={models}, runs={model_runs}, "
-            "scores={eval_scores}, decisions={decisions}"
+            "models={models}, runs={model_runs}, scores={eval_scores}, decisions={decisions}"
         ).format(**counts)
         print(f"Dashboard rows: {row_summary}")
     else:
@@ -225,6 +226,20 @@ def command_dashboard(args: argparse.Namespace) -> int:
     return _run(command)
 
 
+def command_hardware_snapshot(args: argparse.Namespace) -> int:
+    snapshot = collect_hardware_snapshot()
+    output = format_snapshot(snapshot)
+    print(output, end="")
+    if args.out:
+        try:
+            path = write_snapshot(args.out, snapshot, repo_root=REPO_ROOT)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        print(f"Wrote hardware snapshot: {path.relative_to(REPO_ROOT)}", file=sys.stderr)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Operate the local-first AI Lab OS loop.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -242,6 +257,22 @@ def build_parser() -> argparse.ArgumentParser:
     radar_list.add_argument("--status")
     radar_list.add_argument("--limit", type=int, default=0)
     radar_list.set_defaults(func=command_radar_list)
+
+    hardware_parser = subparsers.add_parser("hardware", help="Inspect local hardware context.")
+    hardware_subparsers = hardware_parser.add_subparsers(
+        dest="hardware_command",
+        required=True,
+    )
+    hardware_snapshot = hardware_subparsers.add_parser(
+        "snapshot",
+        help="Print a sanitized local hardware/runtime snapshot as JSON.",
+    )
+    hardware_snapshot.add_argument(
+        "--out",
+        type=Path,
+        help="Write the same JSON to a repo-local path.",
+    )
+    hardware_snapshot.set_defaults(func=command_hardware_snapshot)
 
     bench_parser = subparsers.add_parser("bench", help="Prepare local benchmark artifacts.")
     bench_subparsers = bench_parser.add_subparsers(dest="bench_command", required=True)

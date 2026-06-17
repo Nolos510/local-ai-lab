@@ -181,6 +181,7 @@ The unified local workflow CLI is available as `ai-lab`:
 
 ```bash
 uv run ai-lab status
+uv run ai-lab hardware snapshot
 uv run ai-lab radar list --status ready_for_eval
 uv run ai-lab bench run --candidate 20260605-dolphin-mistral-24b-venice-edition
 uv run ai-lab import --run <benchmark_run_id>
@@ -191,6 +192,11 @@ uv run ai-lab dashboard --port 8765
 `ai-lab status` and `ai-lab radar list` read local CSV/SQLite/artifact state.
 Action commands dispatch to the existing benchmark harness and dashboard
 entrypoints. They do not download models or call model/cloud APIs implicitly.
+
+`ai-lab hardware snapshot` prints sanitized local hardware/runtime context as
+JSON. Use `--out docs/lab-notes/<name>.json` to write a repo-local copy for
+benchmark evidence. It does not include usernames, home directories,
+environment variables, model inventory, prompts, documents, or secrets.
 
 ## Benchmark Harness
 
