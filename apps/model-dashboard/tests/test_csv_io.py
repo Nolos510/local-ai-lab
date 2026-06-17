@@ -203,6 +203,88 @@ class CsvImportTests(unittest.TestCase):
                 row = conn.execute("SELECT score_status FROM eval_scores").fetchone()
             self.assertEqual(row["score_status"], "confirmed")
 
+    def test_model_run_perf_columns_import_and_legacy_csv_remains_valid(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            db_path = tmp_path / "dashboard.sqlite"
+            csv_dir = tmp_path / "input"
+            write_table(
+                csv_dir / "models.csv",
+                "models",
+                [{"id": 1, "model_name": "Perf Model"}],
+            )
+            write_table(
+                csv_dir / "model_runs.csv",
+                "model_runs",
+                [
+                    {
+                        "id": 1,
+                        "model_id": 1,
+                        "date_tested": "2026-06-17",
+                        "backend": "LM Studio CLI",
+                        "tokens_per_sec": "12.5",
+                        "ttft_seconds": "",
+                        "total_latency_seconds": "9.25",
+                    }
+                ],
+            )
+            write_table(csv_dir / "eval_scores.csv", "eval_scores", [])
+            csv_io.import_all(
+                db_path,
+                {
+                    "models": csv_dir / "models.csv",
+                    "model_runs": csv_dir / "model_runs.csv",
+                    "eval_scores": csv_dir / "eval_scores.csv",
+                },
+            )
+            with db.connect(db_path) as conn:
+                row = conn.execute(
+                    "SELECT tokens_per_sec, ttft_seconds, total_latency_seconds FROM model_runs"
+                ).fetchone()
+            self.assertEqual(row["tokens_per_sec"], 12.5)
+            self.assertIsNone(row["ttft_seconds"])
+            self.assertEqual(row["total_latency_seconds"], 9.25)
+
+            legacy_dir = tmp_path / "legacy"
+            write_table(
+                legacy_dir / "models.csv",
+                "models",
+                [{"id": 2, "model_name": "Legacy Perf Model"}],
+            )
+            legacy_fields = [
+                field
+                for field in csv_io.TABLE_FIELDS["model_runs"]
+                if field not in {"ttft_seconds", "total_latency_seconds"}
+            ]
+            with (legacy_dir / "model_runs.csv").open(
+                "w",
+                newline="",
+                encoding="utf-8",
+            ) as handle:
+                writer = csv.DictWriter(handle, fieldnames=legacy_fields)
+                writer.writeheader()
+                writer.writerow(
+                    {
+                        "id": 2,
+                        "model_id": 2,
+                        "date_tested": "2026-06-17",
+                        "backend": "LM Studio CLI",
+                    }
+                )
+            csv_io.import_all(
+                db_path,
+                {
+                    "models": legacy_dir / "models.csv",
+                    "model_runs": legacy_dir / "model_runs.csv",
+                },
+            )
+            with db.connect(db_path) as conn:
+                legacy_row = conn.execute(
+                    "SELECT ttft_seconds, total_latency_seconds FROM model_runs WHERE id = 2"
+                ).fetchone()
+            self.assertIsNone(legacy_row["ttft_seconds"])
+            self.assertIsNone(legacy_row["total_latency_seconds"])
+
     def test_export_neutralizes_spreadsheet_formula_prefixes(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)

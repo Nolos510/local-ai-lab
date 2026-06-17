@@ -312,6 +312,25 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertEqual(len(records), 12)
             self.assertTrue(all(record["raw_response"] for record in records))
             self.assertTrue(all(record["error"] is None for record in records))
+            metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+            self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
+            self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
+            self.assertGreater(metadata["run"]["tokens_per_sec"], 0)
+            self.assertIsNone(metadata["run"]["ttft_seconds"])
+
+            self.run_harness(
+                "export-dashboard",
+                "--run-dir",
+                str(run_dir),
+            )
+            with (run_dir / "dashboard-import" / "model_runs.csv").open(
+                newline="",
+                encoding="utf-8",
+            ) as handle:
+                run_rows = list(csv.DictReader(handle))
+            self.assertIn("ttft_seconds", run_rows[0])
+            self.assertIn("total_latency_seconds", run_rows[0])
+            self.assertNotEqual(run_rows[0]["total_latency_seconds"], "")
 
             failed = self.run_harness_raw(
                 "run-local",
@@ -406,6 +425,10 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertEqual(records[0]["output_tokens"], 5)
             self.assertEqual(records[0]["tokens_per_sec"], 12.5)
             self.assertIn("fixture-model-id", records[0]["raw_response"])
+            metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+            self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
+            self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
+            self.assertGreater(metadata["run"]["tokens_per_sec"], 0)
             log_text = (run_dir / "lms-cli-capture.log").read_text(encoding="utf-8")
             self.assertIn("\\x1b[31mred\\x1b[0m", log_text)
             self.assertNotIn("\x1b[31mred", log_text)

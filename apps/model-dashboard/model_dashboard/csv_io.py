@@ -29,6 +29,8 @@ TABLE_FIELDS = {
         "temperature",
         "top_p",
         "tokens_per_sec",
+        "ttft_seconds",
+        "total_latency_seconds",
         "ram_usage_gb",
         "stability_notes",
         "run_notes",
@@ -61,6 +63,8 @@ REAL_FIELDS = {
     "temperature",
     "top_p",
     "tokens_per_sec",
+    "ttft_seconds",
+    "total_latency_seconds",
     "ram_usage_gb",
     "total_score",
     *METRIC_FIELDS,
@@ -133,7 +137,11 @@ def import_table(conn, table_name, csv_path):
     with csv_path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         fieldnames = set(reader.fieldnames or [])
-        optional = {"score_status"} if table_name == "eval_scores" else set()
+        optional = set()
+        if table_name == "eval_scores":
+            optional.add("score_status")
+        if table_name == "model_runs":
+            optional.update({"ttft_seconds", "total_latency_seconds"})
         missing = (set(TABLE_FIELDS[table_name]) - optional) - fieldnames
         if missing:
             raise ValueError(

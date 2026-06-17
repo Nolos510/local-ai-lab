@@ -58,6 +58,8 @@ TABLE_FIELDS = {
         "temperature",
         "top_p",
         "tokens_per_sec",
+        "ttft_seconds",
+        "total_latency_seconds",
         "ram_usage_gb",
         "stability_notes",
         "run_notes",
@@ -468,6 +470,8 @@ def _metadata_from_args(args, prompt_set, rubric, run_dir):
             "temperature": args.temperature,
             "top_p": args.top_p,
             "tokens_per_sec": args.tokens_per_sec,
+            "ttft_seconds": args.ttft_seconds,
+            "total_latency_seconds": args.total_latency_seconds,
             "ram_usage_gb": args.ram_usage_gb,
             "stability_notes": args.stability_notes,
             "run_notes": args.run_notes,
@@ -567,6 +571,46 @@ def _write_csv(path, fields, rows):
         writer.writeheader()
         for row in rows:
             writer.writerow({field: _safe_csv_cell(row.get(field)) for field in fields})
+
+
+def _apply_run_perf_summary(metadata, records):
+    latencies_ms = [
+        float(record.get("latency_ms"))
+        for record in records
+        if record.get("latency_ms") not in (None, "")
+    ]
+    output_tokens = [
+        float(record.get("output_tokens"))
+        for record in records
+        if record.get("output_tokens") not in (None, "")
+    ]
+    tokens_per_sec = [
+        float(record.get("tokens_per_sec"))
+        for record in records
+        if record.get("tokens_per_sec") not in (None, "")
+    ]
+    ram_values = [
+        float(record.get("ram_usage_gb"))
+        for record in records
+        if record.get("ram_usage_gb") not in (None, "")
+    ]
+    total_latency_seconds = round(sum(latencies_ms) / 1000.0, 3) if latencies_ms else None
+    run = metadata["run"]
+    if total_latency_seconds is not None:
+        run["total_latency_seconds"] = total_latency_seconds
+    if output_tokens and total_latency_seconds and total_latency_seconds > 0:
+        run["tokens_per_sec"] = round(sum(output_tokens) / total_latency_seconds, 2)
+    elif tokens_per_sec and run.get("tokens_per_sec") in (None, ""):
+        run["tokens_per_sec"] = round(sum(tokens_per_sec) / len(tokens_per_sec), 2)
+    if ram_values and run.get("ram_usage_gb") in (None, ""):
+        run["ram_usage_gb"] = round(sum(ram_values) / len(ram_values), 2)
+    run.setdefault("ttft_seconds", None)
+    return metadata
+
+
+def _write_metadata_with_perf(run_dir, metadata, records):
+    _apply_run_perf_summary(metadata, records)
+    _write_json(Path(run_dir) / "metadata.json", metadata)
 
 
 def _validate_score(value, field):
@@ -793,6 +837,7 @@ def run_local(args):
             )
         records.append(_normalize_response_record(source, metadata, prompt))
 
+    _write_metadata_with_perf(run_dir, metadata, records)
     _write_jsonl(raw_path, records)
     evidence_path = run_dir / "evidence.md"
     with evidence_path.open("a", encoding="utf-8") as handle:
@@ -874,6 +919,7 @@ def run_lmstudio_cli(args):
         )
         log_path.write_text("\n".join(log_lines), encoding="utf-8")
 
+    _write_metadata_with_perf(run_dir, metadata, records)
     _write_jsonl(raw_path, records)
     evidence_path = run_dir / "evidence.md"
     with evidence_path.open("a", encoding="utf-8") as handle:
@@ -1049,6 +1095,8 @@ def build_parser():
     init_parser.add_argument("--temperature", type=float)
     init_parser.add_argument("--top-p", type=float)
     init_parser.add_argument("--tokens-per-sec", type=float)
+    init_parser.add_argument("--ttft-seconds", type=float)
+    init_parser.add_argument("--total-latency-seconds", type=float)
     init_parser.add_argument("--ram-usage-gb", type=float)
     init_parser.add_argument("--stability-notes")
     init_parser.add_argument("--run-notes")

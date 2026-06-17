@@ -185,6 +185,7 @@ uv run ai-lab hardware snapshot
 uv run ai-lab radar list --status ready_for_eval
 uv run ai-lab bench matrix --limit 5
 uv run ai-lab bench run --candidate 20260605-dolphin-mistral-24b-venice-edition
+uv run ai-lab bench execute --candidate <candidate_id> --model-id <exact_local_id> --runner lmstudio-cli --run-id <benchmark_run_id> --i-approve-local-run
 uv run ai-lab import --run <benchmark_run_id>
 uv run ai-lab report
 uv run ai-lab dashboard --port 8765
@@ -196,6 +197,12 @@ benchmark queue without running models, inspecting private model folders, or
 initializing artifacts. Action commands dispatch to the existing benchmark
 harness and dashboard entrypoints. They do not download models or call
 model/cloud APIs implicitly.
+
+`ai-lab bench execute` is the sanctioned local execution wrapper. It refuses to
+run unless the operator supplies an explicit candidate, exact local model id,
+runner, run id, and approval flag. Without approval it stops before any harness,
+subprocess, endpoint, import, or score export occurs. Live model execution should
+be run only after confirming the exact local model id and runtime.
 
 `ai-lab hardware snapshot` prints sanitized local hardware/runtime context as
 JSON. Use `--out docs/lab-notes/<name>.json` to write a repo-local copy for

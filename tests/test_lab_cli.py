@@ -163,6 +163,185 @@ def test_bench_run_builds_harness_init_command(tmp_path, monkeypatch) -> None:
     assert "llama.cpp" in command
 
 
+def test_bench_execute_refuses_without_approval_before_subprocess(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    registry = tmp_path / "candidates.csv"
+    output_root = tmp_path / "eval_results"
+    write_registry(registry)
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("bench execute must not call subprocess without approval")
+
+    monkeypatch.setattr(lab.subprocess, "run", fail_if_called)
+    monkeypatch.setattr(lab.sys.stdin, "isatty", lambda: False)
+
+    exit_code = lab.main(
+        [
+            "bench",
+            "execute",
+            "--candidate",
+            "candidate-ready",
+            "--registry",
+            str(registry),
+            "--model-id",
+            "explicit-local-model",
+            "--runner",
+            "lmstudio-cli",
+            "--run-id",
+            "20260617-explicit-local-model-r1",
+            "--output-root",
+            str(output_root),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "Benchmark execution preflight" in captured.out
+    assert "model_id: explicit-local-model" in captured.out
+    assert "runner: lmstudio-cli" in captured.out
+    assert "prompt_set_id: ai-lab-local-llm-core-v0.1" in captured.out
+    assert "approval: missing" in captured.err
+
+
+def test_bench_execute_preflight_redacts_endpoint_query_before_approval(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    registry = tmp_path / "candidates.csv"
+    output_root = tmp_path / "eval_results"
+    write_registry(registry)
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("bench execute must not call subprocess without approval")
+
+    monkeypatch.setattr(lab.subprocess, "run", fail_if_called)
+    monkeypatch.setattr(lab.sys.stdin, "isatty", lambda: False)
+
+    exit_code = lab.main(
+        [
+            "bench",
+            "execute",
+            "--candidate",
+            "candidate-ready",
+            "--registry",
+            str(registry),
+            "--model-id",
+            "explicit-local-model",
+            "--runner",
+            "openai-compatible",
+            "--endpoint",
+            "http://127.0.0.1:1234/v1?token=secret#fragment",
+            "--run-id",
+            "20260617-explicit-local-model-r1",
+            "--output-root",
+            str(output_root),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "POST http://127.0.0.1:1234/v1/chat/completions" in captured.out
+    assert "secret" not in captured.out
+    assert "fragment" not in captured.out
+
+
+def test_bench_execute_approved_lmstudio_flow_builds_expected_commands(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    registry = tmp_path / "candidates.csv"
+    output_root = tmp_path / "eval_results"
+    db_path = tmp_path / "dashboard.sqlite"
+    write_registry(registry)
+    commands = capture_commands(monkeypatch)
+
+    exit_code = lab.main(
+        [
+            "bench",
+            "execute",
+            "--candidate",
+            "candidate-ready",
+            "--registry",
+            str(registry),
+            "--model-id",
+            "explicit-local-model",
+            "--runner",
+            "lmstudio-cli",
+            "--run-id",
+            "20260617-explicit-local-model-r1",
+            "--output-root",
+            str(output_root),
+            "--db",
+            str(db_path),
+            "--i-approve-local-run",
+            "--import-dashboard",
+            "--force",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "approval: explicit --i-approve-local-run" in output
+    assert len(commands) == 4
+    assert commands[0][:3] == [lab.sys.executable, str(lab.HARNESS_PATH), "init-run"]
+    assert "20260617-explicit-local-model-r1" in commands[0]
+    assert commands[1][:3] == [
+        lab.sys.executable,
+        str(lab.HARNESS_PATH),
+        "run-lmstudio-cli",
+    ]
+    assert "--model-id" in commands[1]
+    assert "explicit-local-model" in commands[1]
+    assert commands[2][:3] == [
+        lab.sys.executable,
+        str(lab.HARNESS_PATH),
+        "export-dashboard",
+    ]
+    assert commands[3][:3] == [lab.sys.executable, str(lab.DASHBOARD_ENTRYPOINT), "import-csv"]
+
+
+def test_bench_execute_requires_endpoint_for_openai_runner_after_approval(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    registry = tmp_path / "candidates.csv"
+    output_root = tmp_path / "eval_results"
+    write_registry(registry)
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("missing endpoint must stop before subprocess")
+
+    monkeypatch.setattr(lab.subprocess, "run", fail_if_called)
+
+    with pytest.raises(SystemExit) as exc:
+        lab.main(
+            [
+                "bench",
+                "execute",
+                "--candidate",
+                "candidate-ready",
+                "--registry",
+                str(registry),
+                "--model-id",
+                "explicit-local-model",
+                "--runner",
+                "openai-compatible",
+                "--run-id",
+                "20260617-explicit-local-model-r1",
+                "--output-root",
+                str(output_root),
+                "--i-approve-local-run",
+            ]
+        )
+
+    assert exc.value.code == "--endpoint is required for --runner openai-compatible"
+
+
 def test_import_report_and_dashboard_shell_out(tmp_path, monkeypatch) -> None:
     commands = capture_commands(monkeypatch)
     db_path = tmp_path / "dashboard.sqlite"

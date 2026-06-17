@@ -45,6 +45,8 @@ def create_schema(conn):
             temperature REAL,
             top_p REAL,
             tokens_per_sec REAL,
+            ttft_seconds REAL,
+            total_latency_seconds REAL,
             ram_usage_gb REAL,
             stability_notes TEXT,
             run_notes TEXT
@@ -86,6 +88,7 @@ def create_schema(conn):
         """.replace("__LABELS__", label_list).replace("__STATUSES__", status_list)
     )
     _ensure_eval_score_status(conn)
+    _ensure_model_run_perf_fields(conn)
     conn.commit()
 
 
@@ -99,6 +102,13 @@ def _ensure_eval_score_status(conn):
             CHECK(score_status IN ('confirmed', 'draft'))
             """
         )
+
+
+def _ensure_model_run_perf_fields(conn):
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(model_runs)").fetchall()}
+    for column_name in ("ttft_seconds", "total_latency_seconds"):
+        if column_name not in columns:
+            conn.execute(f"ALTER TABLE model_runs ADD COLUMN {column_name} REAL")
 
 
 def init_db(db_path, reset=False):
