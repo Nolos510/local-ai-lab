@@ -61,3 +61,27 @@ jobs:
           else
             echo "No tests directory found; skipping pytest."
           fi
+
+      - name: Dashboard tests
+        run: |
+          if [ -d apps/model-dashboard/tests ]; then
+            python3 -m unittest discover -s apps/model-dashboard/tests
+          else
+            echo "No dashboard tests found; skipping dashboard unittest suite."
+          fi
+
+      - name: Eval harness tests
+        run: |
+          if [ -d evals/local-llm-benchmark/tests ]; then
+            python3 -m unittest discover -s evals/local-llm-benchmark/tests
+          else
+            echo "No eval harness tests found; skipping eval unittest suite."
+          fi
+
+      - name: Dashboard smoke
+        run: |
+          if [ -f scripts/model_dashboard_smoke.py ]; then
+            python3 scripts/model_dashboard_smoke.py
+          else
+            echo "No dashboard smoke script found; skipping dashboard smoke."
+          fi
