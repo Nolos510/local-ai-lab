@@ -102,6 +102,18 @@ radar candidates, benchmark artifact state, draft/confirmed score counts, import
 linkage, decisions, an abliterated/Dolphin specialty candidate lane, GitHub
 project radar, and the next benchmark commands to run locally.
 
+The Capability page is available at:
+
+```text
+http://127.0.0.1:8765/capability
+```
+
+It summarizes repo-local capability context: sanitized hardware profile examples
+when committed, candidate readiness counts, benchmark artifact counts, dashboard
+score/run counts, and the next `ai-lab bench matrix` command. It is read-only and
+does not refresh runtime inventory, call LM Studio/Ollama, inspect model folders,
+run prompts, download models, or expose raw responses.
+
 The Installed Models page is available at:
 
 ```text

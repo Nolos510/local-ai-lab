@@ -1,4 +1,5 @@
 import csv
+import json
 import sqlite3
 import sys
 import tempfile
@@ -879,6 +880,111 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("--enable-import-actions", html)
             self.assertIn("import-csv", html)
             self.assertIn("ready-local-7b", html)
+            self.assertIn("/capability", html)
+
+    def test_capability_page_renders_empty_hardware_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "missing-candidates.csv"
+            eval_results = tmp_path / "missing-eval-results"
+            hardware_profiles = tmp_path / "missing-hardware"
+            db.init_db(db_path, reset=True)
+
+            with db.connect(db_path) as conn:
+                html = server._capability(
+                    conn,
+                    registry_path=registry_path,
+                    eval_results_dir=eval_results,
+                    hardware_profiles_dir=hardware_profiles,
+                )
+
+            self.assertIn("Capability", html)
+            self.assertIn("Capability Boundary", html)
+            self.assertIn("No committed hardware profile JSON examples found", html)
+            self.assertIn("uv run ai-lab bench matrix --limit 5", html)
+            self.assertIn("No ready_for_eval candidates are registered.", html)
+
+    def test_capability_page_renders_candidate_and_artifact_counts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            eval_results = tmp_path / "eval_results"
+            hardware_profiles = tmp_path / "lab-notes"
+            artifact_dir = eval_results / "20260603-ready-local"
+            artifact_dir.mkdir(parents=True)
+            (artifact_dir / "raw_responses.jsonl").write_text(
+                '{"prompt_id": "LLMCORE-v0.1-001"}\n',
+                encoding="utf-8",
+            )
+            (artifact_dir / "scores.json").write_text("{}", encoding="utf-8")
+            (artifact_dir / "decision.json").write_text("{}", encoding="utf-8")
+            (artifact_dir / "dashboard-import").mkdir()
+            hardware_profiles.mkdir()
+            (hardware_profiles / "hardware-snapshot-example.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "hardware-snapshot-v0.1",
+                        "captured_at": "2026-06-17T12:00:00Z",
+                        "os": {"system": "Darwin", "release": "26.3.1"},
+                        "python": {"implementation": "CPython", "version": "3.12.0"},
+                        "machine": {"machine": "arm64", "cpu_count": 32},
+                        "macos": {
+                            "chip_brand": "Apple M3 Ultra",
+                            "memory_bytes": 274877906944,
+                        },
+                        "runtimes": {
+                            "lms": {"present": True, "version": "0.3"},
+                            "ollama": {"present": False, "version": None},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(registry_path)
+
+            with db.connect(db_path) as conn:
+                html = server._capability(
+                    conn,
+                    registry_path=registry_path,
+                    eval_results_dir=eval_results,
+                    hardware_profiles_dir=hardware_profiles,
+                )
+
+            self.assertIn("hardware-snapshot-example.json", html)
+            self.assertIn("Apple M3 Ultra", html)
+            self.assertIn("256.0", html)
+            self.assertIn("lms", html)
+            self.assertIn("Ready Local 7B", html)
+            self.assertIn("preflight gates clear", html)
+            self.assertIn("watchlist", html)
+            self.assertNotIn("/Users/", html)
+            self.assertIn("Artifact directories", html)
+            self.assertIn("Dashboard-import folders", html)
+            self.assertIn("/artifacts/20260603-ready-local", html)
+
+    def test_capability_page_uses_no_external_assets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(registry_path)
+
+            with db.connect(db_path) as conn:
+                html = server._capability(
+                    conn,
+                    registry_path=registry_path,
+                    eval_results_dir=tmp_path / "eval_results",
+                    hardware_profiles_dir=tmp_path / "lab-notes",
+                )
+
+            self.assertNotIn("<script", html)
+            self.assertNotIn("<link", html)
+            self.assertNotIn("http://", html)
+            self.assertNotIn("https://", html)
 
     def test_lab_dashboard_can_enable_run_test_button_for_local_models(self):
         with tempfile.TemporaryDirectory() as tmp:
