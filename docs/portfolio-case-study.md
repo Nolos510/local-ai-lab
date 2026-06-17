@@ -80,7 +80,7 @@ claims still require real artifacts and confirmed scores.
 
 ## Architecture
 
-See [architecture-v1.md](architecture-v1.md) for the full diagram.
+See [architecture.md](architecture.md) for the full diagram.
 
 At a high level:
 

@@ -134,6 +134,11 @@ uv run local-ai-lab doctor
 uv run local-ai-lab ask "What is this lab for?"
 ```
 
+If the configured Ollama model is not installed, `doctor` prints a concrete
+replacement such as `LOCAL_AI_LAB_OLLAMA_MODEL=<installed-model>` from local
+inventory when one is available. If no Ollama models are installed, it prints
+the exact `ollama pull <configured-model>` command for the configured model.
+
 The mock provider means "no real LLM call." It does not remove the Qdrant,
 retrieval, settings, embedding, or indexed-document dependencies from the ask
 path. Live local-model checks may fail if Ollama, LM Studio, Qdrant, or the
@@ -240,7 +245,7 @@ The v1-facing portfolio package lives in:
 - `docs/portfolio-case-study.md`
 - `docs/resume-bullets.md`
 - `docs/learning-roadmap.md`
-- `docs/architecture-v1.md`
+- `docs/architecture.md`
 - `docs/lab-notes/v1-second-benchmark-queue.md`
 
 Screenshots are stored under `docs/assets/screenshots/`.

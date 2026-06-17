@@ -111,11 +111,45 @@ def test_doctor_fails_with_actionable_detail_when_selected_ollama_model_is_missi
     assert "Ollama model" in report
     assert "FAIL" in report
     assert "configured model 'qwen3:14b' is not available locally" in report
+    assert "installed models include llama3.2:3b" in report
+    assert "`LOCAL_AI_LAB_OLLAMA_MODEL=llama3.2:3b`" in report
     assert "`ollama pull qwen3:14b`" in report
     assert "LOCAL_AI_LAB_OLLAMA_MODEL" in report
     assert "supersecret" not in report
     assert "token=abc" not in report
     assert "/private" not in report
+
+
+def test_doctor_explains_when_no_ollama_models_are_installed(tmp_path: Path) -> None:
+    root = _make_project_root(tmp_path)
+    settings = Settings(
+        llm_provider="ollama",
+        qdrant_url="http://localhost:6333",
+        ollama_base_url="http://localhost:11434",
+        ollama_model="qwen3:14b",
+    )
+
+    def fake_get(url: str, *, timeout: float) -> FakeResponse:
+        del timeout
+        payloads = {
+            "http://localhost:6333/collections": {"result": {"collections": []}},
+            "http://localhost:11434/api/tags": {"models": []},
+        }
+        return FakeResponse(payloads[url])
+
+    output = StringIO()
+    exit_code = run_doctor(
+        root=root,
+        output=output,
+        settings_factory=lambda: settings,
+        http_get=fake_get,
+    )
+
+    report = output.getvalue()
+    assert exit_code == 1
+    assert "configured model 'qwen3:14b' is not available locally" in report
+    assert "no Ollama chat models were reported locally" in report
+    assert "`ollama pull qwen3:14b`" in report
 
 
 def test_doctor_checks_openai_compatible_endpoint_when_selected(tmp_path: Path) -> None:

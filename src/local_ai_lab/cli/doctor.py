@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from difflib import get_close_matches
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, TextIO
@@ -326,11 +327,25 @@ def _check_ollama_model(
             CheckStatus.PASS,
             "configured model is available locally",
         )
+    suggestion = _ollama_model_suggestion(settings.ollama_model, model_names)
+    if suggestion:
+        return DoctorCheck(
+            "Ollama model",
+            CheckStatus.FAIL,
+            (
+                f"configured model '{settings.ollama_model}' is not available locally; "
+                f"installed models include {', '.join(sorted(model_names))}; "
+                f"set `LOCAL_AI_LAB_OLLAMA_MODEL={suggestion}` to use the closest "
+                "installed model, or run "
+                f"`ollama pull {settings.ollama_model}` to install the configured model"
+            ),
+        )
     return DoctorCheck(
         "Ollama model",
         CheckStatus.FAIL,
         (
             f"configured model '{settings.ollama_model}' is not available locally; "
+            "no Ollama chat models were reported locally; "
             f"run `ollama pull {settings.ollama_model}` or set "
             "LOCAL_AI_LAB_OLLAMA_MODEL to an installed model"
         ),
@@ -443,6 +458,21 @@ def _sanitize_url(url: str) -> str:
     if parts.port is not None:
         netloc = f"{netloc}:{parts.port}"
     return urlunsplit((parts.scheme, netloc, "", "", ""))
+
+
+def _ollama_model_suggestion(configured_model: str, installed_models: set[str]) -> str | None:
+    if not installed_models:
+        return None
+    matches = get_close_matches(
+        configured_model.lower(),
+        [model.lower() for model in installed_models],
+        n=1,
+        cutoff=0.0,
+    )
+    if not matches:
+        return sorted(installed_models)[0]
+    lowered_to_original = {model.lower(): model for model in installed_models}
+    return lowered_to_original[matches[0]]
 
 
 def _timeout(settings: Settings) -> float:

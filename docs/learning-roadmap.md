@@ -78,7 +78,7 @@ Portfolio evidence:
 
 - Screenshots in `docs/assets/screenshots`.
 - Case study in `docs/portfolio-case-study.md`.
-- Architecture diagram in `docs/architecture-v1.md`.
+- Architecture diagram in `docs/architecture.md`.
 
 ## Track 6: Business And Automation Tie-Ins
 
