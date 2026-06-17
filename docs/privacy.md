@@ -25,3 +25,9 @@ Future request logs should include:
 - evaluation labels where available
 
 Do not log secrets or private raw documents into external services by default.
+
+## API Response Discipline
+
+The `/ask` API returns answer text and citation identifiers only. It does not
+return raw retrieved chunks, chunk previews, or private source paths by default.
+See `docs/adr/0003-privacy-narrow-ask-response.md`.

@@ -55,6 +55,27 @@ LOCAL_AI_LAB_QDRANT_VECTOR_SIZE=1024 \
 uv run local-ai-lab ask "What is this lab for?"
 ```
 
+## Ask API Response
+
+The FastAPI `/ask` endpoint returns the answer plus privacy-narrow citations:
+
+```json
+{
+  "answer": "The lab is for local-first AI workflows.",
+  "citations": [
+    {
+      "chunk_id": "sample-doc-0001",
+      "source_name": "sample.md",
+      "chunk_index": 0
+    }
+  ]
+}
+```
+
+The default response does not include raw retrieved chunks, chunk previews, or
+private source paths. `top_k` is capped at 20. See
+`docs/adr/0003-privacy-narrow-ask-response.md` for the privacy decision record.
+
 ## Reindexing
 
 Qdrant collection vector size is fixed when the collection is created. Switching
