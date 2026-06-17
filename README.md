@@ -181,6 +181,10 @@ uv run local-ai-lab ask "What is this lab for?"
 
 More runtime setup notes live in `docs/runtime-profiles.md`.
 
+The `/ask` response intentionally returns an answer plus citation identifiers
+only. It does not include raw retrieved chunks, chunk previews, or private source
+paths by default; see `docs/adr/0003-privacy-narrow-ask-response.md`.
+
 ## Dashboard Quick Start
 
 From the repository root:
@@ -340,6 +344,8 @@ LOCAL_AI_LAB_LLM_PROVIDER=lm_studio
 - `.env.example` contains safe placeholder values only.
 - Logs should not dump user documents, prompts, retrieved chunks, API keys, or
   private paths by default.
+- API responses should not expose raw retrieved chunks, chunk previews, or
+  private source paths unless a future explicit diagnostic workflow is approved.
 - Telemetry must be opt-in or disabled by default.
 - Local-first behavior is the default unless an ADR explicitly changes that
   direction.
