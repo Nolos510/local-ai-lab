@@ -155,6 +155,18 @@ python3 -m unittest discover -s evals/local-llm-benchmark/tests
 python3 scripts/model_dashboard_smoke.py
 ```
 
+Unified AI Lab OS workflow checks and entry point:
+
+```bash
+uv run ai-lab status
+uv run ai-lab radar list --status ready_for_eval
+```
+
+The `ai-lab` CLI is a local stdlib orchestrator. Read-only commands inspect
+repo-local CSV/SQLite/artifact state; action commands shell out to the existing
+benchmark harness and dashboard entry points. It must not download models, call
+model/cloud APIs, or use secrets implicitly.
+
 To include a localhost server bind/probe check:
 
 ```bash

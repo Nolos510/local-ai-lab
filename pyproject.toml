@@ -14,6 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
+ai-lab = "local_ai_lab.cli.lab:main"
 local-ai-lab = "local_ai_lab.cli.app:main"
 
 [project.optional-dependencies]

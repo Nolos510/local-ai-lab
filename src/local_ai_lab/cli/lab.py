@@ -1,0 +1,289 @@
+"""Unified AI Lab OS command surface.
+
+This CLI intentionally orchestrates existing local entry points instead of
+cross-importing dashboard or benchmark internals. Commands that can execute
+workflow actions shell out to the existing scripts; read-only status commands use
+stdlib CSV/SQLite reads.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import re
+import sqlite3
+import subprocess
+import sys
+from datetime import date
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_REGISTRY = REPO_ROOT / "data" / "model_registry" / "candidates.csv"
+DEFAULT_EVAL_RESULTS = REPO_ROOT / "data" / "eval_results"
+DEFAULT_DASHBOARD_DB = REPO_ROOT / "data" / "dashboard" / "model_dashboard.sqlite"
+DEFAULT_REPORT = REPO_ROOT / "data" / "dashboard" / "reports" / "fixture-model-report.md"
+HARNESS_PATH = REPO_ROOT / "evals" / "local-llm-benchmark" / "harness.py"
+DASHBOARD_ENTRYPOINT = REPO_ROOT / "apps" / "model-dashboard" / "run_dashboard.py"
+SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+
+
+def _read_candidates(path: Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+    with path.open(newline="", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _candidate_by_id(path: Path, candidate_id: str) -> dict[str, str]:
+    for row in _read_candidates(path):
+        if row.get("candidate_id") == candidate_id:
+            return row
+    raise SystemExit(f"Unknown candidate: {candidate_id}")
+
+
+def _safe_id(value: str, *, label: str) -> str:
+    if not SAFE_ID_RE.fullmatch(value or ""):
+        raise SystemExit(f"Invalid {label}: {value}")
+    return value
+
+
+def _run(command: list[str]) -> int:
+    return subprocess.run(command, check=False).returncode
+
+
+def _table_count(conn: sqlite3.Connection, table_name: str) -> int:
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    if not exists:
+        return 0
+    return int(conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0])
+
+
+def _dashboard_counts(db_path: Path) -> dict[str, int]:
+    if not db_path.exists():
+        return {}
+    with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
+        return {
+            "models": _table_count(conn, "models"),
+            "model_runs": _table_count(conn, "model_runs"),
+            "eval_scores": _table_count(conn, "eval_scores"),
+            "decisions": _table_count(conn, "decisions"),
+        }
+
+
+def _artifact_count(eval_results_dir: Path) -> int:
+    if not eval_results_dir.exists():
+        return 0
+    return sum(1 for path in eval_results_dir.iterdir() if path.is_dir())
+
+
+def command_status(args: argparse.Namespace) -> int:
+    candidates = _read_candidates(args.registry)
+    statuses: dict[str, int] = {}
+    for row in candidates:
+        status = row.get("status") or "unknown"
+        statuses[status] = statuses.get(status, 0) + 1
+
+    print("AI Lab OS status")
+    print(f"Candidates: {len(candidates)}")
+    for status in sorted(statuses):
+        print(f"  {status}: {statuses[status]}")
+    print(f"Benchmark artifacts: {_artifact_count(args.eval_results)}")
+
+    counts = _dashboard_counts(args.db)
+    if counts:
+        print(f"Dashboard DB: {args.db}")
+        row_summary = (
+            "models={models}, runs={model_runs}, "
+            "scores={eval_scores}, decisions={decisions}"
+        ).format(**counts)
+        print(f"Dashboard rows: {row_summary}")
+    else:
+        print(f"Dashboard DB: missing ({args.db})")
+    return 0
+
+
+def command_radar_list(args: argparse.Namespace) -> int:
+    rows = _read_candidates(args.registry)
+    if args.status:
+        rows = [row for row in rows if row.get("status") == args.status]
+    if args.limit:
+        rows = rows[: args.limit]
+    print("candidate_id\tstatus\tmodel_name\tlocal_runner")
+    for row in rows:
+        print(
+            "{candidate_id}\t{status}\t{model_name}\t{local_runner}".format(
+                candidate_id=row.get("candidate_id", ""),
+                status=row.get("status", ""),
+                model_name=row.get("model_name", ""),
+                local_runner=row.get("local_runner", ""),
+            )
+        )
+    return 0
+
+
+def _default_run_id(candidate_id: str) -> str:
+    safe_candidate = re.sub(r"[^A-Za-z0-9_.-]+", "-", candidate_id).strip(".-")
+    return f"{date.today().isoformat().replace('-', '')}-{safe_candidate}-local"
+
+
+def command_bench_run(args: argparse.Namespace) -> int:
+    candidate = _candidate_by_id(args.registry, args.candidate)
+    run_id = _safe_id(args.run_id or _default_run_id(args.candidate), label="benchmark run id")
+    backend = (
+        candidate.get("local_runner")
+        or candidate.get("format_or_runtime")
+        or candidate.get("runtime_availability")
+        or "Local"
+    )
+    command = [
+        sys.executable,
+        str(HARNESS_PATH),
+        "init-run",
+        "--benchmark-run-id",
+        run_id,
+        "--model-name",
+        candidate.get("model_name") or args.candidate,
+        "--backend",
+        backend,
+        "--output-root",
+        str(args.output_root),
+    ]
+    optional_fields = (
+        ("model_family", "--model-family"),
+        ("provider_or_org", "--provider"),
+        ("model_page_url", "--source-url"),
+        ("format_or_runtime", "--format"),
+        ("why_interesting", "--model-notes"),
+        ("proposed_eval", "--run-notes"),
+    )
+    for field_name, flag in optional_fields:
+        value = candidate.get(field_name)
+        if value:
+            command.extend([flag, value])
+    if args.force:
+        command.append("--force")
+    return _run(command)
+
+
+def command_import(args: argparse.Namespace) -> int:
+    run_id = _safe_id(args.run, label="benchmark run id")
+    import_dir = args.eval_results / run_id / "dashboard-import"
+    command = [
+        sys.executable,
+        str(DASHBOARD_ENTRYPOINT),
+        "import-csv",
+        "--db",
+        str(args.db),
+        "--models",
+        str(import_dir / "models.csv"),
+        "--runs",
+        str(import_dir / "model_runs.csv"),
+        "--scores",
+        str(import_dir / "eval_scores.csv"),
+        "--decisions",
+        str(import_dir / "decisions.csv"),
+    ]
+    return _run(command)
+
+
+def command_report(args: argparse.Namespace) -> int:
+    command = [
+        sys.executable,
+        str(DASHBOARD_ENTRYPOINT),
+        "report",
+        "--db",
+        str(args.db),
+        "--out",
+        str(args.out),
+    ]
+    if args.include_demo:
+        command.append("--include-demo")
+    return _run(command)
+
+
+def command_dashboard(args: argparse.Namespace) -> int:
+    command = [
+        sys.executable,
+        str(DASHBOARD_ENTRYPOINT),
+        "serve",
+        "--db",
+        str(args.db),
+        "--host",
+        args.host,
+        "--port",
+        str(args.port),
+    ]
+    if args.demo:
+        command.append("--demo")
+    if args.enable_import_actions:
+        command.append("--enable-import-actions")
+    if args.enable_run_tests:
+        command.append("--enable-run-tests")
+    return _run(command)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Operate the local-first AI Lab OS loop.")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    status_parser = subparsers.add_parser("status", help="Show local lab loop status.")
+    status_parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
+    status_parser.add_argument("--eval-results", type=Path, default=DEFAULT_EVAL_RESULTS)
+    status_parser.add_argument("--db", type=Path, default=DEFAULT_DASHBOARD_DB)
+    status_parser.set_defaults(func=command_status)
+
+    radar_parser = subparsers.add_parser("radar", help="Inspect radar candidate records.")
+    radar_subparsers = radar_parser.add_subparsers(dest="radar_command", required=True)
+    radar_list = radar_subparsers.add_parser("list", help="List model candidates.")
+    radar_list.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
+    radar_list.add_argument("--status")
+    radar_list.add_argument("--limit", type=int, default=0)
+    radar_list.set_defaults(func=command_radar_list)
+
+    bench_parser = subparsers.add_parser("bench", help="Prepare local benchmark artifacts.")
+    bench_subparsers = bench_parser.add_subparsers(dest="bench_command", required=True)
+    bench_run = bench_subparsers.add_parser(
+        "run",
+        help="Initialize a benchmark run artifact for a candidate; does not call a model.",
+    )
+    bench_run.add_argument("--candidate", required=True)
+    bench_run.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
+    bench_run.add_argument("--run-id")
+    bench_run.add_argument("--output-root", type=Path, default=DEFAULT_EVAL_RESULTS)
+    bench_run.add_argument("--force", action="store_true")
+    bench_run.set_defaults(func=command_bench_run)
+
+    import_parser = subparsers.add_parser("import", help="Import benchmark CSVs.")
+    import_parser.add_argument("--run", required=True)
+    import_parser.add_argument("--eval-results", type=Path, default=DEFAULT_EVAL_RESULTS)
+    import_parser.add_argument("--db", type=Path, default=DEFAULT_DASHBOARD_DB)
+    import_parser.set_defaults(func=command_import)
+
+    report_parser = subparsers.add_parser("report", help="Generate a dashboard report.")
+    report_parser.add_argument("--db", type=Path, default=DEFAULT_DASHBOARD_DB)
+    report_parser.add_argument("--out", type=Path, default=DEFAULT_REPORT)
+    report_parser.add_argument("--include-demo", action="store_true")
+    report_parser.set_defaults(func=command_report)
+
+    dashboard_parser = subparsers.add_parser("dashboard", help="Launch the local dashboard.")
+    dashboard_parser.add_argument("--db", type=Path, default=DEFAULT_DASHBOARD_DB)
+    dashboard_parser.add_argument("--host", default="127.0.0.1")
+    dashboard_parser.add_argument("--port", type=int, default=8765)
+    dashboard_parser.add_argument("--demo", action="store_true")
+    dashboard_parser.add_argument("--enable-import-actions", action="store_true")
+    dashboard_parser.add_argument("--enable-run-tests", action="store_true")
+    dashboard_parser.set_defaults(func=command_dashboard)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

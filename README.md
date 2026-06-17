@@ -170,6 +170,23 @@ Useful dashboard pages:
 The dashboard MVP uses local SQLite/CSV artifacts. It does not download models,
 call cloud APIs, or require secrets.
 
+## AI Lab OS CLI
+
+The unified local workflow CLI is available as `ai-lab`:
+
+```bash
+uv run ai-lab status
+uv run ai-lab radar list --status ready_for_eval
+uv run ai-lab bench run --candidate 20260605-dolphin-mistral-24b-venice-edition
+uv run ai-lab import --run <benchmark_run_id>
+uv run ai-lab report
+uv run ai-lab dashboard --port 8765
+```
+
+`ai-lab status` and `ai-lab radar list` read local CSV/SQLite/artifact state.
+Action commands dispatch to the existing benchmark harness and dashboard
+entrypoints. They do not download models or call model/cloud APIs implicitly.
+
 ## Benchmark Harness
 
 The local benchmark harness lives under `evals/local-llm-benchmark/`.
@@ -213,7 +230,8 @@ in the dashboard separately from model candidates and eval scores.
 
 ## Roadmap
 
-See `ROADMAP.md` and `docs/roadmap.md` for the staged plan.
+See `ROADMAP.md` for the canonical staged plan. `docs/roadmap.md` is a
+compatibility pointer.
 
 ## Portfolio And Learning Pack
 
