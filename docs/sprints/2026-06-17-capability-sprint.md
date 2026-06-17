@@ -8,6 +8,29 @@ the dashboard real data — then harden maintainability and capture evidence.
 Same operating model: one **loop** at a time, full validation gate green, commit,
 stop, report. Read [AGENTS.md](../../AGENTS.md) first.
 
+## Current progress
+
+This document is now the canonical forward plan, but several pieces landed while
+the earlier Sprint 3 loop numbering was still in use:
+
+- **L0 complete:** onboarding and architecture drift cleanup landed in
+  `378831f`.
+- **L1 complete:** `ai-lab hardware snapshot` landed in `9d77f71`.
+- **L2 complete:** `ai-lab bench matrix` landed in `dd3ead2`.
+- **Baseline L4 complete:** the read-only dashboard `/capability` view landed in
+  `e28f634`.
+- **Portfolio evidence pack complete:** portfolio case study, resume bullets,
+  roadmap updates, and the completion note landed in `62ac455`.
+
+Remaining canonical implementation order:
+
+1. **L3** — approval-gated benchmark execution machinery with fake-runner tests.
+2. **L4 follow-up** — add any perf-series dashboard surface that depends on L3
+   metrics.
+3. **L4.5** — gated, recoverable installed-model removal.
+4. **L5** — behavior-preserving dashboard modularization.
+5. **L6 refresh** — update the portfolio evidence again after L3/L4.5/L5 land.
+
 ## Audit basis (why these loops)
 
 Current state is healthy: ~190 tests green, CI passing on GitHub, hardened +
@@ -105,6 +128,14 @@ default + `--json`, marks `blocked` rows, **runs no models**. Smoke:
 import**, in one sanctioned flow. This is the core utility unlock and the only
 loop permitted to call a model.
 
+**Build this loop autonomously — do not skip it.** The command, approval gate,
+schema migration, perf-capture wiring, and all tests are built and verified with
+**fakes** (fake endpoint / fake subprocess) and require **no real model call** to
+land — the gate guarantees nothing executes without explicit flags. Landing L3
+means the *machinery* is committed, gated, and green. The actual end-to-end run
+against a live local model is a separate, user-approved step run later; it is NOT
+a prerequisite for committing this loop.
+
 **Files.**
 - Edit: `src/local_ai_lab/cli/lab.py` — add execution to the `bench` surface,
   e.g. `ai-lab bench execute` (or `bench run --execute`).
@@ -184,6 +215,12 @@ Build as specified in
 the existing `charts.py` helpers, alongside hardware-snapshot context, candidate
 readiness, and artifact counts. Read-only, no network, no private data. Smoke:
 `python3 scripts/model_dashboard_smoke.py`.
+
+**Progress note.** The baseline read-only `/capability` page has already landed
+in `e28f634` with hardware-profile examples, candidate readiness, artifact
+counts, dashboard run/score signals, and benchmark matrix guidance. The perf
+series portion remains a follow-up after L3 adds latency/TTFT fields and import
+support.
 
 ---
 
@@ -317,6 +354,10 @@ update `docs/portfolio-case-study.md`, `docs/resume-bullets.md`, a
 **Truthful + locally verifiable only** — reflect the real executed-benchmark
 capability L3 added, the dashboard data, CI gate, security posture, and
 `ai-lab` surface.
+
+**Progress note.** A truthful current-state evidence pack landed in `62ac455`.
+Refresh it after L3 and the L4 perf-series follow-up land so it can describe the
+approval-gated execution path without overclaiming.
 
 ---
 
