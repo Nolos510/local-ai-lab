@@ -4,7 +4,7 @@ from local_ai_lab.config.settings import Settings
 
 
 def test_settings_defaults_are_local_first() -> None:
-    settings = Settings()
+    settings = Settings(_env_file=None)
 
     assert settings.qdrant_url == "http://localhost:6333"
     assert settings.embedding_provider == "deterministic"

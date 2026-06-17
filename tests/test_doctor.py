@@ -53,6 +53,7 @@ def test_doctor_passes_required_checks_with_ollama_available(tmp_path: Path) -> 
     assert "Qdrant" in report
     assert "PASS" in report
     assert "LM Studio/OpenAI-compatible endpoint" in report
+    assert "LM Studio/OpenAI-compatible model" in report
     assert "WARN" in report
 
 
@@ -118,7 +119,7 @@ def test_doctor_fails_with_actionable_detail_when_selected_ollama_model_is_missi
     assert "/private" not in report
 
 
-def test_doctor_checks_openai_compatible_endpoint_when_selected(tmp_path: Path) -> None:
+def test_doctor_passes_when_openai_compatible_model_is_available(tmp_path: Path) -> None:
     root = _make_project_root(tmp_path)
     calls: list[str] = []
     settings = Settings(llm_provider="lm_studio")
@@ -128,7 +129,7 @@ def test_doctor_checks_openai_compatible_endpoint_when_selected(tmp_path: Path) 
         calls.append(url)
         payloads = {
             "http://localhost:6333/collections": {"result": {"collections": []}},
-            "http://localhost:1234/v1/models": {"data": []},
+            "http://localhost:1234/v1/models": {"data": [{"id": "local-model"}]},
         }
         return FakeResponse(payloads[url])
 
@@ -141,6 +142,90 @@ def test_doctor_checks_openai_compatible_endpoint_when_selected(tmp_path: Path) 
 
     assert exit_code == 0
     assert calls == ["http://localhost:6333/collections", "http://localhost:1234/v1/models"]
+
+
+def test_doctor_fails_when_openai_compatible_model_is_missing(tmp_path: Path) -> None:
+    root = _make_project_root(tmp_path)
+    settings = Settings(
+        llm_provider="lm_studio",
+        qdrant_url="http://localhost:6333",
+        lm_studio_base_url="http://localhost:1234/v1",
+        lm_studio_model="qwen-coder-30b-instruct-mlx",
+    )
+
+    def fake_get(url: str, *, timeout: float) -> FakeResponse:
+        del timeout
+        payloads = {
+            "http://localhost:6333/collections": {"result": {"collections": []}},
+            "http://localhost:1234/v1/models": {"data": [{"id": "other-local-model"}]},
+        }
+        return FakeResponse(payloads[url])
+
+    output = StringIO()
+    exit_code = run_doctor(
+        root=root,
+        output=output,
+        settings_factory=lambda: settings,
+        http_get=fake_get,
+    )
+
+    report = output.getvalue()
+    assert exit_code == 1
+    assert "LM Studio/OpenAI-compatible model" in report
+    assert "FAIL" in report
+    assert "configured model 'qwen-coder-30b-instruct-mlx' was not found" in report
+    assert "curl -s http://localhost:1234/v1/models | uv run python -m json.tool" in report
+    assert "copy one of the returned `id` values into LOCAL_AI_LAB_LM_STUDIO_MODEL" in report
+
+
+def test_doctor_sanitizes_openai_compatible_missing_model_detail(tmp_path: Path) -> None:
+    root = _make_project_root(tmp_path)
+    settings = Settings(
+        llm_provider="openai_compatible",
+        qdrant_url="http://localhost:6333",
+        lm_studio_base_url="http://user:supersecret@localhost:1234/private/v1?token=abc",
+        lm_studio_model="missing-model",
+    )
+
+    def fake_get(url: str, *, timeout: float) -> FakeResponse:
+        del timeout
+        if url == "http://localhost:6333/collections":
+            return FakeResponse({"result": {"collections": []}})
+        assert "supersecret" in url
+        return FakeResponse({"data": [{"id": "available-model"}]})
+
+    output = StringIO()
+    exit_code = run_doctor(
+        root=root,
+        output=output,
+        settings_factory=lambda: settings,
+        http_get=fake_get,
+    )
+
+    report = output.getvalue()
+    assert exit_code == 1
+    assert "configured model 'missing-model' was not found" in report
+    assert "uv run python -m json.tool" in report
+    assert "supersecret" not in report
+    assert "token=abc" not in report
+    assert "/private" not in report
+
+
+def test_doctor_warns_on_openai_compatible_model_when_provider_not_selected(
+    tmp_path: Path,
+) -> None:
+    root = _make_project_root(tmp_path)
+    settings = Settings(llm_provider="mock")
+
+    def fake_get(url: str, *, timeout: float) -> FakeResponse:
+        del timeout
+        assert url == "http://localhost:6333/collections"
+        return FakeResponse({"result": {"collections": []}})
+
+    checks = collect_doctor_checks(root=root, settings_factory=lambda: settings, http_get=fake_get)
+
+    assert _status(checks, "LM Studio/OpenAI-compatible endpoint") == CheckStatus.WARN
+    assert _status(checks, "LM Studio/OpenAI-compatible model") == CheckStatus.WARN
 
 
 def test_doctor_checks_ollama_embedding_model_when_selected(tmp_path: Path) -> None:

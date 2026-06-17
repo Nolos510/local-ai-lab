@@ -86,16 +86,17 @@ LM Studio inventory:
 
 ```bash
 python3 evals/local-llm-benchmark/harness.py run-lmstudio-cli \
-  --run-dir data/eval_results/<run_id> \
+  --run-dir data/eval_results/paste-run-id-here \
   --model-id qwen3-coder-30b-a3b-instruct-mlx \
   --force
 ```
 
 This runs
-`lms chat <model-id> -p <prompt> --stats --ttl 3600 --yes --dont-fetch-catalog`,
+`lms chat paste-model-id-here -p "prompt text" --stats --ttl 3600 --yes --dont-fetch-catalog`,
 captures all prompt responses into `raw_responses.jsonl`, and preserves CLI
 output in `lms-cli-capture.log`. It does not download, install, or fetch
-models.
+models. Raw response and capture log files are generated locally and ignored by
+git by default.
 
 Normalize human-supplied responses into the run artifact:
 

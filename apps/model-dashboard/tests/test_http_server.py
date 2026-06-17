@@ -98,6 +98,20 @@ class DashboardHttpHandlerTests(unittest.TestCase):
 
             self.assertEqual(raised.exception.code, 403)
 
+    def test_model_action_is_refused_when_disabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            base_url = self.start_server(db_path, action_token="test-token")
+
+            with self.assertRaises(HTTPError) as raised:
+                self.post(
+                    f"{base_url}/actions/remove-ollama-model",
+                    {"token": "test-token", "model_id": "qwen3:8b"},
+                )
+
+            self.assertEqual(raised.exception.code, 403)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -24,6 +24,8 @@ SERVER_PATHS = (
     "/compare?status=confirmed",
     "/inventory",
     "/inventory?runtime=LM%20Studio",
+    "/cookbook",
+    "/cookbook?fit=Mac%20Studio%20sweet%20spot",
     "/radar",
     "/radar?security=needs_review",
     "/specialty",

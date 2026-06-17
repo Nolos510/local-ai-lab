@@ -44,18 +44,22 @@ radar candidate
 This lane provides the local model dashboard, candidate registry, project
 radar, benchmark harness, scoring artifacts, and lab workflow views.
 
+Open WebUI remains the optional local chat UI. LM Studio and Ollama remain
+native macOS model runtimes.
+
 ## Repository Map
 
 ```text
-apps/model-dashboard/          Local model performance dashboard
-src/local_ai_lab/              Local RAG/provider app
+src/local_ai_lab/              Local RAG/provider/API core
+apps/model-dashboard/          AI Lab OS dashboard
 automations/ai-lab-radar/      Radar inputs, reports, and guardrails
-evals/local-llm-benchmark/     Personal local LLM benchmark suite
+evals/local-llm-benchmark/     Repeatable local LLM benchmark suite
 data/model_registry/           Approved model candidate registry
 data/project_registry/         GitHub/project opportunity registry
-data/eval_results/             Benchmark artifacts and dashboard CSV exports
-skills/                        Reusable AI workflow skills
+data/eval_results/             Sanitized benchmark artifacts and CSV imports
 docs/                          Architecture, roadmap, lab notes, evidence
+reports/                       Benchmark/eval/postmortem outputs
+infra/                         Qdrant/Open WebUI compose assets
 tests/                         Local RAG/provider app tests
 scripts/                       Smoke checks and utility scripts
 ```
@@ -140,6 +144,43 @@ path. Live local-model checks may fail if Ollama, LM Studio, Qdrant, or the
 configured local model is missing; document the exact reason instead of treating
 it as passed.
 
+## LM Studio Setup
+
+LM Studio may run MLX models under the hood, but this app talks to it through
+the OpenAI-compatible HTTP API.
+
+1. Start LM Studio.
+2. Load the Qwen Coder model, or any other desired local model.
+3. Start the LM Studio local server.
+4. Confirm the model endpoint:
+
+```bash
+curl -s http://localhost:1234/v1/models | uv run python -m json.tool
+```
+
+`python3 -m json.tool` also works on macOS if you are not running through
+`uv`.
+
+5. Copy one of the returned `id` values.
+6. Edit `.env`:
+
+```bash
+LOCAL_AI_LAB_LLM_PROVIDER=lm_studio
+LOCAL_AI_LAB_LM_STUDIO_BASE_URL=http://localhost:1234/v1
+LOCAL_AI_LAB_LM_STUDIO_MODEL="paste-model-id-here"
+```
+
+Do not include angle bracket characters in shell commands or `.env` values.
+
+7. Run:
+
+```bash
+uv run local-ai-lab doctor
+uv run local-ai-lab ask "What is this lab for?"
+```
+
+More runtime setup notes live in `docs/runtime-profiles.md`.
+
 The `/ask` response intentionally returns an answer plus citation identifiers
 only. It does not include raw retrieved chunks, chunk previews, or private source
 paths by default; see `docs/adr/0003-privacy-narrow-ask-response.md`.
@@ -165,10 +206,22 @@ Useful dashboard pages:
 - `/radar` - model candidates
 - `/projects` - GitHub project opportunities
 - `/compare` - model comparison
+- `/cookbook` - Apple Silicon model fit and runtime-readiness guidance
 - `/reports` - dashboard report view
 
 The dashboard MVP uses local SQLite/CSV artifacts. It does not download models,
-call cloud APIs, or require secrets.
+call cloud APIs, or require secrets by default. Approved local model actions are
+available only when the dashboard is started with explicit ops flags:
+
+```bash
+python3 apps/model-dashboard/run_dashboard.py serve \
+  --enable-model-actions \
+  --enable-run-tests \
+  --enable-import-actions
+```
+
+Ops mode remains localhost-only and writes sanitized summaries to the local
+ignored master ledger at `data/dashboard/master-ledger.csv`.
 
 ## Benchmark Harness
 
@@ -183,7 +236,8 @@ python3 evals/local-llm-benchmark/harness.py list-prompts
 
 Benchmark runs should preserve raw responses and evidence notes before any
 dashboard import. Draft local-judge scores must remain separate from confirmed
-human-approved `scores.json` files.
+human-approved `scores.json` files. Raw prompts, raw responses, private paths,
+machine metadata, and local logs must be reviewed before committing.
 
 ## Radar And Project Discovery
 
@@ -198,6 +252,91 @@ clients, or register candidates without explicit user approval.
 GitHub project opportunities live in `data/project_registry` and are displayed
 in the dashboard separately from model candidates and eval scores.
 
+## Odysseus-Inspired Roadmap
+
+Odysseus is used as product inspiration only. No Odysseus source code is copied
+into this repository. The extracted ideas are tracked in:
+
+- `docs/product/odysseus-idea-extraction.md`
+- `docs/product/ai-lab-os-build-plan.md`
+- `docs/adr/0003-ai-lab-os-consolidation.md`
+
+Near-term focus remains the local RAG/provider harness, dashboard/eval loop,
+runtime readiness, and privacy-first artifact hygiene. Agent, research,
+documents, email/calendar/tasks, memory, and MCP lanes require later ADRs before
+implementation.
+
+## Troubleshooting
+
+### Provider Errors
+
+If `uv run local-ai-lab ask "What is this lab for?"` fails at the
+model-provider step, start with:
+
+```bash
+uv run local-ai-lab doctor
+```
+
+For Ollama, confirm the configured model is installed. The default configured
+model is `qwen3:14b`; replace it if `LOCAL_AI_LAB_OLLAMA_MODEL` is set
+differently.
+
+```bash
+ollama list
+ollama pull qwen3:14b
+```
+
+For LM Studio/OpenAI-compatible mode, confirm the local server is running and
+that `LOCAL_AI_LAB_LLM_PROVIDER` is set to the intended provider (`ollama`,
+`lm_studio`, `openai_compatible`, or `mock`). Use
+`LOCAL_AI_LAB_LLM_PROVIDER=mock` for smoke checks that should avoid real model
+calls; it still requires Qdrant, retrieval, and indexed docs.
+
+### zsh Parse Error Near Newline
+
+Problem: `zsh: parse error near '\n'`
+
+Cause: an angle-bracket placeholder was pasted into the shell. zsh treats angle
+brackets as redirection syntax.
+
+Fix: use the actual LM Studio model ID and do not include angle bracket
+characters.
+
+```bash
+LOCAL_AI_LAB_LM_STUDIO_MODEL="paste-model-id-here"
+```
+
+### Python Command Not Found
+
+Problem: `zsh: command not found: python`
+
+Cause: macOS may not expose bare `python`.
+
+Fix: use `uv run python` from this repo, or use `python3` on macOS.
+
+```bash
+curl -s http://localhost:1234/v1/models | uv run python -m json.tool
+```
+
+### Default Ollama Model Missing
+
+Problem: `doctor` fails on Ollama model `qwen3:14b`.
+
+Cause: the default provider is Ollama, and the configured model is not
+installed locally.
+
+Fix: either pull the Ollama model:
+
+```bash
+ollama pull qwen3:14b
+```
+
+Or switch `.env` to LM Studio:
+
+```bash
+LOCAL_AI_LAB_LLM_PROVIDER=lm_studio
+```
+
 ## Privacy-First Assumptions
 
 - No hidden cloud calls.
@@ -210,10 +349,13 @@ in the dashboard separately from model candidates and eval scores.
 - Telemetry must be opt-in or disabled by default.
 - Local-first behavior is the default unless an ADR explicitly changes that
   direction.
+- Benchmark artifacts and dashboard exports are private until sanitized for
+  GitHub.
 
 ## Roadmap
 
-See `ROADMAP.md` and `docs/roadmap.md` for the staged plan.
+See `ROADMAP.md`, `docs/roadmap.md`, and `docs/product/ai-lab-os-build-plan.md`
+for the staged plan.
 
 ## Portfolio And Learning Pack
 

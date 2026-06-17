@@ -821,7 +821,7 @@ def run_lmstudio_cli(args):
         f"model_id={args.model_id}",
         f"started_at={_utc_now()}",
         "command_shape="
-        f"lms chat <model-id> -p <prompt> --stats --ttl {args.ttl} "
+        f'lms chat paste-model-id-here -p "prompt text" --stats --ttl {args.ttl} '
         "--yes --dont-fetch-catalog",
         "",
     ]
@@ -880,7 +880,7 @@ def run_lmstudio_cli(args):
         handle.write("\n## LM Studio CLI Runner\n\n")
         handle.write(
             "- Command shape: "
-            f"`lms chat <model-id> -p <prompt> --stats --ttl {args.ttl} "
+            f'`lms chat paste-model-id-here -p "prompt text" --stats --ttl {args.ttl} '
             "--yes --dont-fetch-catalog`\n"
         )
         handle.write(f"- Model id: `{args.model_id}`\n")

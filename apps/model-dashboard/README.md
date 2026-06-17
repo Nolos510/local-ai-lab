@@ -124,7 +124,7 @@ LM Studio inventory distinguishes:
 
 - `loaded`: returned by `lms ps --json`.
 - `indexed`: returned by `lms ls --json` but not currently loaded.
-- `filesystem_only`: found under `~/.lmstudio/models/<publisher>/<model-folder>`
+- `filesystem_only`: found under `~/.lmstudio/models/publisher/model-folder`
   but not returned by LM Studio inventory. These rows are never runnable from
   the dashboard until LM Studio indexes or loads them.
 
@@ -156,6 +156,32 @@ python3 apps/model-dashboard/run_dashboard.py serve --enable-import-actions
 Import actions require a localhost or loopback bind and import only existing
 CSV files from a benchmark artifact directory.
 
+Model download/remove/reveal actions are disabled by default. To enable the
+gated local model-ops lane, start the dashboard explicitly with:
+
+```bash
+python3 apps/model-dashboard/run_dashboard.py serve \
+  --enable-model-actions \
+  --enable-run-tests \
+  --enable-import-actions
+```
+
+Model actions require a localhost or loopback bind and write sanitized action
+summaries to `data/dashboard/master-ledger.csv`, which is local runtime state
+and ignored by git. Approved registry rows can expose direct download actions:
+
+- Ollama downloads run `ollama pull <model>`.
+- Ollama removals run `ollama rm <model>` from detected installed inventory.
+- LM Studio downloads run `lms get <model-or-url> --yes`, with `--mlx` or
+  `--gguf` when registry metadata is explicit.
+- LM Studio delete is a Finder pathway only: the dashboard can reveal the model
+  folder with `open -R`, but it does not delete LM Studio model directories.
+
+Pasted model IDs, URLs, and catalog ideas are recorded in
+`data/dashboard/download-requests.csv` as `needs_review`; they do not download
+until a registry row is explicitly approved. The master ledger and request CSV
+must not be committed.
+
 The Overview page supports URL-backed filters for search text, final label, decision, and install status. Filtered views can be bookmarked or shared locally, for example:
 
 ```text
@@ -167,6 +193,7 @@ Additional URL-backed filters are available on:
 - `/runs` for search, backend, final label, and score status.
 - `/compare` for search, final label, and score status.
 - `/inventory` for search, runtime, installed/loaded status, and registry match.
+- `/cookbook` for search, Apple Silicon hardware fit, runtime readiness, and security review state.
 - `/radar` for search, status, family, runtime, and security review state.
 - `/specialty` for search, status, abliterated/Dolphin lane, and security review state.
 - `/storage` for search, decision, and keep-installed state.
@@ -192,6 +219,17 @@ license/provenance posture, and isolation notes. External candidates default to
 `needs_review` and `not_approved`; popularity or source claims do not make a
 model safe to download. Use `docs/model-security-vetting.md` before approving a
 new artifact, update, or runtime path.
+
+The Model Cookbook page is available at:
+
+```text
+http://127.0.0.1:8765/cookbook
+```
+
+It turns candidate registry metadata into Apple Silicon fit and runtime
+readiness guidance. It does not scan runtimes, download models, run models, or
+create eval scores unless model actions are explicitly enabled. Hardware-fit
+labels are planning heuristics until benchmark artifacts exist.
 
 The radar and lab pages include an `Abliterated / Dolphin` count sourced from
 candidate registry rows whose names or families include abliterated or Dolphin

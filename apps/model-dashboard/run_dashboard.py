@@ -60,8 +60,11 @@ def command_serve(args):
         port=args.port,
         enable_run_tests=args.enable_run_tests,
         enable_import_actions=args.enable_import_actions,
+        enable_model_actions=args.enable_model_actions,
         run_test_timeout=args.run_test_timeout,
+        model_action_timeout=args.model_action_timeout,
         inventory_timeout=args.inventory_timeout,
+        master_ledger_path=args.master_ledger,
     )
     return 0
 
@@ -95,6 +98,11 @@ def build_parser():
         help="Enable local artifact import buttons for existing dashboard CSV artifacts.",
     )
     serve_parser.add_argument(
+        "--enable-model-actions",
+        action="store_true",
+        help="Enable approved local model download/remove/reveal actions.",
+    )
+    serve_parser.add_argument(
         "--run-test-timeout",
         type=int,
         default=3600,
@@ -105,6 +113,18 @@ def build_parser():
         type=int,
         default=5,
         help="Maximum seconds allowed for each local inventory command.",
+    )
+    serve_parser.add_argument(
+        "--model-action-timeout",
+        type=int,
+        default=3600,
+        help="Maximum seconds allowed for each dashboard-triggered model action.",
+    )
+    serve_parser.add_argument(
+        "--master-ledger",
+        type=Path,
+        default=REPO_ROOT / "data" / "dashboard" / "master-ledger.csv",
+        help="Local CSV ledger for dashboard action summaries.",
     )
     serve_parser.set_defaults(func=command_serve)
 

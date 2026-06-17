@@ -1,5 +1,6 @@
 import csv
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -627,6 +628,161 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn('name="token" value="fixture-token"', enabled_html)
         self.assertIn('name="benchmark_run_id" value="20260605-import-fixture"', enabled_html)
 
+    def test_approved_ollama_candidate_gets_gated_download_action(self):
+        row = {
+            "candidate_id": "approved-ollama",
+            "model_name": "Approved Ollama 8B",
+            "format_or_runtime": "Ollama",
+            "ollama_url": "https://ollama.com/library/approved-ollama:8b",
+            "download_approval": "approved",
+            "security_review_status": "approved",
+        }
+
+        disabled_html = server._download_control(row, enable_model_actions=False, action_token="t")
+        enabled_html = server._download_control(row, enable_model_actions=True, action_token="t")
+
+        self.assertIn("--enable-model-actions", disabled_html)
+        self.assertIn("ollama pull approved-ollama:8b", disabled_html)
+        self.assertIn('action="/actions/download-model"', enabled_html)
+        self.assertIn('name="candidate_id" value="approved-ollama"', enabled_html)
+
+    def test_unapproved_candidate_download_stays_disabled(self):
+        row = {
+            "candidate_id": "unapproved",
+            "model_name": "Unapproved Model",
+            "format_or_runtime": "Ollama",
+            "ollama_url": "https://ollama.com/library/unapproved",
+            "download_approval": "not_approved",
+            "security_review_status": "needs_review",
+        }
+
+        html = server._download_control(row, enable_model_actions=True, action_token="t")
+
+        self.assertIn("needs_review", html)
+        self.assertIn("Direct download requires download_approval=approved", html)
+        self.assertNotIn("/actions/download-model", html)
+
+    def test_lm_studio_download_command_uses_lms_get_and_no_delete(self):
+        row = {
+            "candidate_id": "approved-lmstudio",
+            "model_name": "Approved LM Studio",
+            "format_or_runtime": "MLX through LM Studio",
+            "lm_studio_url": "https://huggingface.co/example/approved-lmstudio",
+            "download_approval": "approved",
+            "security_review_status": "approved",
+        }
+
+        plan = server._candidate_download_command(row)
+        html = server._download_control(row, enable_model_actions=True, action_token="t")
+
+        self.assertEqual(
+            plan["command"],
+            [
+                "lms",
+                "get",
+                "https://huggingface.co/example/approved-lmstudio",
+                "--yes",
+                "--mlx",
+            ],
+        )
+        self.assertIn("lms get", html)
+        self.assertNotIn("ollama rm", html)
+        self.assertNotIn("lms rm", html)
+
+    def test_inventory_ops_remove_ollama_and_reveal_lmstudio(self):
+        ollama_html = server._inventory_model_ops_control(
+            {"runtime": "Ollama", "model_id": "qwen3:8b", "status": "installed"},
+            {"candidate_id": "qwen3"},
+            enable_model_actions=True,
+            action_token="t",
+        )
+        lmstudio_html = server._inventory_model_ops_control(
+            {
+                "runtime": "LM Studio",
+                "model_id": "publisher/model",
+                "source_path": "publisher/model",
+                "status": "filesystem_only",
+            },
+            {"candidate_id": "lmstudio"},
+            enable_model_actions=True,
+            action_token="t",
+        )
+
+        self.assertIn("/actions/remove-ollama-model", ollama_html)
+        self.assertIn("ollama rm qwen3:8b", ollama_html)
+        self.assertIn("/actions/reveal-model", lmstudio_html)
+        self.assertIn("Reveal in Finder", lmstudio_html)
+        self.assertNotIn("ollama rm", lmstudio_html)
+        self.assertNotIn("lms rm", lmstudio_html)
+
+    def test_model_download_action_runs_fixed_command_and_logs_ledger(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "candidates.csv"
+            ledger_path = tmp_path / "master-ledger.csv"
+            write_candidate_registry(
+                registry_path,
+                extra_rows=[
+                    {
+                        "candidate_id": "approved-ollama",
+                        "model_name": "Approved Ollama 8B",
+                        "model_family": "Approved",
+                        "provider_or_org": "Ollama",
+                        "status": "ready_for_eval",
+                        "format_or_runtime": "Ollama",
+                        "ollama_url": "https://ollama.com/library/approved-ollama:8b",
+                        "download_approval": "approved",
+                        "security_review_status": "approved",
+                    }
+                ],
+            )
+
+            calls = []
+
+            def fake_run(command, timeout):
+                calls.append((command, timeout))
+                return subprocess.CompletedProcess(command, 0, "ok", "")
+
+            old_run = server._run_subprocess
+            old_which = server.shutil.which
+            try:
+                server._run_subprocess = fake_run
+                server.shutil.which = lambda name: f"/usr/bin/{name}"
+                result = server._run_model_download(
+                    "approved-ollama",
+                    registry_path,
+                    timeout=9,
+                )
+                server._write_action_ledger(ledger_path, result)
+            finally:
+                server._run_subprocess = old_run
+                server.shutil.which = old_which
+
+            self.assertEqual(calls[0], (["/usr/bin/ollama", "pull", "approved-ollama:8b"], 9))
+            with ledger_path.open(encoding="utf-8") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual(rows[0]["action"], "download_model")
+            self.assertEqual(rows[0]["model_id"], "approved-ollama:8b")
+            self.assertEqual(rows[0]["approval_state"], "approved")
+            self.assertNotIn("ok", rows[0]["note"])
+
+    def test_download_intake_records_needs_review_without_command_execution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            requests_path = Path(tmp) / "download-requests.csv"
+            result = server._queue_download_request(
+                "paste",
+                "lm_studio",
+                "https://huggingface.co/example/new-model",
+                requests_path,
+            )
+
+            with requests_path.open(encoding="utf-8") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual(result["approval_state"], "needs_review")
+            self.assertEqual(result["result"], None)
+            self.assertEqual(rows[0]["approval_state"], "needs_review")
+            self.assertIn("lms get", rows[0]["suggested_command"])
+
     def test_model_detail_renders_unsafe_source_url_as_text(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "dashboard.sqlite"
@@ -1013,6 +1169,74 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("Filesystem-only; index/load in LM Studio first", html)
         self.assertIn("20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit", html)
         self.assertNotIn('action="/actions/run-test"', html)
+
+    def test_cookbook_classifies_hardware_fit_and_runtime_readiness(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "candidates.csv"
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(
+                registry_path,
+                extra_rows=[
+                    {
+                        "candidate_id": "20260616-qwen3-coder-30b",
+                        "model_name": "Qwen3-Coder-30B-A3B-Instruct-MLX",
+                        "model_family": "Qwen",
+                        "provider_or_org": "local",
+                        "status": "ready_for_eval",
+                        "format_or_runtime": "MLX through LM Studio",
+                        "runtime_availability": "LM Studio MLX local artifact",
+                        "local_runner": "",
+                        "local_model_id": "",
+                        "why_interesting": "Serious coding model for Apple Silicon testing.",
+                        "risk_notes": "Needs exact local model ID before run.",
+                        "proposed_eval": "Run local benchmark after runtime ID is recorded.",
+                        "security_review_status": "local_inventory_reviewed",
+                        "download_approval": "not_needed_local",
+                        "license_review_status": "needs_review",
+                        "provenance_status": "local_inventory",
+                        "security_notes": "Already installed locally in this fixture.",
+                        "isolation_notes": "Loopback/local runner only.",
+                    }
+                ],
+            )
+
+            with db.connect(db_path) as conn:
+                html = server._cookbook(
+                    conn,
+                    {"fit": ["Mac Studio sweet spot"]},
+                    registry_path=registry_path,
+                )
+
+        self.assertIn("Model Cookbook", html)
+        self.assertIn("Cookbook Entries (1 of 3)", html)
+        self.assertIn("Qwen3-Coder-30B-A3B-Instruct-MLX", html)
+        self.assertIn("Mac Studio sweet spot", html)
+        self.assertIn("needs_runtime_id", html)
+        self.assertIn("curl -s http://localhost:1234/v1/models", html)
+        self.assertIn("ollama list", html)
+        self.assertNotIn("Watch Local 13B", html)
+
+    def test_cookbook_keeps_security_review_candidates_blocked_from_runtime(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "candidates.csv"
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(registry_path)
+
+            with db.connect(db_path) as conn:
+                html = server._cookbook(
+                    conn,
+                    {"readiness": ["security_review"]},
+                    registry_path=registry_path,
+                )
+
+        self.assertIn("Watch Local 13B", html)
+        self.assertIn("Security, license, provenance, and artifact approval", html)
+        self.assertIn("Do not install or run until provenance is reviewed.", html)
+        self.assertNotIn("Ready Local 7B", html)
 
     def test_inventory_parses_lmstudio_models_and_loaded_status(self):
         with tempfile.TemporaryDirectory() as tmp:

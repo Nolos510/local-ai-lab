@@ -13,6 +13,8 @@ Use more than one runtime, but give each runtime a clear job.
 
 Docker does not own model runtimes in v0. Qdrant and Open WebUI run in Docker; model execution stays native so Apple Silicon acceleration paths remain straightforward.
 
+See `docs/runtime-profiles.md` for concrete Ollama and LM Studio setup notes.
+
 ## Future Serving Experiments
 
 - Add vllm-metal only when concurrency or serving behavior requires it.
