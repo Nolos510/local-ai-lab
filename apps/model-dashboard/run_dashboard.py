@@ -60,6 +60,7 @@ def command_serve(args):
         port=args.port,
         enable_run_tests=args.enable_run_tests,
         enable_import_actions=args.enable_import_actions,
+        enable_delete_actions=args.enable_delete_actions,
         run_test_timeout=args.run_test_timeout,
         inventory_timeout=args.inventory_timeout,
     )
@@ -93,6 +94,11 @@ def build_parser():
         "--enable-import-actions",
         action="store_true",
         help="Enable local artifact import buttons for existing dashboard CSV artifacts.",
+    )
+    serve_parser.add_argument(
+        "--enable-delete-actions",
+        action="store_true",
+        help="Enable two-step local model removal actions for detected inventory rows.",
     )
     serve_parser.add_argument(
         "--run-test-timeout",

@@ -4,6 +4,8 @@ import threading
 import unittest
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -97,6 +99,200 @@ class DashboardHttpHandlerTests(unittest.TestCase):
                 self.post(f"{base_url}/actions/refresh-inventory", {"token": "test-token"})
 
             self.assertEqual(raised.exception.code, 403)
+
+    def test_delete_model_action_is_refused_when_disabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            base_url = self.start_server(db_path, action_token="test-token")
+
+            with (
+                mock.patch("model_dashboard.removal.subprocess.run") as run,
+                self.assertRaises(HTTPError) as raised,
+            ):
+                self.post(
+                    f"{base_url}/actions/delete-model",
+                    {"token": "test-token", "remove_key": "anything"},
+                )
+
+            self.assertEqual(raised.exception.code, 403)
+            run.assert_not_called()
+
+    def test_delete_model_lmstudio_requires_confirm_then_uses_trash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            lmstudio_root = tmp_path / "lmstudio"
+            model_dir = lmstudio_root / "publisher" / "Model"
+            model_dir.mkdir(parents=True)
+            (model_dir / "model.safetensors").write_text("weights", encoding="utf-8")
+            model = {
+                "runtime": "LM Studio",
+                "model_id": "publisher/Model",
+                "display_name": "Model",
+                "status": "filesystem_only",
+                "source_path": "publisher/Model",
+                "local_path": str(model_dir),
+            }
+            result = {
+                "checked_at": "2026-06-18T10:00:00-07:00",
+                "checks": [],
+                "models": [model],
+            }
+            refresh_calls = []
+
+            def fake_refresh(_timeout=5):
+                refresh_calls.append(True)
+                return result
+
+            def fake_run(command, **_kwargs):
+                return SimpleNamespace(returncode=0, stdout="trashed", stderr="", args=command)
+
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with (
+                mock.patch.object(server, "LMSTUDIO_MODELS_ROOT", lmstudio_root),
+                mock.patch.object(server, "_refresh_inventory", fake_refresh),
+                mock.patch("model_dashboard.removal.platform.system", return_value="Darwin"),
+                mock.patch("model_dashboard.removal.subprocess.run", side_effect=fake_run) as run,
+            ):
+                base_url = self.start_server(
+                    db_path,
+                    action_token="test-token",
+                    enable_delete_actions=True,
+                )
+                self.post(f"{base_url}/actions/refresh-inventory", {"token": "test-token"}).read()
+                remove_key = server._inventory_model_key(model)
+
+                with self.post(
+                    f"{base_url}/actions/delete-model",
+                    {"token": "test-token", "remove_key": remove_key},
+                ) as response:
+                    confirm_body = response.read().decode("utf-8")
+
+                self.assertEqual(response.status, 200)
+                self.assertIn("Confirm Model Removal", confirm_body)
+                self.assertIn(str(model_dir), confirm_body)
+                run.assert_not_called()
+
+                with self.post(
+                    f"{base_url}/actions/delete-model",
+                    {
+                        "token": "test-token",
+                        "remove_key": remove_key,
+                        "confirm_delete": "yes",
+                    },
+                ) as response:
+                    result_body = response.read().decode("utf-8")
+
+            self.assertEqual(response.status, 200)
+            self.assertIn("Model Removal succeeded", result_body)
+            self.assertGreaterEqual(len(refresh_calls), 2)
+            command = run.call_args.args[0]
+            self.assertEqual(command[0], "osascript")
+            self.assertNotIn("rm", command)
+
+    def test_delete_model_ollama_uses_ollama_rm(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ollama_root = tmp_path / "ollama"
+            manifest_path = (
+                ollama_root / "manifests" / "registry.ollama.ai" / "library" / "qwen3" / "30b"
+            )
+            manifest_path.parent.mkdir(parents=True)
+            manifest_path.write_text("manifest", encoding="utf-8")
+            model = {
+                "runtime": "Ollama",
+                "model_id": "qwen3:30b",
+                "display_name": "qwen3:30b",
+                "status": "installed",
+                "source_path": "",
+                "local_path": str(manifest_path),
+            }
+            result = {
+                "checked_at": "2026-06-18T10:00:00-07:00",
+                "checks": [],
+                "models": [model],
+            }
+
+            def fake_run(command, **_kwargs):
+                return SimpleNamespace(returncode=0, stdout="deleted", stderr="", args=command)
+
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with (
+                mock.patch.object(server, "OLLAMA_MODELS_ROOT", ollama_root),
+                mock.patch.object(server, "_refresh_inventory", lambda _timeout=5: result),
+                mock.patch("model_dashboard.removal.shutil.which", return_value="/bin/ollama"),
+                mock.patch("model_dashboard.removal.subprocess.run", side_effect=fake_run) as run,
+            ):
+                base_url = self.start_server(
+                    db_path,
+                    action_token="test-token",
+                    enable_delete_actions=True,
+                )
+                self.post(f"{base_url}/actions/refresh-inventory", {"token": "test-token"}).read()
+                remove_key = server._inventory_model_key(model)
+                with self.post(
+                    f"{base_url}/actions/delete-model",
+                    {
+                        "token": "test-token",
+                        "remove_key": remove_key,
+                        "confirm_delete": "yes",
+                    },
+                ) as response:
+                    body = response.read().decode("utf-8")
+
+            self.assertEqual(response.status, 200)
+            self.assertIn("Model Removal succeeded", body)
+            self.assertEqual(run.call_args.args[0], ("/bin/ollama", "rm", "qwen3:30b"))
+
+    def test_delete_model_refuses_out_of_root_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            lmstudio_root = tmp_path / "lmstudio"
+            outside = tmp_path / "outside" / "Model"
+            outside.mkdir(parents=True)
+            (outside / "model.safetensors").write_text("weights", encoding="utf-8")
+            model = {
+                "runtime": "LM Studio",
+                "model_id": "publisher/Model",
+                "display_name": "Model",
+                "status": "filesystem_only",
+                "source_path": "publisher/Model",
+                "local_path": str(outside),
+            }
+            result = {
+                "checked_at": "2026-06-18T10:00:00-07:00",
+                "checks": [],
+                "models": [model],
+            }
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+
+            with (
+                mock.patch.object(server, "LMSTUDIO_MODELS_ROOT", lmstudio_root),
+                mock.patch.object(server, "_refresh_inventory", lambda _timeout=5: result),
+                mock.patch("model_dashboard.removal.subprocess.run") as run,
+            ):
+                base_url = self.start_server(
+                    db_path,
+                    action_token="test-token",
+                    enable_delete_actions=True,
+                )
+                self.post(f"{base_url}/actions/refresh-inventory", {"token": "test-token"}).read()
+                remove_key = server._inventory_model_key(model)
+                with self.assertRaises(HTTPError) as raised:
+                    self.post(
+                        f"{base_url}/actions/delete-model",
+                        {
+                            "token": "test-token",
+                            "remove_key": remove_key,
+                            "confirm_delete": "yes",
+                        },
+                    )
+
+            self.assertEqual(raised.exception.code, 400)
+            run.assert_not_called()
 
 
 if __name__ == "__main__":

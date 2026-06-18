@@ -1171,10 +1171,21 @@ class ModelDashboardQaTests(unittest.TestCase):
             root = Path(tmp)
             indexed = root / "publisher" / "Indexed-Model"
             filesystem_only = root / "publisher" / "Filesystem-Only-Model"
+            ds_store_only = root / "publisher" / "DS-Store-Only"
+            metadata_only = root / "publisher" / "Metadata-Only"
             hidden = root / ".hidden" / "Ignored"
             indexed.mkdir(parents=True)
             filesystem_only.mkdir(parents=True)
+            ds_store_only.mkdir(parents=True)
+            metadata_only.mkdir(parents=True)
             hidden.mkdir(parents=True)
+            (indexed / "model.safetensors").write_text("indexed", encoding="utf-8")
+            (filesystem_only / "model-00001-of-00004.safetensors").write_text(
+                "weights",
+                encoding="utf-8",
+            )
+            (ds_store_only / ".DS_Store").write_text("ignored", encoding="utf-8")
+            (metadata_only / "config.json").write_text("{}", encoding="utf-8")
 
             models = server._scan_lmstudio_filesystem_models(
                 root,

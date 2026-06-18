@@ -1,6 +1,7 @@
 """A dependency-free local web dashboard for model eval results."""
 
 import csv
+import hashlib
 import ipaddress
 import json
 import re
@@ -15,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import capability, charts, csv_io, db
+from . import capability, charts, csv_io, db, removal
 from .icons import icon as render_icon
 from .reports import generate_markdown_report
 from .scoring import METRIC_FIELDS
@@ -34,6 +35,7 @@ SUPPORTED_LOCAL_RUNNERS = {
     "openai-compatible": "OpenAI-compatible local endpoint",
 }
 SAFE_ARTIFACT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+LMSTUDIO_WEIGHT_SUFFIXES = (".gguf", ".safetensors", ".bin", ".mlx", ".npz")
 
 NAV_ITEMS = (
     ("/lab", "Lab Dashboard"),
@@ -758,6 +760,60 @@ def _run_test_control(row, enable_run_tests=False, action_token=""):
     )
 
 
+def _inventory_model_key(model):
+    payload = "|".join(
+        str(model.get(field) or "")
+        for field in ("runtime", "model_id", "source_path", "local_path")
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]
+
+
+def _inventory_model_removable(model):
+    runtime = model.get("runtime")
+    if runtime == "LM Studio":
+        return bool(model.get("local_path") or model.get("source_path"))
+    if runtime == "Ollama":
+        return bool(model.get("model_id") and model.get("local_path"))
+    return False
+
+
+def _remove_model_control(model, enable_delete_actions=False, action_token=""):
+    if not _inventory_model_removable(model):
+        return '<span class="empty">Removal unavailable for this row</span>'
+    if not enable_delete_actions:
+        return """
+        <div class="cell-stack">
+          <button type="button" class="danger-secondary" disabled>Remove</button>
+          <div class="empty">Restart with <code>--enable-delete-actions</code></div>
+        </div>
+        """
+    return f"""
+    <form class="inline-form" method="post" action="/actions/delete-model">
+      <input type="hidden" name="token" value="{_text(action_token)}">
+      <input type="hidden" name="remove_key" value="{_text(_inventory_model_key(model))}">
+      <button class="danger-secondary" type="submit">Remove</button>
+    </form>
+    """
+
+
+def _inventory_action_cell(
+    model,
+    candidate,
+    enable_run_tests=False,
+    enable_delete_actions=False,
+    action_token="",
+):
+    actions = []
+    if _inventory_run_allowed(model, candidate):
+        actions.append(_run_test_control(candidate, enable_run_tests, action_token))
+    elif model.get("status") == "filesystem_only":
+        actions.append('<span class="empty">Filesystem-only; index/load in LM Studio first</span>')
+    else:
+        actions.append('<span class="empty">Register exact local model id first</span>')
+    actions.append(_remove_model_control(model, enable_delete_actions, action_token))
+    return '<div class="cell-stack">{}</div>'.format("".join(actions))
+
+
 def _next_dashboard_run_id(row, eval_results_dir=EVAL_RESULTS_DIR):
     base = "{}-{}-dashboard-test".format(
         date.today().strftime("%Y%m%d"),
@@ -987,6 +1043,8 @@ def _scan_lmstudio_filesystem_models(root=LMSTUDIO_MODELS_ROOT, indexed_paths=()
         for model_dir in sorted(publisher_dir.iterdir(), key=lambda item: item.name.lower()):
             if not model_dir.is_dir() or model_dir.name.startswith("."):
                 continue
+            if not _has_lmstudio_weight_file(model_dir):
+                continue
             relative_path = f"{publisher_dir.name}/{model_dir.name}"
             if relative_path.lower() in indexed:
                 continue
@@ -1001,6 +1059,15 @@ def _scan_lmstudio_filesystem_models(root=LMSTUDIO_MODELS_ROOT, indexed_paths=()
                 }
             )
     return models
+
+
+def _has_lmstudio_weight_file(model_dir):
+    for item in Path(model_dir).rglob("*"):
+        if item.name.startswith(".") or not item.is_file():
+            continue
+        if item.suffix.lower() in LMSTUDIO_WEIGHT_SUFFIXES:
+            return True
+    return False
 
 
 def _parse_ollama_inventory(stdout):
@@ -1244,6 +1311,7 @@ def _inventory(
     inventory_result=None,
     action_token="",
     enable_run_tests=False,
+    enable_delete_actions=False,
     enable_refresh=True,
 ):
     candidates = _load_radar_candidates()
@@ -1282,14 +1350,6 @@ def _inventory(
                 if candidate
                 else _pill(match_state)
             )
-            if _inventory_run_allowed(model, candidate):
-                action_cell = _run_test_control(candidate, enable_run_tests, action_token)
-            elif model.get("status") == "filesystem_only":
-                action_cell = (
-                    '<span class="empty">Filesystem-only; index/load in LM Studio first</span>'
-                )
-            else:
-                action_cell = '<span class="empty">Register exact local model id first</span>'
             model_rows.append(
                 [
                     _text(model["runtime"]),
@@ -1298,7 +1358,13 @@ def _inventory(
                     _pill(model["status"]),
                     _inventory_paths_cell(model),
                     candidate_cell,
-                    action_cell,
+                    _inventory_action_cell(
+                        model,
+                        candidate,
+                        enable_run_tests=enable_run_tests,
+                        enable_delete_actions=enable_delete_actions,
+                        action_token=action_token,
+                    ),
                 ]
             )
 
@@ -1307,7 +1373,7 @@ def _inventory(
       <h2>Installed Models</h2>
       <p>This page checks local runtime inventory on demand. It does not download, install, benchmark, score, or import models.</p>
       <p>LM Studio rows distinguish <code>loaded</code>, <code>indexed</code>, and <code>filesystem_only</code>. Filesystem-only folders are visible on disk but are not runnable from the dashboard until LM Studio indexes or loads them.</p>
-      <p>Use <strong>Local file path</strong> to locate leftover model folders in Finder. The dashboard does not delete model files.</p>
+      <p>Use <strong>Local file path</strong> to locate leftover model folders in Finder. Remove actions are disabled unless the server is started with <code>--enable-delete-actions</code>, and confirmed LM Studio removals move folders to macOS Trash.</p>
       <form class="inline-form" method="post" action="/actions/refresh-inventory">
         <input type="hidden" name="token" value="{token}">
         <button type="submit"{disabled}>Refresh Inventory</button>
@@ -1363,6 +1429,83 @@ def _inventory(
         ),
     )
     return _layout("Installed Models", "/inventory", body)
+
+
+def _format_bytes(value):
+    size = float(value or 0)
+    units = ("B", "KB", "MB", "GB", "TB")
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(size)} {unit}"
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{int(value or 0)} B"
+
+
+def _inventory_model_by_key(inventory_result, remove_key):
+    if not inventory_result:
+        raise ValueError("Refresh inventory before removing a model.")
+    for model in inventory_result.get("models", []):
+        if _inventory_model_key(model) == remove_key:
+            return model
+    raise ValueError("Detected model row is no longer available; refresh inventory.")
+
+
+def _removal_target_from_key(inventory_result, remove_key):
+    model = _inventory_model_by_key(inventory_result, remove_key)
+    return removal.resolve_target(model, LMSTUDIO_MODELS_ROOT, OLLAMA_MODELS_ROOT)
+
+
+def _delete_confirm_page(target, remove_key, action_token):
+    body = f"""
+    <section class="panel">
+      <h2>Confirm Model Removal</h2>
+      <p>This is a recoverable, local-only action. Review the exact target before continuing.</p>
+      <div class="cell-stack">
+        <div><strong>Runtime</strong><br>{_text(target.runtime)}</div>
+        <div><strong>Model id</strong><br><code>{_text(target.model_id)}</code></div>
+        <div><strong>Resolved path</strong><br><code>{_text(target.path)}</code></div>
+        <div><strong>Contained under</strong><br><code>{_text(target.root)}</code></div>
+        <div><strong>Size</strong><br>{_text(_format_bytes(target.size_bytes))}</div>
+        <div><strong>Action</strong><br>{_text(target.action)}</div>
+      </div>
+      <form class="inline-form" method="post" action="/actions/delete-model" style="margin-top:16px">
+        <input type="hidden" name="token" value="{_text(action_token)}">
+        <input type="hidden" name="remove_key" value="{_text(remove_key)}">
+        <input type="hidden" name="confirm_delete" value="yes">
+        <button class="danger" type="submit">Confirm Remove</button>
+        <a class="clear-link" href="/inventory">Cancel</a>
+      </form>
+    </section>
+    """
+    return _layout("Confirm Model Removal", "/inventory", body)
+
+
+def _delete_result_page(result):
+    status = "succeeded" if result.returncode == 0 else "failed"
+    body = f"""
+    <section class="panel">
+      <h2>Model Removal {_text(status)}</h2>
+      <p><strong>Runtime:</strong> {_text(result.target.runtime)}</p>
+      <p><strong>Model id:</strong> <code>{_text(result.target.model_id)}</code></p>
+      <p><strong>Action:</strong> {_text(result.target.action)}</p>
+      <p><strong>Resolved path:</strong> <code>{_text(result.target.path)}</code></p>
+      <p><strong>Exit code:</strong> <code>{_text(result.returncode)}</code></p>
+      <pre class="command">{_text(_command_lines(result.command))}</pre>
+      <pre class="command">{_text(result.stdout)}{_text(result.stderr)}</pre>
+      <p><a href="/inventory">Back to Installed Models</a></p>
+    </section>
+    """
+    return _layout("Model Removal Result", "/inventory", body)
+
+
+def _delete_model_action(remove_key, confirm_delete, inventory_result, action_token, timeout=60):
+    target = _removal_target_from_key(inventory_result, remove_key)
+    if confirm_delete != "yes":
+        return _delete_confirm_page(target, remove_key, action_token), None
+    result = removal.remove_target(target, timeout=timeout)
+    return _delete_result_page(result), result
 
 
 def _build_candidate_commands(row, run_id, eval_results_dir):
@@ -2148,6 +2291,9 @@ def _layout(title, current_path, body):
       --status-confirmed-ink: #6ee7b7;
       --status-draft-bg: rgba(251, 191, 36, 0.15);
       --status-draft-ink: #fcd34d;
+      --danger: #fb7185;
+      --danger-bg: rgba(251, 113, 133, 0.14);
+      --danger-border: rgba(251, 113, 133, 0.45);
       --code-bg: #0d0f1a;
       --code-ink: #e7e9f5;
       --shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
@@ -2341,6 +2487,19 @@ def _layout(title, current_path, body):
       background: var(--panel-soft);
       color: var(--muted);
       cursor: not-allowed;
+    }}
+    button.danger {{
+      border-color: var(--danger-border);
+      background: var(--danger-bg);
+      color: var(--danger);
+    }}
+    button.danger-secondary {{
+      border-color: var(--danger-border);
+      background: transparent;
+      color: var(--danger);
+    }}
+    button.danger:hover, button.danger-secondary:hover {{
+      box-shadow: 0 0 0 1px var(--danger-border), 0 10px 26px rgba(251, 113, 133, 0.15);
     }}
     .inline-form {{
       display: grid;
@@ -4016,6 +4175,7 @@ def make_handler(
     database_path,
     enable_run_tests=False,
     enable_import_actions=False,
+    enable_delete_actions=False,
     action_token="",
     run_test_timeout=3600,
     inventory_timeout=5,
@@ -4047,6 +4207,7 @@ def make_handler(
                     "/actions/run-test",
                     "/actions/refresh-inventory",
                     "/actions/import-artifact",
+                    "/actions/delete-model",
                 ):
                     html = _layout("Not Found", "", "<h2>Page not found</h2>")
                     self.send_response(404)
@@ -4072,6 +4233,7 @@ def make_handler(
                                 inventory_result=inventory_cache["result"],
                                 action_token=action_token,
                                 enable_run_tests=enable_run_tests,
+                                enable_delete_actions=enable_delete_actions,
                                 enable_refresh=enable_inventory_refresh,
                             )
                             self.send_response(200)
@@ -4091,6 +4253,28 @@ def make_handler(
                                 EVAL_RESULTS_DIR,
                             )
                             html = _import_action_page(result)
+                            self.send_response(200)
+                    elif parsed.path == "/actions/delete-model":
+                        if not enable_delete_actions:
+                            html = _layout(
+                                "Delete Actions Disabled",
+                                "",
+                                "<h2>Delete actions disabled</h2><p>Restart the dashboard with <code>--enable-delete-actions</code>.</p>",
+                            )
+                            self.send_response(403)
+                        else:
+                            remove_key = _query_value(form, "remove_key")
+                            confirm_delete = _query_value(form, "confirm_delete")
+                            html, result = _delete_model_action(
+                                remove_key,
+                                confirm_delete,
+                                inventory_cache["result"],
+                                action_token,
+                            )
+                            if result is not None:
+                                inventory_cache["result"] = _refresh_inventory(
+                                    inventory_timeout
+                                )
                             self.send_response(200)
                     elif not enable_run_tests:
                         html = _layout(
@@ -4144,6 +4328,7 @@ def make_handler(
                     inventory_result=inventory_cache["result"],
                     action_token=action_token,
                     enable_run_tests=enable_run_tests,
+                    enable_delete_actions=enable_delete_actions,
                     enable_refresh=enable_inventory_refresh,
                 )
             if path == "/radar":
@@ -4181,6 +4366,7 @@ def serve(
     port=8765,
     enable_run_tests=False,
     enable_import_actions=False,
+    enable_delete_actions=False,
     run_test_timeout=3600,
     inventory_timeout=5,
 ):
@@ -4194,6 +4380,7 @@ def serve(
             database_path,
             enable_run_tests=enable_run_tests,
             enable_import_actions=enable_import_actions,
+            enable_delete_actions=enable_delete_actions,
             action_token=action_token,
             run_test_timeout=run_test_timeout,
             inventory_timeout=inventory_timeout,
@@ -4205,6 +4392,8 @@ def serve(
         print("Dashboard run-test actions enabled for local candidates.", flush=True)
     if enable_import_actions:
         print("Dashboard artifact import actions enabled for local CSV artifacts.", flush=True)
+    if enable_delete_actions:
+        print("Dashboard delete actions enabled for local inventory rows.", flush=True)
     if enable_inventory_refresh:
         print("Installed-model inventory refresh enabled for local runtimes.", flush=True)
     try:
