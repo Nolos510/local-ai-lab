@@ -2126,59 +2126,33 @@ def _layout(title, current_path, body):
   <title>{title} - Local Model Dashboard</title>
   <style>
     :root {{
-      color-scheme: light dark;
-      --bg: #f4f1eb;
-      --header: #fbfaf6;
-      --panel: #fffefa;
-      --panel-soft: #f9f6ef;
-      --control: #fffdf8;
-      --ink: #202124;
-      --muted: #676b72;
-      --line: rgba(32, 33, 36, 0.13);
-      --line-soft: rgba(32, 33, 36, 0.08);
-      --accent: #1b746f;
-      --accent-ink: #ffffff;
-      --accent-soft: #dff1ee;
-      --accent-soft-ink: #135a55;
-      --accent-2: #9b4d1f;
-      --table-head: #ece5da;
-      --pill-bg: #e5f1ee;
-      --pill-ink: #185a55;
-      --status-confirmed-bg: #e1f3e9;
-      --status-confirmed-ink: #1d6540;
-      --status-draft-bg: #fff0d6;
-      --status-draft-ink: #805015;
-      --code-bg: #202327;
-      --code-ink: #f7f1e8;
-      --shadow: 0 12px 32px rgba(55, 45, 30, 0.07);
-    }}
-    @media (prefers-color-scheme: dark) {{
-      :root {{
-        --bg: #1a1b1e;
-        --header: #202125;
-        --panel: #24262a;
-        --panel-soft: #202226;
-        --control: #202226;
-        --ink: #f3efe7;
-        --muted: #a9a59d;
-        --line: rgba(243, 239, 231, 0.14);
-        --line-soft: rgba(243, 239, 231, 0.08);
-        --accent: #39aaa2;
-        --accent-ink: #102322;
-        --accent-soft: rgba(57, 170, 162, 0.16);
-        --accent-soft-ink: #8ee3da;
-        --accent-2: #e0a26d;
-        --table-head: #2d2b28;
-        --pill-bg: rgba(57, 170, 162, 0.14);
-        --pill-ink: #9ce5dd;
-        --status-confirmed-bg: rgba(84, 190, 125, 0.14);
-        --status-confirmed-ink: #9be7b8;
-        --status-draft-bg: rgba(238, 178, 85, 0.16);
-        --status-draft-ink: #f0c985;
-        --code-bg: #111316;
-        --code-ink: #f7f1e8;
-        --shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
-      }}
+      color-scheme: dark;
+      --bg: #0a0b12;
+      --header: rgba(13, 15, 26, 0.72);
+      --panel: rgba(22, 24, 40, 0.55);
+      --panel-soft: rgba(255, 255, 255, 0.04);
+      --control: #12141f;
+      --ink: #e7e9f5;
+      --muted: #9498b5;
+      --line: rgba(255, 255, 255, 0.09);
+      --line-soft: rgba(255, 255, 255, 0.05);
+      --accent: #8b7bff;
+      --accent-ink: #0a0b12;
+      --accent-soft: rgba(139, 123, 255, 0.16);
+      --accent-soft-ink: #b9b0ff;
+      --accent-2: #2ad4ee;
+      --table-head: rgba(255, 255, 255, 0.035);
+      --pill-bg: rgba(139, 123, 255, 0.15);
+      --pill-ink: #c4bcff;
+      --status-confirmed-bg: rgba(52, 211, 153, 0.15);
+      --status-confirmed-ink: #6ee7b7;
+      --status-draft-bg: rgba(251, 191, 36, 0.15);
+      --status-draft-ink: #fcd34d;
+      --code-bg: #0d0f1a;
+      --code-ink: #e7e9f5;
+      --shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+      --accent-grad: linear-gradient(135deg, #8b7bff 0%, #2ad4ee 100%);
+      --glow: 0 0 0 1px rgba(139, 123, 255, 0.30), 0 10px 34px rgba(139, 123, 255, 0.22);
     }}
     * {{ box-sizing: border-box; }}
     body {{
@@ -2551,11 +2525,243 @@ def _layout(title, current_path, body):
       h1 {{ font-size: 24px; }}
       th, td {{ padding: 11px 9px; }}
     }}
+    body {{
+      background:
+        radial-gradient(1100px 600px at 12% -8%, rgba(139, 123, 255, 0.20), transparent 60%),
+        radial-gradient(900px 520px at 96% 2%, rgba(42, 212, 238, 0.14), transparent 58%),
+        var(--bg);
+      background-attachment: fixed;
+      -webkit-font-smoothing: antialiased;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      letter-spacing: 0.1px;
+    }}
+    header {{
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: var(--header);
+      -webkit-backdrop-filter: saturate(160%) blur(16px);
+      backdrop-filter: saturate(160%) blur(16px);
+      border-bottom: 1px solid var(--line);
+    }}
+    h1 {{
+      font-weight: 600;
+      letter-spacing: -0.4px;
+      background: var(--accent-grad);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      width: fit-content;
+    }}
+    h2 {{
+      font-weight: 600;
+      letter-spacing: -0.2px;
+    }}
+    .nav {{
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel-soft);
+      -webkit-backdrop-filter: blur(8px);
+      backdrop-filter: blur(8px);
+      transition: transform 160ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
+    }}
+    .nav:hover {{
+      color: var(--ink);
+      border-color: rgba(139, 123, 255, 0.45);
+      transform: translateY(-1px);
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+    }}
+    .nav:hover .ti {{ color: var(--accent-2); }}
+    .nav.active {{
+      color: #ffffff;
+      background: var(--accent-grad);
+      border-color: transparent;
+      box-shadow: var(--glow);
+    }}
+    .nav.active .ti {{ color: #ffffff; }}
+    .stat, .panel {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      -webkit-backdrop-filter: blur(14px);
+      backdrop-filter: blur(14px);
+      box-shadow: var(--shadow);
+      transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+    }}
+    .stat {{
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 18px;
+    }}
+    .stat:hover, .panel:hover {{
+      transform: translateY(-2px);
+      border-color: rgba(139, 123, 255, 0.40);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(139, 123, 255, 0.18);
+    }}
+    .stat .ti {{
+      color: var(--accent);
+      font-size: 22px;
+      width: 40px;
+      height: 40px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      background: var(--accent-soft);
+      flex: 0 0 auto;
+    }}
+    .stat .label {{
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }}
+    .stat .value {{
+      font-size: 26px;
+      font-weight: 600;
+      line-height: 1.1;
+      font-variant-numeric: tabular-nums;
+      background: var(--accent-grad);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }}
+    .pill {{
+      background: var(--pill-bg);
+      color: var(--pill-ink);
+      border: 1px solid rgba(139, 123, 255, 0.28);
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+    }}
+    .pill.score-status {{
+      background: var(--status-confirmed-bg);
+      color: var(--status-confirmed-ink);
+      border-color: rgba(52, 211, 153, 0.35);
+    }}
+    .pill.score-status.draft {{
+      background: var(--status-draft-bg);
+      color: var(--status-draft-ink);
+      border-color: rgba(251, 191, 36, 0.38);
+    }}
+    .table-wrap {{
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      overflow: hidden;
+      background: var(--panel);
+      -webkit-backdrop-filter: blur(14px);
+      backdrop-filter: blur(14px);
+      box-shadow: var(--shadow);
+    }}
+    table {{ border-collapse: separate; border-spacing: 0; }}
+    th {{
+      background: var(--table-head);
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      font-size: 11.5px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--line);
+    }}
+    td {{ border-bottom: 1px solid var(--line-soft); }}
+    tbody tr {{ transition: background 140ms ease; }}
+    tbody tr:hover {{ background: rgba(139, 123, 255, 0.07); }}
+    tbody tr:last-child td {{ border-bottom: none; }}
+    a {{ color: var(--accent-2); text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
+    code, pre {{
+      background: var(--code-bg);
+      color: var(--code-ink);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }}
+    .app {{ display: flex; align-items: stretch; min-height: 100vh; }}
+    .sidebar {{
+      position: sticky;
+      top: 0;
+      align-self: flex-start;
+      height: 100vh;
+      width: 256px;
+      flex: 0 0 256px;
+      display: flex;
+      flex-direction: column;
+      padding: 18px 14px;
+      background: var(--header);
+      -webkit-backdrop-filter: saturate(160%) blur(16px);
+      backdrop-filter: saturate(160%) blur(16px);
+      border-right: 1px solid var(--line);
+      overflow-y: auto;
+      transition: width 200ms ease, flex-basis 200ms ease, padding 200ms ease;
+    }}
+    .brand {{
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 16px;
+      padding: 4px 6px;
+    }}
+    .brand h1 {{ margin: 0; font-size: 18px; line-height: 1.25; }}
+    .collapse-btn {{
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+      color: var(--muted);
+      cursor: pointer;
+      transition: color 150ms ease, border-color 150ms ease;
+    }}
+    .collapse-btn:hover {{ color: var(--accent-2); border-color: rgba(139, 123, 255, 0.45); }}
+    .collapse-btn .ti {{ width: 18px; height: 18px; stroke: currentColor; transition: transform 200ms ease; }}
+    .sidebar nav {{ flex-direction: column; flex-wrap: nowrap; gap: 4px; }}
+    .sidebar .nav {{ width: 100%; justify-content: flex-start; padding: 9px 12px; white-space: nowrap; overflow: hidden; }}
+    .app main {{ flex: 1 1 auto; min-width: 0; max-width: none; margin: 0; padding: 28px 32px 40px; }}
+    .app.collapsed .sidebar {{ width: 72px; flex-basis: 72px; padding: 18px 10px; }}
+    .app.collapsed .brand {{ justify-content: center; }}
+    .app.collapsed .brand h1 {{ display: none; }}
+    .app.collapsed .sidebar .nav span {{ display: none; }}
+    .app.collapsed .sidebar .nav {{ justify-content: center; padding: 9px 0; }}
+    .app.collapsed .collapse-btn .ti {{ transform: rotate(180deg); }}
+    @media (max-width: 760px) {{
+      .app {{ flex-direction: column; }}
+      .sidebar {{ position: static; height: auto; width: 100%; flex-basis: auto; flex-direction: column; border-right: none; border-bottom: 1px solid var(--line); }}
+      .sidebar nav {{ flex-direction: row; flex-wrap: wrap; }}
+      .sidebar .nav {{ width: auto; }}
+      .app main {{ padding: 20px; }}
+    }}
   </style>
 </head>
 <body>
-  <header><div class="topbar"><h1>Local Model Performance Dashboard</h1><nav>{nav}</nav></div></header>
-  <main>{body}</main>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>Local Model Performance Dashboard</h1>
+        <button class="collapse-btn" type="button" aria-label="Toggle sidebar"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 7l-5 5 5 5M18 7l-5 5 5 5"/></svg></button>
+      </div>
+      <nav>{nav}</nav>
+    </aside>
+    <main>{body}</main>
+  </div>
+  <script>
+  (function() {{
+    var app = document.querySelector('.app');
+    var btn = document.querySelector('.collapse-btn');
+    if (!app || !btn) {{ return; }}
+    try {{ if (localStorage.getItem('dash-sidebar') === 'collapsed') {{ app.classList.add('collapsed'); }} }} catch (e) {{}}
+    btn.addEventListener('click', function() {{
+      app.classList.toggle('collapsed');
+      try {{ localStorage.setItem('dash-sidebar', app.classList.contains('collapsed') ? 'collapsed' : 'open'); }} catch (e) {{}}
+    }});
+  }})();
+  </script>
 </body>
 </html>""".format(title=escape(title), nav="".join(nav), body=body)
 

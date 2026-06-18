@@ -981,7 +981,11 @@ class ModelDashboardQaTests(unittest.TestCase):
                     hardware_profiles_dir=tmp_path / "lab-notes",
                 )
 
-            self.assertNotIn("<script", html)
+            for chunk in html.split("<script")[1:]:
+                opening_tag = chunk.split(">", 1)[0]
+                self.assertNotIn(
+                    "src=", opening_tag, "dashboard scripts must be inline (no external src)"
+                )
             self.assertNotIn("<link", html)
             self.assertNotIn("http://", html)
             self.assertNotIn("https://", html)
