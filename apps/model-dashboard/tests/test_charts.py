@@ -20,6 +20,12 @@ class ChartTests(unittest.TestCase):
         html = charts.horizontal_bars([("A", 1), ("B", 2), ("C", 3)])
 
         self.assertEqual(3, html.count("<rect"))
+        self.assertIn("<defs>", html)
+        self.assertIn("<linearGradient", html)
+        self.assertIn('id="chart-bar-gradient"', html)
+        self.assertIn('stop-color="#8b7bff"', html)
+        self.assertIn('stop-color="#2ad4ee"', html)
+        self.assertEqual(3, html.count('fill="url(#chart-bar-gradient)"'))
 
     def test_largest_value_maps_to_full_bar_width(self):
         html = charts.horizontal_bars([("Small", 5), ("Large", 10)])

@@ -12,6 +12,7 @@ PLOT_WIDTH = 600
 PADDING_X = 16
 PADDING_Y = 16
 PLACEHOLDER_HEIGHT = 72
+BAR_GRADIENT_ID = "chart-bar-gradient"
 
 
 def _coerce_value(value: object) -> float | None:
@@ -74,7 +75,13 @@ def horizontal_bars(
         (
             f'<svg class="chart chart-bars" viewBox="0 0 {width} {height}" '
             f'role="img" aria-label="{escape(title)}">'
-        )
+        ),
+        "<defs>"
+        f'<linearGradient id="{BAR_GRADIENT_ID}" x1="0%" y1="0%" x2="100%" y2="0%">'
+        '<stop offset="0%" stop-color="#8b7bff"></stop>'
+        '<stop offset="100%" stop-color="#2ad4ee"></stop>'
+        "</linearGradient>"
+        "</defs>",
     ]
 
     for index, (label, value) in enumerate(values):
@@ -89,7 +96,7 @@ def horizontal_bars(
         )
         parts.append(
             f'<rect class="chart-bar" x="{plot_x}" y="{y}" width="{bar_width}" '
-            f'height="{BAR_HEIGHT}" rx="4"></rect>'
+            f'height="{BAR_HEIGHT}" rx="4" fill="url(#{BAR_GRADIENT_ID})"></rect>'
         )
         parts.append(
             f'<text class="chart-value" x="{value_x}" y="{y + 15}">'

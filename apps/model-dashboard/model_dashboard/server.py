@@ -2258,7 +2258,8 @@ def _layout(title, current_path, body):
         active = " active" if current_path == path else ""
         icon_name = NAV_ICONS.get(path, "ti-circle")
         nav.append(
-            f'<a class="nav{active}" href="{path}">{render_icon(icon_name)}'
+            f'<a class="nav{active}" href="{path}" data-label="{escape(label)}" title="{escape(label)}">'
+            f"{render_icon(icon_name)}"
             f"<span>{escape(label)}</span></a>"
         )
     return """<!doctype html>
@@ -2397,6 +2398,7 @@ def _layout(title, current_path, body):
     }}
     .chart-bar {{
       fill: var(--accent);
+      filter: drop-shadow(0 0 7px rgba(42, 212, 238, 0.25));
     }}
     .chart-label, .chart-value, .chart-empty-text {{
       fill: var(--muted);
@@ -2881,13 +2883,47 @@ def _layout(title, current_path, body):
     .collapse-btn:hover {{ color: var(--accent-2); border-color: rgba(139, 123, 255, 0.45); }}
     .collapse-btn .ti {{ width: 18px; height: 18px; stroke: currentColor; transition: transform 200ms ease; }}
     .sidebar nav {{ flex-direction: column; flex-wrap: nowrap; gap: 4px; }}
-    .sidebar .nav {{ width: 100%; justify-content: flex-start; padding: 9px 12px; white-space: nowrap; overflow: hidden; }}
+    .sidebar .nav {{ width: 100%; justify-content: flex-start; padding: 9px 12px; white-space: nowrap; overflow: hidden; position: relative; }}
     .app main {{ flex: 1 1 auto; min-width: 0; max-width: none; margin: 0; padding: 28px 32px 40px; }}
     .app.collapsed .sidebar {{ width: 72px; flex-basis: 72px; padding: 18px 10px; }}
     .app.collapsed .brand {{ justify-content: center; }}
     .app.collapsed .brand h1 {{ display: none; }}
-    .app.collapsed .sidebar .nav span {{ display: none; }}
-    .app.collapsed .sidebar .nav {{ justify-content: center; padding: 9px 0; }}
+    .app.collapsed .sidebar .nav span {{
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }}
+    .app.collapsed .sidebar .nav {{ justify-content: center; padding: 9px 0; overflow: visible; }}
+    .app.collapsed .sidebar .nav::after {{
+      content: attr(data-label);
+      position: absolute;
+      left: calc(100% + 10px);
+      top: 50%;
+      transform: translateY(-50%);
+      min-width: max-content;
+      max-width: 240px;
+      padding: 7px 10px;
+      border-radius: 9px;
+      border: 1px solid rgba(139, 123, 255, 0.38);
+      background: rgba(13, 15, 26, 0.96);
+      color: var(--ink);
+      box-shadow: var(--shadow);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 140ms ease, transform 140ms ease;
+      z-index: 40;
+    }}
+    .app.collapsed .sidebar .nav:hover::after,
+    .app.collapsed .sidebar .nav:focus-visible::after {{
+      opacity: 1;
+      transform: translate(3px, -50%);
+    }}
     .app.collapsed .collapse-btn .ti {{ transform: rotate(180deg); }}
     @media (max-width: 760px) {{
       .app {{ flex-direction: column; }}

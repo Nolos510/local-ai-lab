@@ -990,6 +990,17 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertNotIn("http://", html)
             self.assertNotIn("https://", html)
 
+    def test_collapsed_sidebar_keeps_labels_and_uses_css_tooltips(self):
+        html = server._layout("Fixture", "/lab", "<p>Body</p>")
+
+        self.assertIn('data-label="Lab Dashboard"', html)
+        self.assertIn('title="Lab Dashboard"', html)
+        self.assertIn("<span>Lab Dashboard</span>", html)
+        self.assertIn(".app.collapsed .sidebar .nav::after", html)
+        self.assertIn("content: attr(data-label)", html)
+        self.assertIn("clip: rect(0 0 0 0)", html)
+        self.assertNotIn(".app.collapsed .sidebar .nav span { display: none", html)
+
     def test_lab_dashboard_can_enable_run_test_button_for_local_models(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
