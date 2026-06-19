@@ -1,0 +1,73 @@
+"""Dashboard compare page."""
+
+# ruff: noqa: E501,F401,F403,F405,I001
+from __future__ import annotations
+
+from html import escape
+from pathlib import Path
+
+from .. import capability, charts, db
+from ..components import *
+from ..filters import *
+from ..layout import _layout
+from ..reports import generate_markdown_report
+from ..scoring import METRIC_FIELDS
+
+def _compare(conn, query=None):
+    headers = ["Model", "Score", "Status", "Label"] + [
+        field.replace("_", " ").title() for field in METRIC_FIELDS
+    ]
+    rows = []
+    all_scores = db.list_score_details(conn)
+    scores = _real_rows(all_scores)
+    filters = _score_filter_values(query or {})
+    filtered_scores = _filter_scores(scores, filters)
+    score_chart = charts.horizontal_bars(
+        [(_model_chart_label(row), row["total_score"]) for row in filtered_scores],
+        value_format="{:.2f}",
+        max_value=10,
+        title="Compare total scores",
+    )
+    dimension_chart = charts.horizontal_bars(
+        _average_metric_items(filtered_scores),
+        value_format="{:.1f}",
+        max_value=10,
+        title="Average score dimensions",
+    )
+    for row in filtered_scores:
+        cells = [
+            '<a href="/models/{id}">{name}</a>'.format(
+                id=row["model_id"], name=_text(row["model_name"])
+            ),
+            _number(row["total_score"], 2),
+            _status_pill(row["score_status"]),
+            _pill(row["final_label"]),
+        ]
+        cells.extend(_number(row[field], 0) for field in METRIC_FIELDS)
+        rows.append(cells)
+    body = """
+    {notice}
+    {filters}
+    <h2>Compare Models{filtered_count}</h2>
+    <section class="chart-grid" aria-label="Compare charts">
+      {score_chart}
+      {dimension_chart}
+    </section>
+    {table}
+    """.format(
+        notice=_real_data_notice(len(_demo_rows(all_scores))),
+        filters=_compare_filters(scores, filters),
+        filtered_count=(
+            f" ({len(filtered_scores)} of {len(scores)})" if any(filters.values()) else ""
+        ),
+        score_chart=_chart_panel("Total Score", score_chart),
+        dimension_chart=_chart_panel("Dimension Averages", dimension_chart),
+        table=_table(
+            headers,
+            rows,
+            empty_message="No real confirmed or draft score rows match these filters.",
+        ),
+    )
+    return _layout("Compare Models", "/compare", body)
+
+__all__ = ('_compare',)
