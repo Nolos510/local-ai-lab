@@ -35,18 +35,23 @@ AI Lab OS solves that by separating each state:
 
 - A dependency-light model dashboard using Python stdlib HTTP serving, SQLite,
   CSV import/export, inline SVG charts, local reports, and route/action tests.
+- A Midnight Neon dashboard redesign with a collapsible left sidebar, offline
+  icons, inline-only JavaScript for the sidebar toggle, and no external assets.
 - An AI Lab Radar lane for model candidates and a Project Radar lane for GitHub
   repositories with business, product, learning, or local-runtime relevance.
 - An installed-model inventory page that manually checks LM Studio and Ollama,
   separates loaded/indexed/filesystem-only state, and shows local file paths.
+- A gated model-removal flow that is disabled by default, requires a two-step
+  confirm, constrains paths to local model roots, sends LM Studio folders to
+  macOS Trash, and uses `ollama rm` for Ollama.
 - A local benchmark harness that preserves evidence, raw responses, scores,
   decisions, and dashboard-compatible CSV artifacts.
 - A unified `ai-lab` CLI for local status, radar listing, hardware snapshots,
-  benchmark matrix planning, benchmark artifact prep, import, report, and
-  dashboard launch.
+  benchmark matrix planning, approval-gated benchmark execution, benchmark
+  artifact prep, import, report, and dashboard launch.
 - A read-only `/capability` dashboard page that summarizes hardware profile
   examples, candidate readiness, benchmark artifact counts, score/run signals,
-  and the next benchmark matrix command.
+  performance signals, and the next benchmark matrix command.
 - Local-first guardrails: no hidden cloud calls, no model downloads from radar,
   no committed secrets, and write actions disabled unless explicitly enabled.
 
@@ -77,20 +82,26 @@ flowchart LR
   `data/eval_results/20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit-r2/`
 - Current dashboard validation:
   - `python3 -m unittest discover -s apps/model-dashboard/tests`
-    - 64 tests pass.
+    - 75 tests pass.
   - `python3 -m unittest discover -s evals/local-llm-benchmark/tests`
     - 8 tests pass.
   - `python3 scripts/model_dashboard_smoke.py`
     - Dashboard smoke passes.
   - `uv run pytest -q`
-    - 134 tests pass.
+    - 149 tests pass.
   - `uv run ruff check .`
     - All checks pass.
 
 ## Screenshots
 
-Portfolio screenshots live under `docs/assets/screenshots/` when captured. The
-dashboard itself is reproducible locally with:
+Portfolio screenshots live under `docs/assets/screenshots/`:
+
+- `v1-lab.png`
+- `v1-radar.png`
+- `v1-projects.png`
+- `v1-reports.png`
+
+The dashboard itself is reproducible locally with:
 
 ```bash
 python3 apps/model-dashboard/run_dashboard.py serve --demo
@@ -121,12 +132,19 @@ downloaded or executed, the registry and review artifacts should record:
 The current system keeps external radar metadata separate from registry approval
 and keeps candidate-only records separate from eval scores.
 
+Dashboard write actions follow the same posture. Benchmark execution, artifact
+import, and model removal are off by default and require explicit server or CLI
+approval gates. The delete path is recoverable for LM Studio folders and refuses
+client-supplied filesystem paths.
+
 ## Engineering Decisions
 
 - Use stdlib-first Python for dashboard and harness paths.
 - Keep dashboard render-time behavior local and non-networked.
 - Separate demo fixture data from real dashboard views by default.
 - Keep run-test and import actions off by default behind explicit server flags.
+- Keep model execution behind explicit per-run approval of model id, runner, and
+  benchmark run id.
 - Avoid model downloads, cloud SDKs, API keys, telemetry, and hidden network
   calls.
 - Store benchmark evidence as inspectable local JSONL, JSON, CSV, and Markdown.
@@ -135,9 +153,9 @@ and keeps candidate-only records separate from eval scores.
 
 - A second unique confirmed model benchmark is still needed for stronger
   cross-model comparison.
-- Approval-gated benchmark execution from the unified `ai-lab` CLI is planned
-  but not claimed as complete here.
-- Latency/TTFT series are not yet first-class dashboard metrics.
+- Performance charts are first-class dashboard views, but live values depend on
+  imported benchmark artifacts containing `tokens_per_sec`, `ttft_seconds`, and
+  `total_latency_seconds`.
 - RAG retrieval quality evaluation still needs fixtures and scoring.
 
 ## Next Skill Plan

@@ -19,6 +19,11 @@
   and dashboard launch.
 - [x] Read-only dashboard capability view with candidate readiness, artifact
   counts, hardware profile context, and benchmark matrix guidance.
+- [x] Approval-gated local benchmark execution through the `ai-lab` CLI.
+- [x] Disabled-by-default, recoverable local model removal action for LM Studio
+  and Ollama inventory entries.
+- [x] Midnight Neon dashboard redesign with offline icons, collapsible sidebar,
+  and inline SVG performance charts.
 - [x] Portfolio case study and resume evidence pack.
 
 ## v0: Runnable Local RAG Baseline
@@ -41,8 +46,8 @@
 - [ ] Add local-judge draft score suggestions without overwriting confirmed
   scores.
 - [ ] Import confirmed benchmark CSVs into the dashboard.
-- [x] Compare at least two models in the dashboard with inline SVG charts for
-  score, throughput, RAM, and score dimensions.
+- [x] Compare imported benchmark runs in the dashboard with inline SVG charts
+  for score dimensions and imported performance metadata.
 - [ ] Link candidate -> source packet/report -> benchmark artifact -> dashboard
   result.
 - [ ] Keep candidate-only records visually separate from eval scores.
@@ -55,7 +60,7 @@
 - [x] Gate dashboard tests, eval harness tests, dashboard smoke, and repo-wide
   ruff in CI.
 - [x] Convert current work into portfolio/resume evidence.
-- [ ] Add approval-gated local benchmark execution to the unified `ai-lab` CLI.
+- [x] Add approval-gated local benchmark execution to the unified `ai-lab` CLI.
 - [ ] Tag a pushed v1 release with validation evidence.
 
 ## v2: Retrieval Quality
@@ -72,9 +77,9 @@
 ## v3: Benchmarking Lab
 
 - [ ] Benchmark Ollama, MLX-LM, LM Studio, and llama.cpp where practical.
-- [ ] Track TTFT, tokens/sec, total latency, memory pressure, and swap behavior.
-- [ ] Add first-class dashboard fields and charts for TTFT and total latency
-  after the approval-gated execution path lands.
+- [x] Track imported TTFT, tokens/sec, and total latency in dashboard compare and
+  capability charts.
+- [ ] Track memory pressure and swap behavior for approved local benchmark runs.
 - [ ] Add benchmark report templates and plotting utilities.
 - [ ] Publish reproducible benchmark methodology.
 - [ ] Expand the model registry for large 24B, 30B, 70B-class, and specialty

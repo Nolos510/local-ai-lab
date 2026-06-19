@@ -14,17 +14,24 @@ claims aligned with the current repository state.
 - Designed and implemented a dependency-light Python dashboard using stdlib HTTP
   serving, SQLite, CSV import/export, inline SVG charts, and route/action tests
   for local AI benchmark review.
+- Delivered a dark "Midnight Neon" dashboard redesign with a collapsible
+  sidebar, offline icon set, inline SVG charts, and no external dashboard assets.
 - Built a unified `ai-lab` CLI for repo-local lab operations including status,
   radar listing, sanitized hardware snapshots, benchmark matrix planning,
-  benchmark artifact prep, dashboard import/report, and dashboard launch.
+  approval-gated benchmark execution, benchmark artifact prep, dashboard
+  import/report, and dashboard launch.
 - Added a read-only dashboard capability view that summarizes hardware profile
   examples, candidate readiness, benchmark artifact counts, score/run signals,
-  and next benchmark commands without runtime network calls.
+  performance signals, and next benchmark commands without runtime network
+  calls.
 - Implemented installed-model inventory handling for LM Studio and Ollama that
   distinguishes loaded, indexed, filesystem-only, registered, unregistered, and
   ambiguous model states.
-- Maintained a validation gate covering 64 dashboard unit tests, 8 benchmark
-  harness tests, 134 repo tests, dashboard smoke, and repo-wide Ruff lint.
+- Added a disabled-by-default, recoverable model removal path that sends LM
+  Studio folders to macOS Trash, calls `ollama rm` for Ollama, and rejects
+  out-of-root filesystem targets.
+- Maintained a validation gate covering 75 dashboard unit tests, 8 benchmark
+  harness tests, 149 repo tests, dashboard smoke, and repo-wide Ruff lint.
 
 ## AI / Evaluation Engineering
 
@@ -36,6 +43,11 @@ claims aligned with the current repository state.
   false rankings.
 - Added candidate readiness and benchmark matrix planning so local benchmark
   targets can be reviewed before any model execution occurs.
+- Added approval-gated local benchmark execution requiring explicit model id,
+  runner, run id, and approval before any local model call is made.
+- Surfaced imported benchmark performance metadata in Compare and Capability
+  views for tokens/sec, TTFT, and total latency with empty states when no
+  approved run has provided those values.
 - Created a security-review workflow for AI model recommendations covering
   provenance, license posture, artifact format, checksum status, runtime path,
   isolation notes, and approval state.
@@ -59,6 +71,8 @@ claims aligned with the current repository state.
 - Added dashboard action safeguards for local-only workflows, including explicit
   server flags, action tokens, capped POST bodies, and loopback-only runtime
   controls.
+- Added delete-action safeguards for local model cleanup: disabled by default,
+  two-step confirmation, server-derived paths, path containment, and no `rm -rf`.
 - Documented model vetting practices that treat popularity as context rather
   than approval before downloading or executing local AI artifacts.
 
@@ -69,5 +83,5 @@ claims aligned with the current repository state.
 - Why radar candidates must not automatically become scores or decisions.
 - How local-first constraints shaped the CLI, dashboard, benchmark, and security
   review architecture.
-- What remains before v1.0.0: second unique benchmark, approval-gated execution
-  flow, latency/perf series, and release tagging.
+- What remains before v1.0.0: second unique benchmark, live perf data from an
+  approved imported run, and release tagging.
