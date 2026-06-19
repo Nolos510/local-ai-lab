@@ -52,6 +52,7 @@ def horizontal_bars(
     value_format: str = "{:.1f}",
     max_value: float | None = None,
     title: str = "Chart",
+    empty_message: str = "No data yet",
 ) -> str:
     """Render labeled horizontal bars as an inline SVG string."""
 
@@ -64,7 +65,7 @@ def horizontal_bars(
     computed_max = _coerce_value(max_value) if max_value is not None else None
     scale_max = computed_max or (max((value for _, value in values), default=0.0))
     if not values or scale_max <= 0:
-        return placeholder()
+        return placeholder(empty_message)
 
     row_height = BAR_HEIGHT + BAR_GAP
     height = PADDING_Y * 2 + len(values) * row_height - BAR_GAP

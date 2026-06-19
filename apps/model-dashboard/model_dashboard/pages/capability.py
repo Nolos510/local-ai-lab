@@ -25,6 +25,28 @@ def _capability(
     hardware_profiles = capability.load_hardware_profiles(Path(hardware_profiles_dir))
     real_counts = _real_counts(conn)
     score_counts = _score_status_counts(conn)
+    dashboard_runs = _real_rows(db.list_runs(conn))
+    tokens_chart = _performance_chart(
+        dashboard_runs,
+        "tokens_per_sec",
+        "Capability tokens per second",
+        "{:.1f} tok/s",
+        "No tokens/sec values imported yet",
+    )
+    ttft_chart = _performance_chart(
+        dashboard_runs,
+        "ttft_seconds",
+        "Capability TTFT seconds",
+        "{:.2f}s",
+        "No TTFT values imported yet",
+    )
+    latency_chart = _performance_chart(
+        dashboard_runs,
+        "total_latency_seconds",
+        "Capability total latency seconds",
+        "{:.2f}s",
+        "No total latency values imported yet",
+    )
 
     status_rows = [
         [_text(status), _text(count)]
@@ -108,6 +130,15 @@ def _capability(
       <h2>Benchmark Artifact Counts</h2>
       {artifact_table}
     </section>
+    <section style="margin-top:16px">
+      <h2>Performance Signals</h2>
+      <p class="empty">These charts use imported local benchmark run metadata only. Empty charts mean no approved run has imported that perf field yet.</p>
+      <div class="chart-grid" aria-label="Capability performance charts">
+        {tokens_chart}
+        {ttft_chart}
+        {latency_chart}
+      </div>
+    </section>
     <section class="panel" style="margin-top:16px">
       <h2>Next Benchmark Matrix</h2>
       <p>Generate the current read-only benchmark queue from the CLI:</p>
@@ -151,6 +182,9 @@ def _capability(
             ["Signal", "Count"],
             [[_text(label), _text(value)] for label, value in artifact_rows],
         ),
+        tokens_chart=_chart_panel("Tokens / Sec", tokens_chart),
+        ttft_chart=_chart_panel("TTFT", ttft_chart),
+        latency_chart=_chart_panel("Total Latency", latency_chart),
         matrix_command=_command_block("uv run ai-lab bench matrix --limit 5"),
     )
     return _layout("Capability", "/capability", body)

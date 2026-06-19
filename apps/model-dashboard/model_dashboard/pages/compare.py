@@ -34,6 +34,27 @@ def _compare(conn, query=None):
         max_value=10,
         title="Average score dimensions",
     )
+    tokens_chart = _performance_chart(
+        filtered_scores,
+        "tokens_per_sec",
+        "Tokens per second",
+        "{:.1f} tok/s",
+        "No tokens/sec values imported yet",
+    )
+    ttft_chart = _performance_chart(
+        filtered_scores,
+        "ttft_seconds",
+        "TTFT seconds",
+        "{:.2f}s",
+        "No TTFT values imported yet",
+    )
+    latency_chart = _performance_chart(
+        filtered_scores,
+        "total_latency_seconds",
+        "Total latency seconds",
+        "{:.2f}s",
+        "No total latency values imported yet",
+    )
     for row in filtered_scores:
         cells = [
             '<a href="/models/{id}">{name}</a>'.format(
@@ -53,6 +74,15 @@ def _compare(conn, query=None):
       {score_chart}
       {dimension_chart}
     </section>
+    <section style="margin-top:16px">
+      <h2>Performance Signals</h2>
+      <p class="empty">Latency values come from approved local benchmark artifacts when imported; lower latency is better, higher tokens/sec is better.</p>
+      <div class="chart-grid" aria-label="Compare performance charts">
+        {tokens_chart}
+        {ttft_chart}
+        {latency_chart}
+      </div>
+    </section>
     {table}
     """.format(
         notice=_real_data_notice(len(_demo_rows(all_scores))),
@@ -62,6 +92,9 @@ def _compare(conn, query=None):
         ),
         score_chart=_chart_panel("Total Score", score_chart),
         dimension_chart=_chart_panel("Dimension Averages", dimension_chart),
+        tokens_chart=_chart_panel("Tokens / Sec", tokens_chart),
+        ttft_chart=_chart_panel("TTFT", ttft_chart),
+        latency_chart=_chart_panel("Total Latency", latency_chart),
         table=_table(
             headers,
             rows,

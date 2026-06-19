@@ -36,9 +36,11 @@ class ChartTests(unittest.TestCase):
     def test_zero_or_empty_data_returns_placeholder(self):
         empty = charts.horizontal_bars([])
         zero = charts.horizontal_bars([("Zero", 0)])
+        custom = charts.horizontal_bars([], empty_message="No perf values yet")
 
         self.assertIn("No data yet", empty)
         self.assertIn("No data yet", zero)
+        self.assertIn("No perf values yet", custom)
         self.assertNotIn("NaN", empty + zero)
         self.assertNotIn("inf", empty + zero)
         self.assertNotIn("<rect", empty + zero)

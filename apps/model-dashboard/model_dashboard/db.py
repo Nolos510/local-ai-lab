@@ -232,6 +232,9 @@ def list_score_details(conn):
             m.source_url,
             r.backend,
             r.quantization,
+            r.tokens_per_sec,
+            r.ttft_seconds,
+            r.total_latency_seconds,
             s.*
         FROM eval_scores s
         JOIN model_runs r ON r.id = s.run_id

@@ -845,6 +845,80 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Qwen Filter Model", storage_html)
             self.assertNotIn("Research Filter Model", storage_html)
 
+    def test_compare_page_renders_perf_empty_state_for_null_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with db.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO models (id, model_name, model_family, provider)
+                    VALUES (1, 'Perf Empty Model', 'Perf', 'local')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO model_runs (id, model_id, date_tested, backend)
+                    VALUES (1, 1, '2026-06-18', 'LM Studio CLI')
+                    """
+                )
+                score_fields = ", ".join(METRIC_FIELDS)
+                score_values = ", ".join("70" for _ in METRIC_FIELDS)
+                conn.execute(
+                    f"""
+                    INSERT INTO eval_scores (
+                        id, run_id, {score_fields}, total_score, final_label, score_status
+                    )
+                    VALUES (1, 1, {score_values}, 70, 'WATCHLIST', 'confirmed')
+                    """
+                )
+
+                html = server._compare(conn)
+
+            self.assertIn("Performance Signals", html)
+            self.assertIn("No tokens/sec values imported yet", html)
+            self.assertIn("No TTFT values imported yet", html)
+            self.assertIn("No total latency values imported yet", html)
+
+    def test_compare_page_renders_perf_values_when_imported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with db.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO models (id, model_name, model_family, provider)
+                    VALUES (1, 'Perf Populated Model', 'Perf', 'local')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO model_runs (
+                        id, model_id, date_tested, backend,
+                        tokens_per_sec, ttft_seconds, total_latency_seconds
+                    )
+                    VALUES (1, 1, '2026-06-18', 'LM Studio CLI', 27.5, 0.42, 12.3)
+                    """
+                )
+                score_fields = ", ".join(METRIC_FIELDS)
+                score_values = ", ".join("75" for _ in METRIC_FIELDS)
+                conn.execute(
+                    f"""
+                    INSERT INTO eval_scores (
+                        id, run_id, {score_fields}, total_score, final_label, score_status
+                    )
+                    VALUES (1, 1, {score_values}, 75, 'CODING_SPECIALIST', 'confirmed')
+                    """
+                )
+
+                html = server._compare(conn)
+
+            self.assertIn("Performance Signals", html)
+            self.assertIn("Perf Populated Model (LM Studio CLI)", html)
+            self.assertIn("27.5 tok/s", html)
+            self.assertIn("0.42s", html)
+            self.assertIn("12.30s", html)
+
     def test_lab_dashboard_shows_product_loop_and_next_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -904,6 +978,10 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("No committed hardware profile JSON examples found", html)
             self.assertIn("uv run ai-lab bench matrix --limit 5", html)
             self.assertIn("No ready_for_eval candidates are registered.", html)
+            self.assertIn("Performance Signals", html)
+            self.assertIn("No tokens/sec values imported yet", html)
+            self.assertIn("No TTFT values imported yet", html)
+            self.assertIn("No total latency values imported yet", html)
 
     def test_capability_page_renders_candidate_and_artifact_counts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -964,6 +1042,40 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Artifact directories", html)
             self.assertIn("Dashboard-import folders", html)
             self.assertIn("/artifacts/20260603-ready-local", html)
+
+    def test_capability_page_renders_perf_values_when_imported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with db.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO models (id, model_name, model_family, provider)
+                    VALUES (1, 'Capability Perf Model', 'Perf', 'local')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO model_runs (
+                        id, model_id, date_tested, backend,
+                        tokens_per_sec, ttft_seconds, total_latency_seconds
+                    )
+                    VALUES (1, 1, '2026-06-18', 'LM Studio CLI', 33.3, 0.77, 14.9)
+                    """
+                )
+                html = server._capability(
+                    conn,
+                    registry_path=tmp_path / "missing-candidates.csv",
+                    eval_results_dir=tmp_path / "missing-eval-results",
+                    hardware_profiles_dir=tmp_path / "missing-hardware",
+                )
+
+            self.assertIn("Performance Signals", html)
+            self.assertIn("Capability Perf Model (LM Studio CLI)", html)
+            self.assertIn("33.3 tok/s", html)
+            self.assertIn("0.77s", html)
+            self.assertIn("14.90s", html)
 
     def test_capability_page_uses_no_external_assets(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -14,7 +14,7 @@ from html import escape
 from pathlib import Path
 from urllib.parse import urlparse
 
-from . import db
+from . import charts, db
 from .icons import icon as render_icon
 from .scoring import METRIC_FIELDS
 
@@ -80,6 +80,24 @@ def _average_metric_items(rows):
         if values:
             items.append((field.replace("_", " ").title(), sum(values) / len(values)))
     return items
+
+
+def _performance_items(rows, field):
+    items = []
+    for row in rows:
+        keys = row.keys()
+        if field in keys:
+            items.append((_model_chart_label(row), row[field]))
+    return items
+
+
+def _performance_chart(rows, field, title, value_format, empty_message):
+    return charts.horizontal_bars(
+        _performance_items(rows, field),
+        value_format=value_format,
+        title=title,
+        empty_message=empty_message,
+    )
 
 
 def _table(headers, rows, empty_message="No rows yet.", table_class=""):
@@ -610,4 +628,4 @@ def _import_state_for_run(run, decisions_by_model):
         decision=decision_state,
     )
 
-__all__ = ('_text', '_number', '_pill', '_status_pill', '_stat_card', '_chart_panel', '_model_chart_label', '_average_metric_items', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_benchmark_run_id_from_notes', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_report_command', '_artifact_import_guidance', '_artifact_import_control', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE')
+__all__ = ('_text', '_number', '_pill', '_status_pill', '_stat_card', '_chart_panel', '_model_chart_label', '_average_metric_items', '_performance_items', '_performance_chart', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_benchmark_run_id_from_notes', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_report_command', '_artifact_import_guidance', '_artifact_import_control', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE')
