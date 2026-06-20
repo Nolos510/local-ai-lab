@@ -181,7 +181,7 @@ def _layout(title, current_path, body):
       height: auto;
     }}
     .chart-bar {{
-      fill: var(--accent);
+      fill: url(#chart-bar-gradient);
       filter: drop-shadow(0 0 7px rgba(42, 212, 238, 0.25));
     }}
     .chart-label, .chart-value, .chart-empty-text {{
