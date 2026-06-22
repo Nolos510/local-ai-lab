@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 from pathlib import Path
 
 from .. import csv_io
@@ -65,7 +66,7 @@ def _build_candidate_commands(row, run_id, eval_results_dir):
     return init_command, capture_command
 
 
-def _run_candidate_test(candidate_id, registry_path, eval_results_dir, timeout):
+def _candidate_test_plan(candidate_id, registry_path, eval_results_dir):
     candidates = _load_radar_candidates(registry_path)
     row = next((item for item in candidates if item.get("candidate_id") == candidate_id), None)
     if row is None:
@@ -73,6 +74,10 @@ def _run_candidate_test(candidate_id, registry_path, eval_results_dir, timeout):
     if not _candidate_run_ready(row):
         raise ValueError("Candidate is missing exact local runner metadata.")
     run_id = _next_dashboard_run_id(row, eval_results_dir)
+    return row, run_id
+
+
+def _run_candidate_test_for_row(row, run_id, eval_results_dir, timeout):
     init_command, capture_command = _build_candidate_commands(row, run_id, eval_results_dir)
     init_result = _run_subprocess(init_command, timeout)
     if init_result.returncode != 0:
@@ -90,6 +95,43 @@ def _run_candidate_test(candidate_id, registry_path, eval_results_dir, timeout):
         "run_dir": str(Path(eval_results_dir) / run_id),
         "init": init_result,
         "capture": capture_result,
+    }
+
+
+def _run_candidate_test(candidate_id, registry_path, eval_results_dir, timeout):
+    row, run_id = _candidate_test_plan(candidate_id, registry_path, eval_results_dir)
+    return _run_candidate_test_for_row(row, run_id, eval_results_dir, timeout)
+
+
+def _write_background_error(run_dir, exc):
+    run_dir = Path(run_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    error_path = run_dir / "dashboard-run-error.txt"
+    error_path.write_text(f"{type(exc).__name__}: {exc}\n", encoding="utf-8")
+
+
+def _background_candidate_test(row, run_id, eval_results_dir, timeout):
+    try:
+        _run_candidate_test_for_row(row, run_id, eval_results_dir, timeout)
+    except Exception as exc:  # pragma: no cover - defensive worker guard
+        _write_background_error(Path(eval_results_dir) / run_id, exc)
+
+
+def _start_candidate_test(candidate_id, registry_path, eval_results_dir, timeout):
+    row, run_id = _candidate_test_plan(candidate_id, registry_path, eval_results_dir)
+    run_dir = Path(eval_results_dir) / run_id
+    thread = threading.Thread(
+        target=_background_candidate_test,
+        args=(row, run_id, eval_results_dir, timeout),
+        daemon=True,
+        name=f"dashboard-run-{run_id[:48]}",
+    )
+    thread.start()
+    return {
+        "candidate": row,
+        "run_id": run_id,
+        "run_dir": str(run_dir),
+        "thread_name": thread.name,
     }
 
 
@@ -134,6 +176,27 @@ def _run_action_page(result):
     return _layout("Run Test Result", "", body)
 
 
+def _run_action_started_page(result):
+    candidate = result["candidate"]
+    artifact_path = _relative_path(result["run_dir"])
+    body = """
+    <section class="panel">
+      <h2>Run Test Started</h2>
+      <p><strong>Candidate:</strong> {candidate}</p>
+      <p><strong>Runner:</strong> {runner}</p>
+      <p><strong>Artifact:</strong> {artifact}</p>
+      <p><strong>Local path:</strong> <code>{artifact_path}</code></p>
+      <p class="empty">The local benchmark is running in the background. Refresh the artifact page after the capture finishes; raw responses remain local artifact evidence and scores still require human review.</p>
+    </section>
+    """.format(
+        candidate=_text(candidate.get("model_name")),
+        runner=_text(_candidate_runner_label(candidate)),
+        artifact=_artifact_link(result["run_id"]),
+        artifact_path=_text(artifact_path),
+    )
+    return _layout("Run Test Started", "", body)
+
+
 def _import_artifact(benchmark_run_id, database_path, eval_results_dir=None):
     artifact_dir = _safe_artifact_dir(benchmark_run_id, eval_results_dir)
     if not artifact_dir.exists() or not artifact_dir.is_dir():
@@ -160,4 +223,4 @@ def _import_action_page(result):
     )
     return _layout("Artifact Imported", "", body)
 
-__all__ = ('_build_candidate_commands', '_run_candidate_test', '_result_block', '_run_action_page', '_import_artifact', '_import_action_page')
+__all__ = ('_build_candidate_commands', '_candidate_test_plan', '_run_candidate_test_for_row', '_run_candidate_test', '_start_candidate_test', '_result_block', '_run_action_page', '_run_action_started_page', '_import_artifact', '_import_action_page')

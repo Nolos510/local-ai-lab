@@ -24,7 +24,9 @@ from .pages.actions import (
     _import_action_page,
     _import_artifact,
     _run_action_page,
+    _run_action_started_page,
     _run_candidate_test,
+    _start_candidate_test,
 )
 from .pages.artifact import _artifact_detail as _artifact_detail_page
 from .pages.capability import _capability
@@ -227,13 +229,13 @@ def make_handler(
                         self.send_response(403)
                     else:
                         candidate_id = _query_value(form, "candidate_id")
-                        result = _run_candidate_test(
+                        result = _start_candidate_test(
                             candidate_id,
                             CANDIDATE_REGISTRY_PATH,
                             EVAL_RESULTS_DIR,
                             run_test_timeout,
                         )
-                        html = _run_action_page(result)
+                        html = _run_action_started_page(result)
                         self.send_response(200)
             except Exception as exc:
                 html = _layout("Action Error", "", f"<h2>Action Error</h2><p>{_text(exc)}</p>")

@@ -118,6 +118,42 @@ class DashboardHttpHandlerTests(unittest.TestCase):
             self.assertEqual(raised.exception.code, 403)
             run.assert_not_called()
 
+    def test_run_test_action_starts_background_and_returns_immediately(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            started = {
+                "candidate": {
+                    "candidate_id": "candidate-ready",
+                    "model_name": "Ready Local 7B",
+                    "local_runner": "lmstudio-cli",
+                    "local_model_id": "ready-local-7b",
+                },
+                "run_id": "20260621-ready-local-dashboard-test",
+                "run_dir": str(tmp_path / "eval_results" / "20260621-ready-local-dashboard-test"),
+                "thread_name": "dashboard-run-test",
+            }
+
+            with mock.patch.object(server, "_start_candidate_test", return_value=started) as start:
+                base_url = self.start_server(
+                    db_path,
+                    action_token="test-token",
+                    enable_run_tests=True,
+                )
+                with self.post(
+                    f"{base_url}/actions/run-test",
+                    {"token": "test-token", "candidate_id": "candidate-ready"},
+                ) as response:
+                    body = response.read().decode("utf-8")
+
+            self.assertEqual(response.status, 200)
+            self.assertIn("Run Test Started", body)
+            self.assertIn("Ready Local 7B", body)
+            self.assertIn("20260621-ready-local-dashboard-test", body)
+            start.assert_called_once()
+            self.assertEqual(start.call_args.args[0], "candidate-ready")
+
     def test_delete_model_lmstudio_requires_confirm_then_uses_trash(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
