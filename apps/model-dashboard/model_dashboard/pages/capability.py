@@ -9,6 +9,7 @@ from pathlib import Path
 from .. import capability, charts, db
 from ..components import *
 from ..filters import *
+from ..icons import icon as render_icon
 from ..layout import _layout
 from ..reports import generate_markdown_report
 from ..scoring import METRIC_FIELDS
@@ -182,11 +183,7 @@ def _capability(
         ),
         blocked_stat=_stat_card("Blocked ready", candidate_counts["blocked_ready"], "ti-shield"),
         artifacts_stat=_stat_card("Artifacts", artifact_counts["total"], "ti-archive"),
-        scores_stat=_stat_card(
-            "Scores",
-            "{} confirmed / {} draft".format(score_counts["confirmed"], score_counts["draft"]),
-            "ti-edit",
-        ),
+        scores_stat=_score_stat_card(score_counts["confirmed"], score_counts["draft"]),
         dashboard_stat=_stat_card("Dashboard runs", real_counts["model_runs"], "ti-player-play"),
         hardware_table=_table(
             ["Profile", "Captured", "OS", "Chip / machine", "CPU", "Memory GB", "Runtimes"],
@@ -223,6 +220,25 @@ def _format_capability_value(value, value_format):
         return value_format.format(float(value))
     except (TypeError, ValueError):
         return _text(value)
+
+
+def _score_stat_card(confirmed, draft):
+    return """
+    <div class="stat stat-breakdown">
+      {icon}
+      <div>
+        <div class="label">Scores</div>
+        <div class="stat-metrics" aria-label="Score status counts">
+          <span><strong>{confirmed}</strong><em>confirmed</em></span>
+          <span><strong>{draft}</strong><em>draft</em></span>
+        </div>
+      </div>
+    </div>
+    """.format(
+        icon=render_icon("ti-edit"),
+        confirmed=_text(confirmed),
+        draft=_text(draft),
+    )
 
 
 def _coerce_capability_value(value):

@@ -1132,6 +1132,11 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Artifact directories", html)
             self.assertIn("Dashboard-import folders", html)
             self.assertIn("/artifacts/20260603-ready-local", html)
+            self.assertIn('class="stat stat-breakdown"', html)
+            self.assertIn('aria-label="Score status counts"', html)
+            self.assertIn("<em>confirmed</em>", html)
+            self.assertIn("<em>draft</em>", html)
+            self.assertIn(".stat-metrics {", html)
 
     def test_capability_page_renders_perf_values_when_imported(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -303,6 +303,40 @@ def _layout(title, current_path, body):
       font-weight: 500;
       line-height: 1.1;
     }}
+    .stat-breakdown {{
+      min-width: 220px;
+    }}
+    .stat-metrics {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(74px, 1fr));
+      gap: 10px;
+      align-items: stretch;
+    }}
+    .stat-metrics span {{
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel-soft);
+    }}
+    .stat-metrics strong {{
+      color: var(--ink);
+      font-size: 24px;
+      line-height: 1;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+    }}
+    .stat-metrics em {{
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.1;
+      font-style: normal;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      white-space: nowrap;
+    }}
     .filters {{
       display: grid;
       grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(140px, 1fr)) auto;
@@ -826,6 +860,12 @@ def _layout(title, current_path, body):
       font-weight: 600;
       line-height: 1.1;
       font-variant-numeric: tabular-nums;
+      background: var(--accent-grad);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }}
+    .stat-metrics strong {{
       background: var(--accent-grad);
       -webkit-background-clip: text;
       background-clip: text;
