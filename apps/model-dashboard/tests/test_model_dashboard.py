@@ -837,6 +837,7 @@ class ModelDashboardQaTests(unittest.TestCase):
                 storage_html = server._storage(conn, {"keep": ["yes"]})
 
             self.assertIn("Model Runs (1 of 2)", runs_html)
+            self.assertIn('class="runs-table"', runs_html)
             self.assertIn("Qwen Filter Model", runs_html)
             self.assertNotIn("Research Filter Model", runs_html)
             self.assertIn("Compare Models (1 of 2)", compare_html)
@@ -1125,6 +1126,15 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("overflow-x: auto", table_wrap_rules[-1])
         self.assertIn("overflow-y: hidden", table_wrap_rules[-1])
         self.assertNotIn("overflow: hidden", table_wrap_rules[-1])
+
+    def test_model_runs_table_keeps_date_column_readable(self):
+        html = server._layout("Fixture", "/runs", "<p>Body</p>")
+
+        self.assertIn(".runs-table {", html)
+        self.assertIn("min-width: 1380px", html)
+        self.assertIn(".runs-table th:nth-child(1)", html)
+        self.assertIn("white-space: nowrap", html)
+        self.assertIn("overflow-wrap: normal", html)
 
     def test_lab_dashboard_can_enable_run_test_button_for_local_models(self):
         with tempfile.TemporaryDirectory() as tmp:

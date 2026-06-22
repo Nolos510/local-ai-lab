@@ -399,6 +399,55 @@ def _layout(title, current_path, body):
     .lab-queue td:nth-child(4) {{
       width: 120px;
     }}
+    .runs-table {{
+      min-width: 1380px;
+    }}
+    .runs-table th:nth-child(1),
+    .runs-table td:nth-child(1) {{
+      width: 110px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .runs-table th:nth-child(2),
+    .runs-table td:nth-child(2) {{
+      width: 210px;
+    }}
+    .runs-table th:nth-child(3),
+    .runs-table td:nth-child(3) {{
+      width: 135px;
+    }}
+    .runs-table th:nth-child(4),
+    .runs-table td:nth-child(4),
+    .runs-table th:nth-child(5),
+    .runs-table td:nth-child(5),
+    .runs-table th:nth-child(6),
+    .runs-table td:nth-child(6),
+    .runs-table th:nth-child(7),
+    .runs-table td:nth-child(7),
+    .runs-table th:nth-child(8),
+    .runs-table td:nth-child(8),
+    .runs-table th:nth-child(9),
+    .runs-table td:nth-child(9) {{
+      width: 86px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .runs-table th:nth-child(10),
+    .runs-table td:nth-child(10),
+    .runs-table th:nth-child(11),
+    .runs-table td:nth-child(11) {{
+      width: 120px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .runs-table th:nth-child(12),
+    .runs-table td:nth-child(12) {{
+      width: 190px;
+    }}
+    .runs-table th:nth-child(13),
+    .runs-table td:nth-child(13) {{
+      width: 240px;
+    }}
     .split {{
       display: grid;
       grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.6fr);
