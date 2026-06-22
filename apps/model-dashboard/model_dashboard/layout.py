@@ -335,6 +335,14 @@ def _layout(title, current_path, body):
       white-space: nowrap;
       overflow-wrap: normal;
     }}
+    .cell-scroll {{
+      max-height: 220px;
+      min-width: 0;
+      overflow: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+      padding-right: 2px;
+    }}
     .table-wrap {{
       width: 100%;
       overflow-x: auto;

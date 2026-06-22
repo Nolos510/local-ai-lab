@@ -106,7 +106,11 @@ def _table(headers, rows, empty_message="No rows yet.", table_class=""):
     header_html = "".join(f"<th>{escape(header)}</th>" for header in headers)
     row_html = []
     for row in rows:
-        row_html.append("<tr>{}</tr>".format("".join(f"<td>{cell}</td>" for cell in row)))
+        row_html.append(
+            "<tr>{}</tr>".format(
+                "".join(f'<td><div class="cell-scroll">{cell}</div></td>' for cell in row)
+            )
+        )
     class_attr = f' class="{escape(table_class)}"' if table_class else ""
     table = "<table{}><thead><tr>{}</tr></thead><tbody>{}</tbody></table>".format(
         class_attr, header_html, "".join(row_html)

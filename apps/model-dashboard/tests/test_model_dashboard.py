@@ -1127,6 +1127,16 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("overflow-y: hidden", table_wrap_rules[-1])
         self.assertNotIn("overflow: hidden", table_wrap_rules[-1])
 
+    def test_table_cells_scroll_when_content_is_tall(self):
+        table_html = server._table(["Long"], [["A long note"]])
+        layout_html = server._layout("Fixture", "/runs", table_html)
+
+        self.assertIn('<div class="cell-scroll">A long note</div>', table_html)
+        self.assertIn(".cell-scroll {", layout_html)
+        self.assertIn("max-height: 220px", layout_html)
+        self.assertIn("overflow: auto", layout_html)
+        self.assertIn("overscroll-behavior: contain", layout_html)
+
     def test_model_runs_table_keeps_date_column_readable(self):
         html = server._layout("Fixture", "/runs", "<p>Body</p>")
 
