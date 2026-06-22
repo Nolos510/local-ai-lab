@@ -595,7 +595,8 @@ def _layout(title, current_path, body):
     .table-wrap {{
       border: 1px solid var(--line);
       border-radius: 16px;
-      overflow: hidden;
+      overflow-x: auto;
+      overflow-y: hidden;
       background: var(--panel);
       -webkit-backdrop-filter: blur(14px);
       backdrop-filter: blur(14px);

@@ -1114,6 +1114,18 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("clip: rect(0 0 0 0)", html)
         self.assertNotIn(".app.collapsed .sidebar .nav span { display: none", html)
 
+    def test_table_wrapper_keeps_horizontal_scroll_after_theme_styles(self):
+        html = server._layout("Fixture", "/radar", "<p>Body</p>")
+        table_wrap_rules = [
+            rule.split("}", 1)[0]
+            for rule in html.split(".table-wrap {")[1:]
+        ]
+
+        self.assertGreaterEqual(len(table_wrap_rules), 2)
+        self.assertIn("overflow-x: auto", table_wrap_rules[-1])
+        self.assertIn("overflow-y: hidden", table_wrap_rules[-1])
+        self.assertNotIn("overflow: hidden", table_wrap_rules[-1])
+
     def test_lab_dashboard_can_enable_run_test_button_for_local_models(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
