@@ -149,6 +149,121 @@ class CsvImportTests(unittest.TestCase):
                 self.assertEqual(db.table_count(conn, "eval_scores"), 1)
                 self.assertEqual(db.table_count(conn, "decisions"), 2)
 
+    def test_artifact_import_remaps_ids_when_fixture_rows_collide(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            db_path = tmp_path / "dashboard.sqlite"
+            fixture_dir = Path(__file__).resolve().parents[1] / "fixtures"
+            csv_io.import_fixture_set(db_path, fixture_dir)
+            artifact_dir = tmp_path / "artifact"
+            benchmark_run_id = "20260605-qwen3-coder-30b-a3b-lmstudio-cli-r1"
+
+            write_table(
+                artifact_dir / "models.csv",
+                "models",
+                [
+                    {
+                        "id": 1,
+                        "model_name": "Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
+                        "model_family": "Qwen",
+                        "provider": "lmstudio-community local artifact",
+                        "params_b": 30,
+                        "source_url": "https://huggingface.co/lmstudio-community/qwen3",
+                    }
+                ],
+            )
+            write_table(
+                artifact_dir / "model_runs.csv",
+                "model_runs",
+                [
+                    {
+                        "id": 3,
+                        "model_id": 1,
+                        "date_tested": "2026-06-05",
+                        "backend": "LM Studio CLI",
+                        "format": "MLX",
+                        "quantization": "4bit",
+                        "tokens_per_sec": 66.46,
+                        "run_notes": f"benchmark_run_id={benchmark_run_id} | dashboard=yes",
+                    }
+                ],
+            )
+            write_table(
+                artifact_dir / "eval_scores.csv",
+                "eval_scores",
+                [
+                    {
+                        "id": 2,
+                        "run_id": 3,
+                        "instruction_following": 76,
+                        "truthfulness_uncertainty": 72,
+                        "reasoning": 86,
+                        "coding_debugging": 64,
+                        "agent_planning": 70,
+                        "local_ai_lab_usefulness": 55,
+                        "research_synthesis": 77,
+                        "business_seo_strategy": 82,
+                        "long_context": 80,
+                        "creativity": 73,
+                        "speed_practicality": 76,
+                        "total_score": 72.5,
+                        "final_label": "WATCHLIST",
+                        "score_status": "confirmed",
+                    }
+                ],
+            )
+            write_table(
+                artifact_dir / "decisions.csv",
+                "decisions",
+                [
+                    {
+                        "id": 3,
+                        "model_id": 1,
+                        "decision": "watchlist",
+                        "keep_installed": 1,
+                        "created_at": "2026-06-06T02:18:06+00:00",
+                    }
+                ],
+            )
+
+            counts = csv_io.import_all(
+                db_path,
+                {
+                    "models": artifact_dir / "models.csv",
+                    "model_runs": artifact_dir / "model_runs.csv",
+                    "eval_scores": artifact_dir / "eval_scores.csv",
+                    "decisions": artifact_dir / "decisions.csv",
+                },
+            )
+
+            self.assertEqual(counts, {
+                "models": 1,
+                "model_runs": 1,
+                "eval_scores": 1,
+                "decisions": 1,
+            })
+            with db.connect(db_path) as conn:
+                self.assertEqual(db.table_count(conn, "models"), 5)
+                self.assertEqual(db.table_count(conn, "model_runs"), 5)
+                self.assertEqual(db.table_count(conn, "eval_scores"), 5)
+                self.assertEqual(db.table_count(conn, "decisions"), 5)
+                imported = conn.execute(
+                    """
+                    SELECT m.id AS model_id, r.id AS run_id, s.id AS score_id, d.id AS decision_id
+                    FROM models m
+                    JOIN model_runs r ON r.model_id = m.id
+                    JOIN eval_scores s ON s.run_id = r.id
+                    JOIN decisions d ON d.model_id = m.id
+                    WHERE r.run_notes LIKE ?
+                    """,
+                    (f"%benchmark_run_id={benchmark_run_id}%",),
+                ).fetchone()
+                self.assertIsNotNone(imported)
+                self.assertGreater(imported["model_id"], 4)
+                self.assertGreater(imported["run_id"], 4)
+                self.assertGreater(imported["score_id"], 4)
+                self.assertGreater(imported["decision_id"], 4)
+
     def test_legacy_eval_scores_without_score_status_import_as_confirmed(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)

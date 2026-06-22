@@ -154,14 +154,147 @@ def import_table(conn, table_name, csv_path):
     return count
 
 
+def _read_import_rows(table_name, csv_path):
+    csv_path = Path(csv_path)
+    if table_name not in TABLE_FIELDS:
+        raise ValueError(f"Unknown table: {table_name}")
+    with csv_path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        fieldnames = set(reader.fieldnames or [])
+        optional = set()
+        if table_name == "eval_scores":
+            optional.add("score_status")
+        if table_name == "model_runs":
+            optional.update({"ttft_seconds", "total_latency_seconds"})
+        missing = (set(TABLE_FIELDS[table_name]) - optional) - fieldnames
+        if missing:
+            raise ValueError(
+                "{} is missing columns: {}".format(csv_path, ", ".join(sorted(missing)))
+            )
+        return [_coerce_row(table_name, row) for row in reader]
+
+
+def _next_id(conn, table_name):
+    row = conn.execute(f"SELECT COALESCE(MAX(id), 0) + 1 FROM {table_name}").fetchone()
+    return int(row[0])
+
+
+def _existing_model_id(conn, row):
+    existing = conn.execute(
+        "SELECT id, model_name, source_url FROM models WHERE id = ?",
+        (row.get("id"),),
+    ).fetchone()
+    if existing is None:
+        return row.get("id")
+    same_name = (existing["model_name"] or "") == (row.get("model_name") or "")
+    same_source = (existing["source_url"] or "") == (row.get("source_url") or "")
+    if same_name and same_source:
+        return row.get("id")
+    by_source = row.get("source_url")
+    if by_source:
+        match = conn.execute("SELECT id FROM models WHERE source_url = ?", (by_source,)).fetchone()
+        if match:
+            return int(match["id"])
+    by_name = row.get("model_name")
+    if by_name:
+        match = conn.execute("SELECT id FROM models WHERE model_name = ?", (by_name,)).fetchone()
+        if match:
+            return int(match["id"])
+    return _next_id(conn, "models")
+
+
+def _benchmark_run_id_from_notes(notes):
+    for part in str(notes or "").split("|"):
+        part = part.strip()
+        if part.startswith("benchmark_run_id="):
+            return part.split("=", 1)[1].strip()
+    return ""
+
+
+def _existing_run_id(conn, row):
+    benchmark_run_id = _benchmark_run_id_from_notes(row.get("run_notes"))
+    if benchmark_run_id:
+        like_value = f"%benchmark_run_id={benchmark_run_id}%"
+        match = conn.execute(
+            "SELECT id FROM model_runs WHERE run_notes LIKE ?",
+            (like_value,),
+        ).fetchone()
+        if match:
+            return int(match["id"])
+    existing = conn.execute("SELECT id FROM model_runs WHERE id = ?", (row.get("id"),)).fetchone()
+    if existing is None:
+        return row.get("id")
+    return _next_id(conn, "model_runs")
+
+
+def _existing_score_id(conn, row):
+    match = conn.execute(
+        "SELECT id FROM eval_scores WHERE run_id = ?",
+        (row.get("run_id"),),
+    ).fetchone()
+    if match:
+        return int(match["id"])
+    existing = conn.execute("SELECT id FROM eval_scores WHERE id = ?", (row.get("id"),)).fetchone()
+    if existing is None:
+        return row.get("id")
+    return _next_id(conn, "eval_scores")
+
+
+def _existing_decision_id(conn, row):
+    match = conn.execute(
+        "SELECT id FROM decisions WHERE model_id = ? AND created_at = ?",
+        (row.get("model_id"), row.get("created_at")),
+    ).fetchone()
+    if match:
+        return int(match["id"])
+    existing = conn.execute("SELECT id FROM decisions WHERE id = ?", (row.get("id"),)).fetchone()
+    if existing is None:
+        return row.get("id")
+    return _next_id(conn, "decisions")
+
+
+def _import_related_rows(conn, rows_by_table):
+    counts = {}
+    model_id_map = {}
+    for row in rows_by_table.get("models", []):
+        original_id = row.get("id")
+        row["id"] = _existing_model_id(conn, row)
+        model_id_map[original_id] = row["id"]
+        _insert_row(conn, "models", row)
+        counts["models"] = counts.get("models", 0) + 1
+
+    run_id_map = {}
+    for row in rows_by_table.get("model_runs", []):
+        original_id = row.get("id")
+        row["model_id"] = model_id_map.get(row.get("model_id"), row.get("model_id"))
+        row["id"] = _existing_run_id(conn, row)
+        run_id_map[original_id] = row["id"]
+        _insert_row(conn, "model_runs", row)
+        counts["model_runs"] = counts.get("model_runs", 0) + 1
+
+    for row in rows_by_table.get("eval_scores", []):
+        row["run_id"] = run_id_map.get(row.get("run_id"), row.get("run_id"))
+        row["id"] = _existing_score_id(conn, row)
+        _insert_row(conn, "eval_scores", row)
+        counts["eval_scores"] = counts.get("eval_scores", 0) + 1
+
+    for row in rows_by_table.get("decisions", []):
+        row["model_id"] = model_id_map.get(row.get("model_id"), row.get("model_id"))
+        row["id"] = _existing_decision_id(conn, row)
+        _insert_row(conn, "decisions", row)
+        counts["decisions"] = counts.get("decisions", 0) + 1
+    return counts
+
+
 def import_all(db_path, csv_paths):
     db.init_db(db_path, reset=False)
-    counts = {}
     with db.connect(db_path) as conn:
-        for table_name in IMPORT_ORDER:
-            csv_path = csv_paths.get(table_name)
-            if csv_path:
-                counts[table_name] = import_table(conn, table_name, csv_path)
+        rows_by_table = {
+            table_name: _read_import_rows(table_name, csv_paths[table_name])
+            for table_name in IMPORT_ORDER
+            if csv_paths.get(table_name)
+        }
+        counts = _import_related_rows(conn, rows_by_table)
         conn.commit()
     return counts
 
