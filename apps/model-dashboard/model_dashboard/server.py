@@ -234,6 +234,7 @@ def make_handler(
                             CANDIDATE_REGISTRY_PATH,
                             EVAL_RESULTS_DIR,
                             run_test_timeout,
+                            database_path,
                         )
                         html = _run_action_started_page(result)
                         self.send_response(200)

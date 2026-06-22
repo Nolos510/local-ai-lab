@@ -1,3 +1,4 @@
+import csv
 import sys
 import tempfile
 import threading
@@ -13,7 +14,16 @@ from urllib.request import Request, urlopen
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
 
-from model_dashboard import db, server  # noqa: E402
+from model_dashboard import csv_io, db, server  # noqa: E402
+from model_dashboard.pages import actions  # noqa: E402
+
+
+def write_table(path, table_name, rows):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=csv_io.TABLE_FIELDS[table_name])
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 class DashboardHttpHandlerTests(unittest.TestCase):
@@ -153,6 +163,72 @@ class DashboardHttpHandlerTests(unittest.TestCase):
             self.assertIn("20260621-ready-local-dashboard-test", body)
             start.assert_called_once()
             self.assertEqual(start.call_args.args[0], "candidate-ready")
+            self.assertEqual(start.call_args.args[4], db_path)
+
+    def test_background_run_imports_dashboard_csvs_after_capture(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            fixture_dir = APP_DIR / "fixtures"
+            csv_io.import_fixture_set(db_path, fixture_dir)
+            eval_results = tmp_path / "eval_results"
+            run_id = "20260621-ready-local-dashboard-test"
+            import_dir = eval_results / run_id / "dashboard-import"
+
+            write_table(
+                import_dir / "models.csv",
+                "models",
+                [{"id": 1, "model_name": "Ready Local 7B", "provider": "local"}],
+            )
+            write_table(
+                import_dir / "model_runs.csv",
+                "model_runs",
+                [
+                    {
+                        "id": 1,
+                        "model_id": 1,
+                        "date_tested": "2026-06-21",
+                        "backend": "LM Studio CLI",
+                        "tokens_per_sec": 22.5,
+                        "run_notes": f"benchmark_run_id={run_id} | dashboard_run_button=yes",
+                    }
+                ],
+            )
+            write_table(import_dir / "eval_scores.csv", "eval_scores", [])
+            write_table(import_dir / "decisions.csv", "decisions", [])
+
+            with (
+                mock.patch.object(actions, "_run_candidate_test_for_row") as run_capture,
+                mock.patch.object(
+                    actions,
+                    "_run_subprocess",
+                    return_value=SimpleNamespace(returncode=0, stdout="", stderr=""),
+                ) as export,
+            ):
+                actions._background_candidate_test(
+                    {"candidate_id": "candidate-ready", "model_name": "Ready Local 7B"},
+                    run_id,
+                    eval_results,
+                    5,
+                    db_path,
+                )
+
+            run_capture.assert_called_once()
+            export.assert_called_once()
+            with db.connect(db_path) as conn:
+                imported = conn.execute(
+                    """
+                    SELECT m.model_name, r.tokens_per_sec
+                    FROM model_runs r
+                    JOIN models m ON m.id = r.model_id
+                    WHERE r.run_notes LIKE ?
+                    """,
+                    (f"%benchmark_run_id={run_id}%",),
+                ).fetchone()
+
+            self.assertIsNotNone(imported)
+            self.assertEqual(imported["model_name"], "Ready Local 7B")
+            self.assertEqual(imported["tokens_per_sec"], 22.5)
 
     def test_delete_model_lmstudio_requires_confirm_then_uses_trash(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -110,19 +110,38 @@ def _write_background_error(run_dir, exc):
     error_path.write_text(f"{type(exc).__name__}: {exc}\n", encoding="utf-8")
 
 
-def _background_candidate_test(row, run_id, eval_results_dir, timeout):
+def _export_dashboard_import(run_id, eval_results_dir, timeout):
+    run_dir = Path(eval_results_dir) / run_id
+    export_command = [
+        sys.executable,
+        str(HARNESS_PATH),
+        "export-dashboard",
+        "--run-dir",
+        str(run_dir),
+    ]
+    return _run_subprocess(export_command, timeout)
+
+
+def _import_dashboard_artifact(run_id, database_path, eval_results_dir):
+    paths = _artifact_csv_paths(run_id, eval_results_dir)
+    return csv_io.import_all(database_path, paths)
+
+
+def _background_candidate_test(row, run_id, eval_results_dir, timeout, database_path):
     try:
         _run_candidate_test_for_row(row, run_id, eval_results_dir, timeout)
+        _export_dashboard_import(run_id, eval_results_dir, timeout)
+        _import_dashboard_artifact(run_id, database_path, eval_results_dir)
     except Exception as exc:  # pragma: no cover - defensive worker guard
         _write_background_error(Path(eval_results_dir) / run_id, exc)
 
 
-def _start_candidate_test(candidate_id, registry_path, eval_results_dir, timeout):
+def _start_candidate_test(candidate_id, registry_path, eval_results_dir, timeout, database_path):
     row, run_id = _candidate_test_plan(candidate_id, registry_path, eval_results_dir)
     run_dir = Path(eval_results_dir) / run_id
     thread = threading.Thread(
         target=_background_candidate_test,
-        args=(row, run_id, eval_results_dir, timeout),
+        args=(row, run_id, eval_results_dir, timeout, database_path),
         daemon=True,
         name=f"dashboard-run-{run_id[:48]}",
     )
@@ -186,7 +205,7 @@ def _run_action_started_page(result):
       <p><strong>Runner:</strong> {runner}</p>
       <p><strong>Artifact:</strong> {artifact}</p>
       <p><strong>Local path:</strong> <code>{artifact_path}</code></p>
-      <p class="empty">The local benchmark is running in the background. Refresh the artifact page after the capture finishes; raw responses remain local artifact evidence and scores still require human review.</p>
+      <p class="empty">The local benchmark is running in the background. When capture finishes, dashboard-import CSVs are refreshed and imported automatically. Raw responses remain local artifact evidence; scores still require human review or a scored artifact export.</p>
     </section>
     """.format(
         candidate=_text(candidate.get("model_name")),
