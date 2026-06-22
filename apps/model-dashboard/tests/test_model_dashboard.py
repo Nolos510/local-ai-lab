@@ -645,6 +645,80 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Unsafe Source Model", html)
             self.assertNotIn('href="javascript:alert(1)"', html)
 
+    def test_model_detail_tables_use_expandable_column_layouts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with db.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO models (id, model_name, model_family, provider)
+                    VALUES (5, 'Detail Layout Model', 'Qwen', 'local')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO model_runs (
+                        id, model_id, date_tested, backend, run_notes
+                    )
+                    VALUES (
+                        10,
+                        5,
+                        '2026-06-05',
+                        'LM Studio CLI',
+                        'benchmark_run_id=20260605-detail-layout'
+                    )
+                    """
+                )
+                score_fields = ", ".join(METRIC_FIELDS)
+                score_placeholders = ", ".join("72" for _ in METRIC_FIELDS)
+                conn.execute(
+                    f"""
+                    INSERT INTO eval_scores (
+                        id,
+                        run_id,
+                        {score_fields},
+                        total_score,
+                        final_label,
+                        score_status
+                    )
+                    VALUES (11, 10, {score_placeholders}, 72.5, 'WATCHLIST', 'confirmed')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO decisions (
+                        id,
+                        model_id,
+                        decision,
+                        keep_installed,
+                        best_use_case,
+                        weakness,
+                        retest_condition,
+                        created_at
+                    )
+                    VALUES (
+                        12,
+                        5,
+                        'watchlist',
+                        1,
+                        'Fast local coding',
+                        'Needs retest',
+                        'Retest after import',
+                        '2026-06-06T12:18:06+00:00'
+                    )
+                    """
+                )
+                html = server._model_detail(conn, 5)
+
+            self.assertIn('class="model-detail-runs-table"', html)
+            self.assertIn('class="model-detail-decisions-table"', html)
+            self.assertIn(".model-detail-runs-table {", html)
+            self.assertIn(".model-detail-decisions-table {", html)
+            self.assertIn("min-width: 1280px", html)
+            self.assertIn("min-width: 1180px", html)
+            self.assertIn("white-space: nowrap", html)
+
     def test_project_repo_url_rejects_unsafe_scheme(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

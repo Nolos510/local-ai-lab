@@ -103,10 +103,12 @@ def _model_detail(conn, model_id):
                 "Notes",
             ],
             run_rows,
+            table_class="model-detail-runs-table",
         ),
         decisions=_table(
             ["Created", "Decision", "Keep", "Best use case", "Weakness", "Retest"],
             decision_rows,
+            table_class="model-detail-decisions-table",
         ),
     )
     return _layout("Model Detail", "", body)

@@ -537,6 +537,76 @@ def _layout(title, current_path, body):
     .runs-table td:nth-child(13) {{
       width: 240px;
     }}
+    .model-detail-runs-table {{
+      min-width: 1280px;
+    }}
+    .model-detail-runs-table th:nth-child(1),
+    .model-detail-runs-table td:nth-child(1) {{
+      width: 115px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .model-detail-runs-table th:nth-child(2),
+    .model-detail-runs-table td:nth-child(2) {{
+      width: 125px;
+    }}
+    .model-detail-runs-table th:nth-child(3),
+    .model-detail-runs-table td:nth-child(3),
+    .model-detail-runs-table th:nth-child(4),
+    .model-detail-runs-table td:nth-child(4),
+    .model-detail-runs-table th:nth-child(5),
+    .model-detail-runs-table td:nth-child(5),
+    .model-detail-runs-table th:nth-child(6),
+    .model-detail-runs-table td:nth-child(6),
+    .model-detail-runs-table th:nth-child(7),
+    .model-detail-runs-table td:nth-child(7),
+    .model-detail-runs-table th:nth-child(8),
+    .model-detail-runs-table td:nth-child(8) {{
+      width: 84px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .model-detail-runs-table th:nth-child(9),
+    .model-detail-runs-table td:nth-child(9),
+    .model-detail-runs-table th:nth-child(10),
+    .model-detail-runs-table td:nth-child(10) {{
+      width: 118px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .model-detail-runs-table th:nth-child(11),
+    .model-detail-runs-table td:nth-child(11) {{
+      width: 200px;
+    }}
+    .model-detail-runs-table th:nth-child(12),
+    .model-detail-runs-table td:nth-child(12) {{
+      width: 260px;
+    }}
+    .model-detail-decisions-table {{
+      min-width: 1180px;
+    }}
+    .model-detail-decisions-table th:nth-child(1),
+    .model-detail-decisions-table td:nth-child(1) {{
+      width: 180px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .model-detail-decisions-table th:nth-child(2),
+    .model-detail-decisions-table td:nth-child(2),
+    .model-detail-decisions-table th:nth-child(3),
+    .model-detail-decisions-table td:nth-child(3) {{
+      width: 100px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .model-detail-decisions-table th:nth-child(4),
+    .model-detail-decisions-table td:nth-child(4),
+    .model-detail-decisions-table th:nth-child(5),
+    .model-detail-decisions-table td:nth-child(5),
+    .model-detail-decisions-table th:nth-child(6),
+    .model-detail-decisions-table td:nth-child(6) {{
+      width: 300px;
+    }}
     .split {{
       display: grid;
       grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.6fr);
