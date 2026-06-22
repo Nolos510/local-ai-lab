@@ -1311,6 +1311,60 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn('action="/actions/delete-model"', html)
         self.assertIn(">Remove</button>", html)
 
+    def test_inventory_lmstudio_bundled_internal_model_is_not_removable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            lmstudio_root = tmp_path / "models"
+            bundled_root = tmp_path / ".internal" / "bundled-models"
+            bundled_file = (
+                bundled_root
+                / "nomic-ai"
+                / "nomic-embed-text-v1.5-GGUF"
+                / "nomic-embed-text-v1.5.Q4_K_M.gguf"
+            )
+            bundled_file.parent.mkdir(parents=True)
+            bundled_file.write_text("weights", encoding="utf-8")
+            source_path = (
+                "nomic-ai/nomic-embed-text-v1.5-GGUF/"
+                "nomic-embed-text-v1.5.Q4_K_M.gguf"
+            )
+
+            with mock.patch(
+                "model_dashboard.pages.inventory.LMSTUDIO_BUNDLED_MODELS_ROOT",
+                bundled_root,
+            ):
+                models = server._parse_lmstudio_inventory(
+                    json.dumps(
+                        {
+                            "models": [
+                                {
+                                    "type": "embedding",
+                                    "modelKey": "text-embedding-nomic-embed-text-v1.5",
+                                    "displayName": "Nomic Embed Text v1.5",
+                                    "publisher": "nomic-ai",
+                                    "path": source_path,
+                                }
+                            ]
+                        }
+                    ),
+                    root=lmstudio_root,
+                )
+                html = server._inventory(
+                    inventory_result={
+                        "checked_at": "2026-06-05T12:00:00-07:00",
+                        "checks": [],
+                        "models": models,
+                    },
+                    action_token="fixture-token",
+                    enable_delete_actions=True,
+                )
+
+        self.assertEqual(models[0]["local_path"], str(bundled_file))
+        self.assertIn("Bundled LM Studio internal model", models[0]["removal_blocked_reason"])
+        self.assertIn(str(bundled_file), html)
+        self.assertIn("Bundled LM Studio internal model", html)
+        self.assertNotIn('action="/actions/delete-model"', html)
+
     def test_inventory_parses_lmstudio_models_and_loaded_status(self):
         with tempfile.TemporaryDirectory() as tmp:
             models = server._parse_lmstudio_inventory(

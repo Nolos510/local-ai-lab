@@ -15,6 +15,7 @@ from ..filters import *
 from ..layout import _layout
 
 LMSTUDIO_MODELS_ROOT = Path.home() / ".lmstudio" / "models"
+LMSTUDIO_BUNDLED_MODELS_ROOT = Path.home() / ".lmstudio" / ".internal" / "bundled-models"
 OLLAMA_MODELS_ROOT = Path.home() / ".ollama" / "models"
 LMSTUDIO_WEIGHT_SUFFIXES = (".gguf", ".safetensors", ".bin", ".mlx", ".npz")
 
@@ -28,6 +29,8 @@ def _inventory_model_key(model):
 
 def _inventory_model_removable(model):
     runtime = model.get("runtime")
+    if model.get("removal_blocked_reason"):
+        return False
     if runtime == "LM Studio":
         raw_path = model.get("local_path") or model.get("source_path")
         if not raw_path:
@@ -44,7 +47,8 @@ def _inventory_model_removable(model):
 
 def _remove_model_control(model, enable_delete_actions=False, action_token=""):
     if not _inventory_model_removable(model):
-        return '<span class="empty">Removal unavailable for this row</span>'
+        reason = model.get("removal_blocked_reason") or "Removal unavailable for this row"
+        return f'<span class="empty">{_text(reason)}</span>'
     if not enable_delete_actions:
         return """
         <div class="cell-stack">
@@ -147,6 +151,26 @@ def _local_path_from_source(root, source_path):
     return str(Path(root).expanduser() / path)
 
 
+def _lmstudio_local_path_and_removal_reason(
+    source_path,
+    root=None,
+    bundled_root=None,
+):
+    root = LMSTUDIO_MODELS_ROOT if root is None else root
+    bundled_root = LMSTUDIO_BUNDLED_MODELS_ROOT if bundled_root is None else bundled_root
+    local_path = _local_path_from_source(root, source_path)
+    if not source_path:
+        return local_path, ""
+    path = Path(str(source_path)).expanduser()
+    if path.is_absolute():
+        return str(path), ""
+
+    bundled_path = Path(bundled_root).expanduser() / path
+    if bundled_path.exists():
+        return str(bundled_path), "Bundled LM Studio internal model; remove in LM Studio if supported."
+    return local_path, ""
+
+
 def _ollama_manifest_path(model_id, root=OLLAMA_MODELS_ROOT):
     if not model_id:
         return ""
@@ -221,6 +245,10 @@ def _parse_lmstudio_inventory(ls_stdout, ps_stdout="", root=LMSTUDIO_MODELS_ROOT
             else "indexed"
         )
         source_path = row.get("path") or ""
+        local_path, removal_blocked_reason = _lmstudio_local_path_and_removal_reason(
+            source_path,
+            root=root,
+        )
         models.append(
             {
                 "runtime": "LM Studio",
@@ -228,7 +256,8 @@ def _parse_lmstudio_inventory(ls_stdout, ps_stdout="", root=LMSTUDIO_MODELS_ROOT
                 "display_name": display_name or model_id,
                 "status": status,
                 "source_path": source_path,
-                "local_path": _local_path_from_source(root, source_path),
+                "local_path": local_path,
+                "removal_blocked_reason": removal_blocked_reason,
             }
         )
     return models
@@ -728,4 +757,4 @@ def _delete_model_action(
     result = removal.remove_target(target, timeout=timeout)
     return _delete_result_page(result), result
 
-__all__ = ('_inventory_model_key', '_inventory_model_removable', '_remove_model_control', '_inventory_action_cell', '_lmstudio_cli_path', '_collect_json_objects', '_first_value', '_looks_like_lmstudio_model', '_lmstudio_identity_values', '_local_path_from_source', '_ollama_manifest_path', '_parse_lmstudio_inventory', '_scan_lmstudio_filesystem_models', '_has_lmstudio_weight_file', '_parse_ollama_inventory', '_refresh_inventory', '_match_inventory_model', '_inventory_run_allowed', '_inventory_filter_values', '_matches_inventory_search', '_filter_inventory_entries', '_inventory_filters', '_inventory_paths_cell', '_inventory', '_format_bytes', '_inventory_model_by_key', '_removal_target_from_key', '_delete_confirm_page', '_delete_result_page', '_delete_model_action', 'LMSTUDIO_MODELS_ROOT', 'OLLAMA_MODELS_ROOT', 'LMSTUDIO_WEIGHT_SUFFIXES')
+__all__ = ('_inventory_model_key', '_inventory_model_removable', '_remove_model_control', '_inventory_action_cell', '_lmstudio_cli_path', '_collect_json_objects', '_first_value', '_looks_like_lmstudio_model', '_lmstudio_identity_values', '_local_path_from_source', '_lmstudio_local_path_and_removal_reason', '_ollama_manifest_path', '_parse_lmstudio_inventory', '_scan_lmstudio_filesystem_models', '_has_lmstudio_weight_file', '_parse_ollama_inventory', '_refresh_inventory', '_match_inventory_model', '_inventory_run_allowed', '_inventory_filter_values', '_matches_inventory_search', '_filter_inventory_entries', '_inventory_filters', '_inventory_paths_cell', '_inventory', '_format_bytes', '_inventory_model_by_key', '_removal_target_from_key', '_delete_confirm_page', '_delete_result_page', '_delete_model_action', 'LMSTUDIO_MODELS_ROOT', 'LMSTUDIO_BUNDLED_MODELS_ROOT', 'OLLAMA_MODELS_ROOT', 'LMSTUDIO_WEIGHT_SUFFIXES')
