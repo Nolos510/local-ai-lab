@@ -984,6 +984,9 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("No tokens/sec values imported yet", html)
             self.assertIn("No TTFT values imported yet", html)
             self.assertIn("No total latency values imported yet", html)
+            self.assertIn("capability-chart-grid", html)
+            self.assertIn('data-chart-dialog="capability-chart-tokens"', html)
+            self.assertIn('<dialog class="chart-dialog" id="capability-chart-tokens"', html)
 
     def test_capability_page_renders_candidate_and_artifact_counts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1078,6 +1081,53 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("33.3 tok/s", html)
             self.assertIn("0.77s", html)
             self.assertIn("14.90s", html)
+            self.assertIn('<strong class="chart-summary-value">33.3 tok/s</strong>', html)
+            self.assertIn('<strong class="chart-summary-value">0.77s</strong>', html)
+            self.assertIn('<strong class="chart-summary-value">14.90s</strong>', html)
+            self.assertIn('data-field="tokens_per_sec"', html)
+            self.assertIn('data-chart-dialog="capability-chart-tokens"', html)
+            self.assertIn('data-chart-dialog="capability-chart-ttft"', html)
+            self.assertIn('data-chart-dialog="capability-chart-latency"', html)
+
+    def test_capability_perf_summary_hides_missing_perf_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with db.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO models (id, model_name, model_family, provider)
+                    VALUES (1, 'Partial Perf Model', 'Perf', 'local')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO model_runs (
+                        id, model_id, date_tested, backend, tokens_per_sec
+                    )
+                    VALUES (1, 1, '2026-06-18', 'LM Studio CLI', 66.5)
+                    """
+                )
+                html = server._capability(
+                    conn,
+                    registry_path=tmp_path / "missing-candidates.csv",
+                    eval_results_dir=tmp_path / "missing-eval-results",
+                    hardware_profiles_dir=tmp_path / "missing-hardware",
+                )
+
+            self.assertIn('<strong class="chart-summary-value">66.5 tok/s</strong>', html)
+            self.assertIn("No TTFT values imported yet", html)
+            self.assertIn("No total latency values imported yet", html)
+
+    def test_capability_chart_dialog_styles_and_script_are_inline(self):
+        html = server._layout("Capability", "/capability", "<p>Body</p>")
+
+        self.assertIn(".chart-panel-large {", html)
+        self.assertIn(".chart-summary-value {", html)
+        self.assertIn(".chart-dialog {", html)
+        self.assertIn("dialog.showModal()", html)
+        self.assertIn("document.querySelectorAll('[data-chart-dialog]')", html)
 
     def test_capability_page_uses_no_external_assets(self):
         with tempfile.TemporaryDirectory() as tmp:

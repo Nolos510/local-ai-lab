@@ -26,26 +26,53 @@ def _capability(
     real_counts = _real_counts(conn)
     score_counts = _score_status_counts(conn)
     dashboard_runs = _real_rows(db.list_runs(conn))
-    tokens_chart = _performance_chart(
-        dashboard_runs,
-        "tokens_per_sec",
-        "Capability tokens per second",
+    tokens_items = _performance_items(dashboard_runs, "tokens_per_sec")
+    ttft_items = _performance_items(dashboard_runs, "ttft_seconds")
+    latency_items = _performance_items(dashboard_runs, "total_latency_seconds")
+    tokens_chart = charts.horizontal_bars(
+        tokens_items,
+        value_format="{:.1f} tok/s",
+        title="Capability tokens per second",
+        empty_message="No tokens/sec values imported yet",
+    )
+    ttft_chart = charts.horizontal_bars(
+        ttft_items,
+        value_format="{:.2f}s",
+        title="Capability TTFT seconds",
+        empty_message="No TTFT values imported yet",
+    )
+    latency_chart = charts.horizontal_bars(
+        latency_items,
+        value_format="{:.2f}s",
+        title="Capability total latency seconds",
+        empty_message="No total latency values imported yet",
+    )
+    tokens_panel = _capability_chart_panel(
+        "Tokens / Sec",
+        tokens_chart,
+        tokens_items,
         "{:.1f} tok/s",
         "No tokens/sec values imported yet",
+        "tokens_per_sec",
+        "capability-chart-tokens",
     )
-    ttft_chart = _performance_chart(
-        dashboard_runs,
-        "ttft_seconds",
-        "Capability TTFT seconds",
+    ttft_panel = _capability_chart_panel(
+        "TTFT",
+        ttft_chart,
+        ttft_items,
         "{:.2f}s",
         "No TTFT values imported yet",
+        "ttft_seconds",
+        "capability-chart-ttft",
     )
-    latency_chart = _performance_chart(
-        dashboard_runs,
-        "total_latency_seconds",
-        "Capability total latency seconds",
+    latency_panel = _capability_chart_panel(
+        "Total Latency",
+        latency_chart,
+        latency_items,
         "{:.2f}s",
         "No total latency values imported yet",
+        "total_latency_seconds",
+        "capability-chart-latency",
     )
 
     status_rows = [
@@ -134,10 +161,10 @@ def _capability(
     <section style="margin-top:16px">
       <h2>Performance Signals</h2>
       <p class="empty">These charts use imported local benchmark run metadata only. Empty charts mean no approved run has imported that perf field yet.</p>
-      <div class="chart-grid" aria-label="Capability performance charts">
-        {tokens_chart}
-        {ttft_chart}
-        {latency_chart}
+      <div class="chart-grid capability-chart-grid" aria-label="Capability performance charts">
+        {tokens_panel}
+        {ttft_panel}
+        {latency_panel}
       </div>
     </section>
     <section class="panel" style="margin-top:16px">
@@ -183,11 +210,77 @@ def _capability(
             ["Signal", "Count"],
             [[_text(label), _text(value)] for label, value in artifact_rows],
         ),
-        tokens_chart=_chart_panel("Tokens / Sec", tokens_chart),
-        ttft_chart=_chart_panel("TTFT", ttft_chart),
-        latency_chart=_chart_panel("Total Latency", latency_chart),
+        tokens_panel=tokens_panel,
+        ttft_panel=ttft_panel,
+        latency_panel=latency_panel,
         matrix_command=_command_block("uv run ai-lab bench matrix --limit 5"),
     )
     return _layout("Capability", "/capability", body)
+
+
+def _format_capability_value(value, value_format):
+    try:
+        return value_format.format(float(value))
+    except (TypeError, ValueError):
+        return _text(value)
+
+
+def _coerce_capability_value(value):
+    if value in (None, ""):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number or number in (float("inf"), float("-inf")):
+        return None
+    return max(0.0, number)
+
+
+def _chart_summary(items, value_format, empty_message, *, limit=3):
+    values = [
+        (label, number)
+        for label, value in items
+        if (number := _coerce_capability_value(value)) is not None
+    ]
+    if not values:
+        return f'<p class="empty">{_text(empty_message)}</p>'
+    rows = []
+    for label, value in values[:limit]:
+        rows.append(
+            '<div class="chart-summary-row">'
+            f'<strong class="chart-summary-value">{_format_capability_value(value, value_format)}</strong>'
+            f'<span>{_text(label)}</span>'
+            "</div>"
+        )
+    if len(values) > limit:
+        rows.append(f'<p class="empty">+{len(values) - limit} more imported runs</p>')
+    return '<div class="chart-summary">{}</div>'.format("".join(rows))
+
+
+def _capability_chart_panel(title, chart, items, value_format, empty_message, field_name, dialog_id):
+    safe_title = _text(title)
+    safe_dialog_id = _text(dialog_id)
+    heading_id = f"{safe_dialog_id}-title"
+    summary = _chart_summary(items, value_format, empty_message)
+    dialog_summary = _chart_summary(items, value_format, empty_message, limit=10)
+    return f"""
+    <div class="panel chart-panel chart-panel-large" data-field="{_text(field_name)}">
+      <div class="chart-panel-head">
+        <h2>{safe_title}</h2>
+        <button class="chart-expand" type="button" data-chart-dialog="{safe_dialog_id}">Expand</button>
+      </div>
+      {summary}
+      <div class="chart-preview" aria-hidden="true">{chart}</div>
+      <dialog class="chart-dialog" id="{safe_dialog_id}" aria-labelledby="{heading_id}">
+        <div class="chart-dialog-head">
+          <h2 id="{heading_id}">{safe_title}</h2>
+          <form method="dialog"><button type="submit">Close</button></form>
+        </div>
+        <div class="chart-dialog-body">{chart}</div>
+        {dialog_summary}
+      </dialog>
+    </div>
+    """
 
 __all__ = ('_capability',)

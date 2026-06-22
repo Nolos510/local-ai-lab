@@ -175,10 +175,91 @@ def _layout(title, current_path, body):
     .chart-panel {{
       overflow: hidden;
     }}
+    .capability-chart-grid {{
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    }}
+    .chart-panel-large {{
+      display: grid;
+      gap: 12px;
+      min-height: 250px;
+      overflow: visible;
+    }}
+    .chart-panel-head, .chart-dialog-head {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }}
+    .chart-panel-head h2, .chart-dialog-head h2 {{
+      margin: 0;
+    }}
+    .chart-expand {{
+      min-height: 34px;
+      padding: 6px 10px;
+      border-color: var(--line);
+      background: var(--panel-soft);
+      color: var(--ink);
+    }}
+    .chart-summary {{
+      display: grid;
+      gap: 9px;
+      min-width: 0;
+    }}
+    .chart-summary-row {{
+      display: grid;
+      grid-template-columns: minmax(90px, max-content) minmax(0, 1fr);
+      gap: 12px;
+      align-items: baseline;
+      min-width: 0;
+    }}
+    .chart-summary-value {{
+      color: var(--ink);
+      font-size: 24px;
+      line-height: 1.1;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }}
+    .chart-summary-row span {{
+      color: var(--muted);
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }}
+    .chart-preview {{
+      min-height: 78px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }}
     .chart {{
       display: block;
       width: 100%;
       height: auto;
+    }}
+    .chart-preview .chart {{
+      min-width: 860px;
+    }}
+    .chart-dialog {{
+      width: min(980px, calc(100vw - 48px));
+      max-height: min(720px, calc(100vh - 48px));
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--control);
+      color: var(--ink);
+      box-shadow: var(--shadow);
+      overflow: auto;
+    }}
+    .chart-dialog::backdrop {{
+      background: rgba(0, 0, 0, 0.64);
+      -webkit-backdrop-filter: blur(4px);
+      backdrop-filter: blur(4px);
+    }}
+    .chart-dialog-body {{
+      margin: 18px 0;
+      overflow-x: auto;
+    }}
+    .chart-dialog .chart {{
+      min-width: 900px;
     }}
     .chart-bar {{
       fill: url(#chart-bar-gradient);
@@ -524,6 +605,7 @@ def _layout(title, current_path, body):
       .filters {{ grid-template-columns: 1fr; }}
       .filter-actions {{ justify-content: flex-start; }}
       .split {{ grid-template-columns: 1fr; }}
+      .chart-summary-row {{ grid-template-columns: 1fr; gap: 4px; }}
       h1 {{ font-size: 24px; }}
       th, td {{ padding: 11px 9px; }}
     }}
@@ -796,6 +878,24 @@ def _layout(title, current_path, body):
     btn.addEventListener('click', function() {{
       app.classList.toggle('collapsed');
       try {{ localStorage.setItem('dash-sidebar', app.classList.contains('collapsed') ? 'collapsed' : 'open'); }} catch (e) {{}}
+    }});
+    document.querySelectorAll('[data-chart-dialog]').forEach(function(trigger) {{
+      trigger.addEventListener('click', function() {{
+        var dialog = document.getElementById(trigger.getAttribute('data-chart-dialog'));
+        if (!dialog) {{ return; }}
+        if (typeof dialog.showModal === 'function') {{
+          dialog.showModal();
+        }} else {{
+          dialog.setAttribute('open', 'open');
+        }}
+      }});
+    }});
+    document.querySelectorAll('.chart-dialog').forEach(function(dialog) {{
+      dialog.addEventListener('click', function(event) {{
+        if (event.target === dialog && typeof dialog.close === 'function') {{
+          dialog.close();
+        }}
+      }});
     }});
   }})();
   </script>
