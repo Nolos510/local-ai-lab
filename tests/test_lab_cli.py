@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import csv
+import json
 import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from local_ai_lab.cli import lab
+from local_ai_lab.cli import lab, quant_advisor
 
 
 def write_registry(path: Path) -> None:
@@ -129,6 +130,72 @@ def test_radar_list_filters_candidates(tmp_path, capsys) -> None:
     assert "candidate_id\tstatus\tmodel_name\tlocal_runner" in output
     assert "candidate-watch\twatchlist\tWatch Model\t" in output
     assert "candidate-ready" not in output
+
+
+def test_quant_advise_default_does_not_lookup_network(monkeypatch, capsys) -> None:
+    def fail_fetch(*_args, **_kwargs):
+        raise AssertionError("default quant advise must not perform network lookup")
+
+    monkeypatch.setattr(quant_advisor, "fetch_hf_json", fail_fetch)
+
+    exit_code = lab.main(
+        [
+            "quant",
+            "advise",
+            "--repo-id",
+            "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Network lookup: `no`" in output
+    assert "needs_quantized_artifact" in output
+
+
+def test_quant_advise_lookup_hf_uses_mocked_stdlib_metadata(monkeypatch, capsys) -> None:
+    def fake_fetch(url: str, *, timeout: float = 10.0):
+        if "search=" in url:
+            return [{"modelId": "lmstudio-community/DeepSeek-R1-0528-Qwen3-8B-GGUF"}]
+        return {
+            "modelId": "lmstudio-community/DeepSeek-R1-0528-Qwen3-8B-GGUF",
+            "siblings": [{"rfilename": "DeepSeek-R1-0528-Qwen3-8B-Q5_K_M.gguf"}],
+        }
+
+    monkeypatch.setattr(quant_advisor, "fetch_hf_json", fake_fetch)
+
+    exit_code = lab.main(
+        [
+            "quant",
+            "advise",
+            "--repo-id",
+            "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
+            "--lookup-hf",
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["network_lookup"] is True
+    assert payload["options"][0]["quantization"] == "Q5_K_M"
+
+
+def test_quant_advise_rejects_unsafe_output_path(capsys) -> None:
+    exit_code = lab.main(
+        [
+            "quant",
+            "advise",
+            "--repo-id",
+            "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
+            "--out-json",
+            "/tmp/quant-advice.json",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "inside the repository" in captured.err
 
 
 def test_bench_run_builds_harness_init_command(tmp_path, monkeypatch) -> None:

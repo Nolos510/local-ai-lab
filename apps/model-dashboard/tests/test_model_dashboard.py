@@ -1179,6 +1179,72 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn('data-chart-dialog="capability-chart-ttft"', html)
             self.assertIn('data-chart-dialog="capability-chart-latency"', html)
 
+    def test_capability_page_renders_saved_quant_advice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            advice_dir = tmp_path / "quant_advice"
+            advice_dir.mkdir()
+            (advice_dir / "deepseek.json").write_text(
+                json.dumps(
+                    {
+                        "base_repo_id": "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
+                        "candidate_id": "20260605-deepseek-r1-0528-qwen3-8b",
+                        "looked_up_at": "2026-06-22T00:00:00Z",
+                        "network_lookup": False,
+                        "options": [
+                            {
+                                "artifact_repo_id": (
+                                    "lmstudio-community/DeepSeek-R1-0528-Qwen3-8B-GGUF"
+                                ),
+                                "runtime": "LM Studio / Ollama / llama.cpp",
+                                "format": "GGUF",
+                                "quantization": "Q5_K_M",
+                                "artifact_ref": "model-Q5_K_M.gguf",
+                                "fit_tier": "quality_first_practical",
+                                "recommendation": "recommended_balanced",
+                                "reason": "Balanced starting point.",
+                                "approval_state": "metadata_only; not_approved_to_download",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            db.init_db(db_path, reset=True)
+
+            with db.connect(db_path) as conn:
+                html = server._capability(
+                    conn,
+                    registry_path=tmp_path / "missing-candidates.csv",
+                    eval_results_dir=tmp_path / "missing-eval-results",
+                    hardware_profiles_dir=tmp_path / "missing-hardware",
+                    quant_advice_dir=advice_dir,
+                )
+
+            self.assertIn("Quant Advice", html)
+            self.assertIn("DeepSeek-R1-0528-Qwen3-8B", html)
+            self.assertIn("Q5_K_M", html)
+            self.assertIn("recommended_balanced", html)
+            self.assertNotIn("<script src=", html)
+
+    def test_capability_page_renders_missing_quant_advice_empty_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+
+            with db.connect(db_path) as conn:
+                html = server._capability(
+                    conn,
+                    registry_path=tmp_path / "missing-candidates.csv",
+                    eval_results_dir=tmp_path / "missing-eval-results",
+                    hardware_profiles_dir=tmp_path / "missing-hardware",
+                    quant_advice_dir=tmp_path / "missing-quant-advice",
+                )
+
+            self.assertIn("No saved quant advice found.", html)
+
     def test_capability_perf_summary_hides_missing_perf_values(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

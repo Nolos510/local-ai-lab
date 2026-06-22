@@ -6,7 +6,7 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 
-from .. import capability, charts, db
+from .. import capability, charts, db, quant_advice
 from ..components import *
 from ..filters import *
 from ..icons import icon as render_icon
@@ -19,11 +19,13 @@ def _capability(
     registry_path=CANDIDATE_REGISTRY_PATH,
     eval_results_dir=EVAL_RESULTS_DIR,
     hardware_profiles_dir=REPO_ROOT / "docs" / "lab-notes",
+    quant_advice_dir=REPO_ROOT / "data" / "model_registry" / "quant_advice",
 ):
     candidates = capability.load_candidates(Path(registry_path))
     candidate_counts = capability.candidate_readiness_counts(candidates)
     artifact_counts = capability.benchmark_artifact_counts(Path(eval_results_dir))
     hardware_profiles = capability.load_hardware_profiles(Path(hardware_profiles_dir))
+    quant_rows = quant_advice.load_saved_quant_advice(Path(quant_advice_dir))
     real_counts = _real_counts(conn)
     score_counts = _score_status_counts(conn)
     dashboard_runs = _real_rows(db.list_runs(conn))
@@ -130,6 +132,21 @@ def _capability(
         ["Decision artifacts", artifact_counts["with_decisions"]],
         ["Dashboard-import folders", artifact_counts["with_dashboard_import"]],
     ]
+    quant_table_rows = [
+        [
+            '<div class="cell-stack"><div>{base}</div><code>{candidate}</code></div>'.format(
+                base=_text(row.get("base_repo_id")),
+                candidate=_text(row.get("candidate_id") or "not linked"),
+            ),
+            _text(row.get("artifact_repo_id")),
+            _text(row.get("quantization") or "select artifact"),
+            _text(row.get("runtime")),
+            _pill(row.get("recommendation")),
+            _text(row.get("approval_state")),
+            _text(row.get("next_step")),
+        ]
+        for row in quant_rows
+    ]
 
     body = """
     <section class="grid">
@@ -158,6 +175,11 @@ def _capability(
     <section style="margin-top:16px">
       <h2>Benchmark Artifact Counts</h2>
       {artifact_table}
+    </section>
+    <section style="margin-top:16px">
+      <h2>Quant Advice</h2>
+      <p class="empty">Saved quant advice is local metadata only. It does not approve downloads, installs, model runs, or eval scores.</p>
+      {quant_advice_table}
     </section>
     <section style="margin-top:16px">
       <h2>Performance Signals</h2>
@@ -206,6 +228,22 @@ def _capability(
         artifact_table=_table(
             ["Signal", "Count"],
             [[_text(label), _text(value)] for label, value in artifact_rows],
+        ),
+        quant_advice_table=_table(
+            [
+                "Base model",
+                "Artifact repo",
+                "Quant",
+                "Runtime",
+                "Recommendation",
+                "Approval",
+                "Next step",
+            ],
+            quant_table_rows,
+            empty_message=(
+                "No saved quant advice found. Run uv run ai-lab quant advise "
+                "--candidate <id> --out-json data/model_registry/quant_advice/<id>.json."
+            ),
         ),
         tokens_panel=tokens_panel,
         ttft_panel=ttft_panel,

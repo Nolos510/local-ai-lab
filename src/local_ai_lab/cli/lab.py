@@ -25,6 +25,21 @@ from local_ai_lab.cli.bench_matrix import (
     load_candidates,
 )
 from local_ai_lab.cli.hardware import collect_hardware_snapshot, format_snapshot, write_snapshot
+from local_ai_lab.cli.quant_advisor import (
+    advise as build_quant_advice,
+)
+from local_ai_lab.cli.quant_advisor import (
+    format_json as format_quant_json,
+)
+from local_ai_lab.cli.quant_advisor import (
+    format_markdown as format_quant_markdown,
+)
+from local_ai_lab.cli.quant_advisor import (
+    write_json as write_quant_json,
+)
+from local_ai_lab.cli.quant_advisor import (
+    write_markdown as write_quant_markdown,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_REGISTRY = REPO_ROOT / "data" / "model_registry" / "candidates.csv"
@@ -462,6 +477,56 @@ def command_hardware_snapshot(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_quant_advise(args: argparse.Namespace) -> int:
+    candidate: dict[str, str] = {}
+    candidate_id = args.candidate or ""
+    if args.candidate:
+        candidate = _candidate_by_id(args.registry, args.candidate)
+
+    source_text = ""
+    if args.source_note:
+        try:
+            source_text = args.source_note.read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"error: could not read source note: {exc}", file=sys.stderr)
+            return 2
+
+    try:
+        advice = build_quant_advice(
+            repo_id=args.repo_id,
+            candidate_id=candidate_id,
+            candidate=candidate,
+            source_text=source_text,
+            lookup_hf=args.lookup_hf,
+            timeout=args.timeout,
+            memory_gb=args.memory_gb,
+        )
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    if args.out_md:
+        try:
+            path = write_quant_markdown(args.out_md, advice, repo_root=REPO_ROOT)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        print(f"Wrote quant advice report: {path.relative_to(REPO_ROOT)}", file=sys.stderr)
+    if args.out_json:
+        try:
+            path = write_quant_json(args.out_json, advice, repo_root=REPO_ROOT)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        print(f"Wrote quant advice JSON: {path.relative_to(REPO_ROOT)}", file=sys.stderr)
+
+    if args.json:
+        print(format_quant_json(advice), end="")
+    else:
+        print(format_quant_markdown(advice), end="")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Operate the local-first AI Lab OS loop.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -495,6 +560,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write the same JSON to a repo-local path.",
     )
     hardware_snapshot.set_defaults(func=command_hardware_snapshot)
+
+    quant_parser = subparsers.add_parser("quant", help="Review local-first quantization advice.")
+    quant_subparsers = quant_parser.add_subparsers(dest="quant_command", required=True)
+    quant_advise = quant_subparsers.add_parser(
+        "advise",
+        help="Build metadata-only quantization advice; does not download or run models.",
+    )
+    quant_advise.add_argument(
+        "--candidate",
+        help="Candidate id from data/model_registry/candidates.csv.",
+    )
+    quant_advise.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
+    quant_advise.add_argument(
+        "--repo-id",
+        help="Base Hugging Face repo id, for example owner/model.",
+    )
+    quant_advise.add_argument(
+        "--source-note",
+        type=Path,
+        help="Repo-local source note with approved metadata.",
+    )
+    quant_advise.add_argument(
+        "--lookup-hf",
+        action="store_true",
+        help="Explicitly look up public Hugging Face metadata. No downloads or tokens.",
+    )
+    quant_advise.add_argument("--json", action="store_true", help="Print structured JSON.")
+    quant_advise.add_argument("--out-md", type=Path, help="Write a repo-local Markdown report.")
+    quant_advise.add_argument("--out-json", type=Path, help="Write a repo-local JSON advice file.")
+    quant_advise.add_argument("--memory-gb", type=float, default=256.0)
+    quant_advise.add_argument("--timeout", type=float, default=10.0)
+    quant_advise.set_defaults(func=command_quant_advise)
 
     bench_parser = subparsers.add_parser("bench", help="Prepare local benchmark artifacts.")
     bench_subparsers = bench_parser.add_subparsers(dest="bench_command", required=True)

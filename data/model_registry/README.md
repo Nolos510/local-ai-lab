@@ -54,6 +54,22 @@ fields power dashboard run-test buttons when the local server is launched with
 run actions enabled. Leave them blank until the exact local runtime identifier
 is verified; public model names are not enough.
 
+## Quant Advice
+
+Saved quantization advice belongs under `data/model_registry/quant_advice/` as
+small JSON files produced by `uv run ai-lab quant advise`. These files are
+candidate metadata only. They may rank possible GGUF quantizations such as
+`Q8_0`, `Q6_K`, `Q5_K_M`, `Q4_K_M`, `Q4_K_XL`, or `UD-Q4_K_XL` for LM Studio,
+Ollama, and llama.cpp planning, but they do not approve a download, install,
+model run, or score.
+
+The default advisor path is local-only and reads an explicit `--repo-id`,
+approved source note, or registry candidate. Public Hugging Face metadata lookup
+requires `--lookup-hf`; it uses stdlib HTTP only, no SDK, tokens, secrets,
+model downloads, or cloud inference calls. Advice remains a hypothesis until a
+specific local runtime model id is reviewed and a local benchmark artifact is
+imported through the benchmark/dashboard loop.
+
 ## Local-First Boundary
 
 This directory may contain local user notes. Treat unreviewed candidate records,

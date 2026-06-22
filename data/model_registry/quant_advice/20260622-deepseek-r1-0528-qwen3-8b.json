@@ -1,0 +1,140 @@
+{
+  "base_repo_id": "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
+  "candidate_id": "20260605-deepseek-r1-0528-qwen3-8b",
+  "looked_up_at": "2026-06-22T07:12:14Z",
+  "network_lookup": true,
+  "options": [
+    {
+      "approval_state": "metadata_only; not_approved_to_download; needs_license_review; needs_provenance_review",
+      "artifact_ref": "lmstudio-community/DeepSeek-R1-0528-Qwen3-8B-GGUF/DeepSeek-R1-0528-Qwen3-8B-Q6_K.gguf",
+      "artifact_repo_id": "lmstudio-community/DeepSeek-R1-0528-Qwen3-8B-GGUF",
+      "fit_tier": "quality_first_practical",
+      "format": "GGUF",
+      "quantization": "Q6_K",
+      "reason": "Quality-first comparison quant that should be practical for 8B if local runtime support is confirmed.",
+      "recommendation": "quality_check",
+      "runtime": "LM Studio / Ollama / llama.cpp"
+    },
+    {
+      "approval_state": "metadata_only; not_approved_to_download; needs_license_review; needs_provenance_review",
+      "artifact_ref": "lmstudio-community/DeepSeek-R1-0528-Qwen3-8B-GGUF/DeepSeek-R1-0528-Qwen3-8B-Q8_0.gguf",
+      "artifact_repo_id": "lmstudio-community/DeepSeek-R1-0528-Qwen3-8B-GGUF",
+      "fit_tier": "quality_first_practical",
+      "format": "GGUF",
+      "quantization": "Q8_0",
+      "reason": "Quality-first comparison quant that should be practical for 8B if local runtime support is confirmed.",
+      "recommendation": "quality_check",
+      "runtime": "LM Studio / Ollama / llama.cpp"
+    },
+    {
+      "approval_state": "metadata_only; not_approved_to_download; needs_license_review; needs_provenance_review",
+      "artifact_ref": "lmstudio-community/DeepSeek-R1-0528-Qwen3-8B-GGUF/DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf",
+      "artifact_repo_id": "lmstudio-community/DeepSeek-R1-0528-Qwen3-8B-GGUF",
+      "fit_tier": "fast_smaller",
+      "format": "GGUF",
+      "quantization": "Q4_K_M",
+      "reason": "Fast/smaller alternate for throughput checks or runtime compatibility triage.",
+      "recommendation": "fast_alternate",
+      "runtime": "LM Studio / Ollama / llama.cpp"
+    },
+    {
+      "approval_state": "metadata_only; not_approved_to_download; needs_license_review; needs_provenance_review",
+      "artifact_ref": "bartowski/deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-GGUF/deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-Q5_K_M.gguf",
+      "artifact_repo_id": "bartowski/deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-GGUF",
+      "fit_tier": "quality_first_practical",
+      "format": "GGUF",
+      "quantization": "Q5_K_M",
+      "reason": "Balanced starting point for 8B on a 256 GB Apple Silicon target.",
+      "recommendation": "recommended_balanced",
+      "runtime": "LM Studio / Ollama / llama.cpp"
+    },
+    {
+      "approval_state": "metadata_only; not_approved_to_download; needs_license_review; needs_provenance_review",
+      "artifact_ref": "bartowski/deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-GGUF/deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-Q6_K.gguf",
+      "artifact_repo_id": "bartowski/deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-GGUF",
+      "fit_tier": "quality_first_practical",
+      "format": "GGUF",
+      "quantization": "Q6_K",
+      "reason": "Quality-first comparison quant that should be practical for 8B if local runtime support is confirmed.",
+      "recommendation": "quality_check",
+      "runtime": "LM Studio / Ollama / llama.cpp"
+    },
+    {
+      "approval_state": "metadata_only; not_approved_to_download; needs_license_review; needs_provenance_review",
+      "artifact_ref": "bartowski/deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-GGUF/deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-Q8_0.gguf",
+      "artifact_repo_id": "bartowski/deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-GGUF",
+      "fit_tier": "quality_first_practical",
+      "format": "GGUF",
+      "quantization": "Q8_0",
+      "reason": "Quality-first comparison quant that should be practical for 8B if local runtime support is confirmed.",
+      "recommendation": "quality_check",
+      "runtime": "LM Studio / Ollama / llama.cpp"
+    },
+    {
+      "approval_state": "metadata_only; not_approved_to_download; needs_license_review; needs_provenance_review",
+      "artifact_ref": "bartowski/deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-GGUF/deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf",
+      "artifact_repo_id": "bartowski/deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-GGUF",
+      "fit_tier": "fast_smaller",
+      "format": "GGUF",
+      "quantization": "Q4_K_M",
+      "reason": "Fast/smaller alternate for throughput checks or runtime compatibility triage.",
+      "recommendation": "fast_alternate",
+      "runtime": "LM Studio / Ollama / llama.cpp"
+    },
+    {
+      "approval_state": "metadata_only; not_approved_to_download; needs_license_review; needs_provenance_review",
+      "artifact_ref": "unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF/DeepSeek-R1-0528-Qwen3-8B-Q5_K_M.gguf",
+      "artifact_repo_id": "unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF",
+      "fit_tier": "quality_first_practical",
+      "format": "GGUF",
+      "quantization": "Q5_K_M",
+      "reason": "Balanced starting point for 8B on a 256 GB Apple Silicon target.",
+      "recommendation": "recommended_balanced",
+      "runtime": "LM Studio / Ollama / llama.cpp"
+    },
+    {
+      "approval_state": "metadata_only; not_approved_to_download; needs_license_review; needs_provenance_review",
+      "artifact_ref": "unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF/DeepSeek-R1-0528-Qwen3-8B-Q6_K.gguf",
+      "artifact_repo_id": "unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF",
+      "fit_tier": "quality_first_practical",
+      "format": "GGUF",
+      "quantization": "Q6_K",
+      "reason": "Quality-first comparison quant that should be practical for 8B if local runtime support is confirmed.",
+      "recommendation": "quality_check",
+      "runtime": "LM Studio / Ollama / llama.cpp"
+    },
+    {
+      "approval_state": "metadata_only; not_approved_to_download; needs_license_review; needs_provenance_review",
+      "artifact_ref": "unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF/DeepSeek-R1-0528-Qwen3-8B-Q8_0.gguf",
+      "artifact_repo_id": "unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF",
+      "fit_tier": "quality_first_practical",
+      "format": "GGUF",
+      "quantization": "Q8_0",
+      "reason": "Quality-first comparison quant that should be practical for 8B if local runtime support is confirmed.",
+      "recommendation": "quality_check",
+      "runtime": "LM Studio / Ollama / llama.cpp"
+    },
+    {
+      "approval_state": "metadata_only; not_approved_to_download; needs_license_review; needs_provenance_review",
+      "artifact_ref": "unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF/DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf",
+      "artifact_repo_id": "unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF",
+      "fit_tier": "fast_smaller",
+      "format": "GGUF",
+      "quantization": "Q4_K_M",
+      "reason": "Fast/smaller alternate for throughput checks or runtime compatibility triage.",
+      "recommendation": "fast_alternate",
+      "runtime": "LM Studio / Ollama / llama.cpp"
+    },
+    {
+      "approval_state": "metadata_only; not_approved_to_download; needs_license_review; needs_provenance_review",
+      "artifact_ref": "unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF/DeepSeek-R1-0528-Qwen3-8B-UD-Q4_K_XL.gguf",
+      "artifact_repo_id": "unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF",
+      "fit_tier": "fast_smaller",
+      "format": "GGUF",
+      "quantization": "UD-Q4_K_XL",
+      "reason": "Fast/smaller alternate for throughput checks or runtime compatibility triage.",
+      "recommendation": "fast_alternate",
+      "runtime": "LM Studio / Ollama / llama.cpp"
+    }
+  ]
+}
