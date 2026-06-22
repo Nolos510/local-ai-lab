@@ -29,7 +29,14 @@ def _inventory_model_key(model):
 def _inventory_model_removable(model):
     runtime = model.get("runtime")
     if runtime == "LM Studio":
-        return bool(model.get("local_path") or model.get("source_path"))
+        raw_path = model.get("local_path") or model.get("source_path")
+        if not raw_path:
+            return False
+        try:
+            target_path, _root = removal._lmstudio_folder_target(raw_path, LMSTUDIO_MODELS_ROOT)
+        except removal.RemovalError:
+            return False
+        return target_path.exists()
     if runtime == "Ollama":
         return bool(model.get("model_id") and model.get("local_path"))
     return False

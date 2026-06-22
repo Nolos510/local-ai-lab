@@ -7,11 +7,14 @@ Trash, and Ollama models are removed through the Ollama CLI.
 
 from __future__ import annotations
 
+import json
 import platform
 import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+LMSTUDIO_WEIGHT_SUFFIXES = (".gguf", ".safetensors", ".bin", ".mlx", ".npz")
 
 
 class RemovalError(RuntimeError):
@@ -47,6 +50,21 @@ def _contained_path(path, root):
     return target_path, root_path
 
 
+def _lmstudio_folder_target(path, root):
+    target_path, root_path = _contained_path(path, root)
+    if target_path.is_file() or target_path.suffix.lower() in LMSTUDIO_WEIGHT_SUFFIXES:
+        target_path, root_path = _contained_path(target_path.parent, root_path)
+    if target_path == root_path:
+        raise RemovalError("Refusing to remove the LM Studio model root.")
+    if not target_path.exists():
+        raise RemovalError(
+            "LM Studio model folder is no longer present; refresh inventory before removing."
+        )
+    if not target_path.is_dir():
+        raise RemovalError(f"LM Studio removal target is not a folder: {target_path}")
+    return target_path, root_path
+
+
 def _directory_size(path: Path) -> int:
     if not path.exists():
         return 0
@@ -66,7 +84,7 @@ def resolve_target(model, lmstudio_root, ollama_root) -> RemovalTarget:
         raw_path = model.get("local_path") or model.get("source_path")
         if not raw_path:
             raise RemovalError("LM Studio model is missing a local path.")
-        target_path, root = _contained_path(raw_path, lmstudio_root)
+        target_path, root = _lmstudio_folder_target(raw_path, lmstudio_root)
         return RemovalTarget(
             runtime=runtime,
             model_id=model_id,
@@ -93,15 +111,18 @@ def resolve_target(model, lmstudio_root, ollama_root) -> RemovalTarget:
     raise RemovalError(f"Unsupported model runtime for removal: {runtime}")
 
 
-def _applescript_string(value) -> str:
-    return str(value).replace("\\", "\\\\").replace('"', '\\"')
-
-
 def _trash_lmstudio_model(target: RemovalTarget, timeout: int) -> RemovalResult:
     if platform.system() != "Darwin":
         raise RemovalError("LM Studio Trash removal is available only on macOS.")
-    script = f'tell application "Finder" to delete POSIX file "{_applescript_string(target.path)}"'
-    command = ("osascript", "-e", script)
+    path_literal = json.dumps(str(target.path))
+    script = (
+        'ObjC.import("Foundation");'
+        f"const url = $.NSURL.fileURLWithPath({path_literal});"
+        "const fileManager = $.NSFileManager.defaultManager;"
+        "const ok = fileManager.trashItemAtURLResultingItemURLError(url, null, null);"
+        'if (!ok) { throw new Error("trashItemAtURL failed"); }'
+    )
+    command = ("osascript", "-l", "JavaScript", "-e", script)
     completed = subprocess.run(
         command,
         text=True,

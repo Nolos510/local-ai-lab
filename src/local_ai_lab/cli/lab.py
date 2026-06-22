@@ -443,6 +443,8 @@ def command_dashboard(args: argparse.Namespace) -> int:
         command.append("--enable-import-actions")
     if args.enable_run_tests:
         command.append("--enable-run-tests")
+    if args.enable_delete_actions:
+        command.append("--enable-delete-actions")
     return _run(command)
 
 
@@ -566,6 +568,7 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard_parser.add_argument("--demo", action="store_true")
     dashboard_parser.add_argument("--enable-import-actions", action="store_true")
     dashboard_parser.add_argument("--enable-run-tests", action="store_true")
+    dashboard_parser.add_argument("--enable-delete-actions", action="store_true")
     dashboard_parser.set_defaults(func=command_dashboard)
 
     return parser

@@ -189,7 +189,127 @@ class DashboardHttpHandlerTests(unittest.TestCase):
             self.assertGreaterEqual(len(refresh_calls), 2)
             command = run.call_args.args[0]
             self.assertEqual(command[0], "osascript")
+            self.assertEqual(command[1], "-l")
+            self.assertEqual(command[2], "JavaScript")
+            self.assertIn("trashItemAtURLResultingItemURLError", command[4])
             self.assertNotIn("rm", command)
+
+    def test_delete_model_lmstudio_file_path_trashes_parent_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            lmstudio_root = tmp_path / "lmstudio"
+            model_dir = lmstudio_root / "publisher" / "Model"
+            model_dir.mkdir(parents=True)
+            weight_file = model_dir / "model.gguf"
+            weight_file.write_text("weights", encoding="utf-8")
+            model = {
+                "runtime": "LM Studio",
+                "model_id": "publisher/Model",
+                "display_name": "Model",
+                "status": "indexed",
+                "source_path": str(weight_file),
+                "local_path": str(weight_file),
+            }
+            result = {
+                "checked_at": "2026-06-18T10:00:00-07:00",
+                "checks": [],
+                "models": [model],
+            }
+
+            def fake_run(command, **_kwargs):
+                return SimpleNamespace(returncode=0, stdout="trashed", stderr="", args=command)
+
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with (
+                mock.patch.object(server, "LMSTUDIO_MODELS_ROOT", lmstudio_root),
+                mock.patch.object(server, "_refresh_inventory", lambda _timeout=5: result),
+                mock.patch("model_dashboard.removal.platform.system", return_value="Darwin"),
+                mock.patch("model_dashboard.removal.subprocess.run", side_effect=fake_run) as run,
+            ):
+                base_url = self.start_server(
+                    db_path,
+                    action_token="test-token",
+                    enable_delete_actions=True,
+                )
+                self.post(f"{base_url}/actions/refresh-inventory", {"token": "test-token"}).read()
+                remove_key = server._inventory_model_key(model)
+
+                with self.post(
+                    f"{base_url}/actions/delete-model",
+                    {"token": "test-token", "remove_key": remove_key},
+                ) as response:
+                    confirm_body = response.read().decode("utf-8")
+
+                self.assertIn(str(model_dir), confirm_body)
+                self.assertNotIn(str(weight_file), confirm_body)
+                run.assert_not_called()
+
+                with self.post(
+                    f"{base_url}/actions/delete-model",
+                    {
+                        "token": "test-token",
+                        "remove_key": remove_key,
+                        "confirm_delete": "yes",
+                    },
+                ) as response:
+                    result_body = response.read().decode("utf-8")
+
+            self.assertEqual(response.status, 200)
+            self.assertIn("Model Removal succeeded", result_body)
+            command = run.call_args.args[0]
+            self.assertEqual(command[0], "osascript")
+            self.assertEqual(command[1], "-l")
+            self.assertEqual(command[2], "JavaScript")
+            self.assertIn(str(model_dir), command[4])
+            self.assertNotIn(str(weight_file), command[4])
+            self.assertIn("trashItemAtURLResultingItemURLError", command[4])
+
+    def test_delete_model_lmstudio_missing_path_is_refused_before_osascript(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            lmstudio_root = tmp_path / "lmstudio"
+            model_dir = lmstudio_root / "publisher" / "Model"
+            model = {
+                "runtime": "LM Studio",
+                "model_id": "publisher/Model",
+                "display_name": "Model",
+                "status": "filesystem_only",
+                "source_path": "publisher/Model",
+                "local_path": str(model_dir),
+            }
+            result = {
+                "checked_at": "2026-06-18T10:00:00-07:00",
+                "checks": [],
+                "models": [model],
+            }
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+
+            with (
+                mock.patch.object(server, "LMSTUDIO_MODELS_ROOT", lmstudio_root),
+                mock.patch.object(server, "_refresh_inventory", lambda _timeout=5: result),
+                mock.patch("model_dashboard.removal.subprocess.run") as run,
+            ):
+                base_url = self.start_server(
+                    db_path,
+                    action_token="test-token",
+                    enable_delete_actions=True,
+                )
+                self.post(f"{base_url}/actions/refresh-inventory", {"token": "test-token"}).read()
+                remove_key = server._inventory_model_key(model)
+                with self.assertRaises(HTTPError) as raised:
+                    self.post(
+                        f"{base_url}/actions/delete-model",
+                        {
+                            "token": "test-token",
+                            "remove_key": remove_key,
+                            "confirm_delete": "yes",
+                        },
+                    )
+
+            self.assertEqual(raised.exception.code, 400)
+            run.assert_not_called()
 
     def test_delete_model_ollama_uses_ollama_rm(self):
         with tempfile.TemporaryDirectory() as tmp:

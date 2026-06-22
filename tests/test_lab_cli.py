@@ -354,7 +354,20 @@ def test_import_report_and_dashboard_shell_out(tmp_path, monkeypatch) -> None:
         == 0
     )
     assert lab.main(["report", "--db", str(db_path), "--out", str(out_path)]) == 0
-    assert lab.main(["dashboard", "--db", str(db_path), "--port", "9999", "--demo"]) == 0
+    assert (
+        lab.main(
+            [
+                "dashboard",
+                "--db",
+                str(db_path),
+                "--port",
+                "9999",
+                "--demo",
+                "--enable-delete-actions",
+            ]
+        )
+        == 0
+    )
 
     import_command, report_command, dashboard_command = commands
     assert import_command[:3] == [lab.sys.executable, str(lab.DASHBOARD_ENTRYPOINT), "import-csv"]
@@ -365,6 +378,7 @@ def test_import_report_and_dashboard_shell_out(tmp_path, monkeypatch) -> None:
     assert "--port" in dashboard_command
     assert "9999" in dashboard_command
     assert "--demo" in dashboard_command
+    assert "--enable-delete-actions" in dashboard_command
 
 
 def test_unknown_subcommand_exits_nonzero(capsys) -> None:

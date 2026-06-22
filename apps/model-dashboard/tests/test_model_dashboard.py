@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
@@ -1246,6 +1247,69 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("Filesystem-only; index/load in LM Studio first", html)
         self.assertIn("20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit", html)
         self.assertNotIn('action="/actions/run-test"', html)
+
+    def test_inventory_stale_lmstudio_path_does_not_show_remove_button(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lmstudio_root = Path(tmp) / "lmstudio"
+            result = {
+                "checked_at": "2026-06-05T12:00:00-07:00",
+                "checks": [],
+                "models": [
+                    {
+                        "runtime": "LM Studio",
+                        "model_id": "nomic-ai/nomic-embed-text-v1.5-GGUF/model.gguf",
+                        "display_name": "Nomic Embed Text",
+                        "status": "indexed",
+                        "source_path": "nomic-ai/nomic-embed-text-v1.5-GGUF/model.gguf",
+                        "local_path": str(
+                            lmstudio_root / "nomic-ai" / "nomic-embed-text-v1.5-GGUF" / "model.gguf"
+                        ),
+                    },
+                ],
+            }
+
+            with mock.patch("model_dashboard.pages.inventory.LMSTUDIO_MODELS_ROOT", lmstudio_root):
+                html = server._inventory(
+                    inventory_result=result,
+                    action_token="fixture-token",
+                    enable_delete_actions=True,
+                )
+
+        self.assertIn("Nomic Embed Text", html)
+        self.assertIn("Removal unavailable for this row", html)
+        self.assertNotIn('action="/actions/delete-model"', html)
+
+    def test_inventory_existing_lmstudio_folder_shows_remove_button(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lmstudio_root = Path(tmp) / "lmstudio"
+            model_dir = lmstudio_root / "publisher" / "Model"
+            model_dir.mkdir(parents=True)
+            (model_dir / "model.gguf").write_text("weights", encoding="utf-8")
+            result = {
+                "checked_at": "2026-06-05T12:00:00-07:00",
+                "checks": [],
+                "models": [
+                    {
+                        "runtime": "LM Studio",
+                        "model_id": "publisher/Model/model.gguf",
+                        "display_name": "Model",
+                        "status": "indexed",
+                        "source_path": "publisher/Model/model.gguf",
+                        "local_path": str(model_dir / "model.gguf"),
+                    },
+                ],
+            }
+
+            with mock.patch("model_dashboard.pages.inventory.LMSTUDIO_MODELS_ROOT", lmstudio_root):
+                html = server._inventory(
+                    inventory_result=result,
+                    action_token="fixture-token",
+                    enable_delete_actions=True,
+                )
+
+        self.assertIn("Model", html)
+        self.assertIn('action="/actions/delete-model"', html)
+        self.assertIn(">Remove</button>", html)
 
     def test_inventory_parses_lmstudio_models_and_loaded_status(self):
         with tempfile.TemporaryDirectory() as tmp:
