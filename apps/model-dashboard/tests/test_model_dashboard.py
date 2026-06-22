@@ -713,11 +713,22 @@ class ModelDashboardQaTests(unittest.TestCase):
 
             self.assertIn('class="model-detail-runs-table"', html)
             self.assertIn('class="model-detail-decisions-table"', html)
+            self.assertIn('class="model-detail-results-scroll"', html)
+            self.assertIn('class="model-detail-section"', html)
+            self.assertIn('class="model-detail-results-toolbar"', html)
+            self.assertIn('id="model-detail-results"', html)
+            self.assertIn('data-scroll-target="model-detail-results"', html)
+            self.assertIn('data-scroll-by="-360"', html)
+            self.assertIn('data-scroll-by="360"', html)
+            self.assertIn(".model-detail-results-scroll {", html)
+            self.assertIn(".model-detail-results-toolbar {", html)
+            self.assertIn("overscroll-behavior-x: contain", html)
+            self.assertIn(".model-detail-results-scroll .table-wrap {", html)
             self.assertIn(".model-detail-runs-table {", html)
             self.assertIn(".model-detail-decisions-table {", html)
-            self.assertIn("min-width: 1280px", html)
-            self.assertIn("min-width: 1180px", html)
+            self.assertIn("min-width: 1320px", html)
             self.assertIn("white-space: nowrap", html)
+            self.assertIn("target.scrollBy", html)
 
     def test_project_repo_url_rejects_unsafe_scheme(self):
         with tempfile.TemporaryDirectory() as tmp:

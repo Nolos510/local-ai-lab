@@ -537,12 +537,55 @@ def _layout(title, current_path, body):
     .runs-table td:nth-child(13) {{
       width: 240px;
     }}
+    .model-detail-results-scroll {{
+      width: 100%;
+      overflow-x: auto;
+      overflow-y: visible;
+      overscroll-behavior-x: contain;
+      scrollbar-gutter: stable;
+      padding-bottom: 8px;
+    }}
+    .model-detail-results-toolbar {{
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin: 16px 0 8px;
+    }}
+    .model-detail-results-toolbar button {{
+      min-height: 34px;
+      padding: 6px 10px;
+      border-color: var(--line);
+      background: var(--panel-soft);
+      color: var(--ink);
+    }}
+    .model-detail-section {{
+      min-width: 1320px;
+    }}
+    .model-detail-section + .model-detail-section {{
+      margin-top: 16px;
+    }}
+    .model-detail-results-scroll .table-wrap {{
+      overflow-x: visible;
+    }}
     .model-detail-runs-table {{
-      min-width: 1280px;
+      table-layout: fixed;
+      min-width: 1320px;
     }}
     .model-detail-runs-table th:nth-child(1),
     .model-detail-runs-table td:nth-child(1) {{
       width: 115px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .model-detail-runs-table td:nth-child(1) .cell-scroll,
+    .model-detail-runs-table td:nth-child(3) .cell-scroll,
+    .model-detail-runs-table td:nth-child(4) .cell-scroll,
+    .model-detail-runs-table td:nth-child(5) .cell-scroll,
+    .model-detail-runs-table td:nth-child(6) .cell-scroll,
+    .model-detail-runs-table td:nth-child(7) .cell-scroll,
+    .model-detail-runs-table td:nth-child(8) .cell-scroll,
+    .model-detail-runs-table td:nth-child(9) .cell-scroll,
+    .model-detail-runs-table td:nth-child(10) .cell-scroll {{
       white-space: nowrap;
       overflow-wrap: normal;
     }}
@@ -583,11 +626,18 @@ def _layout(title, current_path, body):
       width: 260px;
     }}
     .model-detail-decisions-table {{
-      min-width: 1180px;
+      table-layout: fixed;
+      min-width: 1320px;
     }}
     .model-detail-decisions-table th:nth-child(1),
     .model-detail-decisions-table td:nth-child(1) {{
       width: 180px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .model-detail-decisions-table td:nth-child(1) .cell-scroll,
+    .model-detail-decisions-table td:nth-child(2) .cell-scroll,
+    .model-detail-decisions-table td:nth-child(3) .cell-scroll {{
       white-space: nowrap;
       overflow-wrap: normal;
     }}
@@ -964,6 +1014,18 @@ def _layout(title, current_path, body):
       dialog.addEventListener('click', function(event) {{
         if (event.target === dialog && typeof dialog.close === 'function') {{
           dialog.close();
+        }}
+      }});
+    }});
+    document.querySelectorAll('[data-scroll-target]').forEach(function(trigger) {{
+      trigger.addEventListener('click', function() {{
+        var target = document.getElementById(trigger.getAttribute('data-scroll-target'));
+        var amount = parseInt(trigger.getAttribute('data-scroll-by') || '0', 10);
+        if (!target || !amount) {{ return; }}
+        if (typeof target.scrollBy === 'function') {{
+          target.scrollBy({{ left: amount, top: 0, behavior: 'smooth' }});
+        }} else {{
+          target.scrollLeft += amount;
         }}
       }});
     }});

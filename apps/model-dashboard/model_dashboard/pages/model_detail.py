@@ -76,8 +76,14 @@ def _model_detail(conn, model_id):
         <p>{summary}</p>
       </section>
     </div>
-    <section style="margin-top:16px"><h2>Runs</h2>{runs}</section>
-    <section style="margin-top:16px"><h2>Decisions</h2>{decisions}</section>
+    <div class="model-detail-results-toolbar" aria-label="Model detail results controls">
+      <button type="button" data-scroll-target="model-detail-results" data-scroll-by="-360" aria-label="Scroll model detail results left">Left</button>
+      <button type="button" data-scroll-target="model-detail-results" data-scroll-by="360" aria-label="Scroll model detail results right">Right</button>
+    </div>
+    <div id="model-detail-results" class="model-detail-results-scroll" aria-label="Model detail runs and decisions">
+      <section class="model-detail-section"><h2>Runs</h2>{runs}</section>
+      <section class="model-detail-section"><h2>Decisions</h2>{decisions}</section>
+    </div>
     """.format(
         name=_text(model["model_name"]),
         family=_text(model["model_family"]),
