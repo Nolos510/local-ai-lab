@@ -97,6 +97,24 @@ Aggregate `total_latency_seconds` and `tokens_per_sec` are written through the
 same dashboard CSV contract as the other runners. `ttft_seconds` remains empty
 because this non-streaming lane does not measure time to first token.
 
+For an MLX-LM run, use the subprocess lane. It invokes the local Python
+environment with `mlx_lm` installed; it does not install packages or download
+models:
+
+```bash
+python3 evals/local-llm-benchmark/harness.py run-mlx-lm \
+  --run-dir data/eval_results/<run_id> \
+  --model-id mlx-community/Example-Model-4bit \
+  --force
+```
+
+The MLX-LM runner measures wall-clock latency around each
+`python -m mlx_lm generate` call. When the CLI prints prompt/generation token
+counts and tokens-per-second labels, the harness records them in
+`raw_responses.jsonl` and exports aggregate `total_latency_seconds` and
+`tokens_per_sec` to `model_runs.csv`. `ttft_seconds` remains empty because this
+non-streaming subprocess lane does not measure time to first token.
+
 If LM Studio's OpenAI-compatible server is reachable but returns `401
 Unauthorized`, use the installed-model CLI lane for models that appear in local
 LM Studio inventory:

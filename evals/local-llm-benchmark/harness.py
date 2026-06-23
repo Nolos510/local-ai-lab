@@ -351,6 +351,27 @@ def _ollama_tokens_per_sec(response, latency_ms):
     return None
 
 
+def _parse_rate_value(text):
+    match = re.search(
+        r"(?:(?:tokens[/ -]?(?:second|sec)|tokens[ -]?per[ -]?(?:second|sec)):?"
+        r"[ \t]*([0-9]+(?:\.[0-9]+)?)|"
+        r"([0-9]+(?:\.[0-9]+)?)\s*"
+        r"(?:tok/s|tokens[/ -]?sec|tokens[ -]?per[ -]?(?:second|sec)))",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    return float(match.group(1) or match.group(2))
+
+
+def _parse_token_count(text):
+    match = re.search(r"([0-9]+)[ \t]*tokens?", text, flags=re.IGNORECASE)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
 def _resolve_lms_path(path=None):
     if path:
         candidate = Path(path).expanduser()
@@ -370,14 +391,9 @@ def _resolve_lms_path(path=None):
 
 def _parse_lms_stats(text):
     stats = {}
-    tokens_per_sec = re.search(
-        r"(?:(?:tokens/second|tokens/sec|tokens per second):?[ \t]*([0-9]+(?:\.[0-9]+)?)|"
-        r"([0-9]+(?:\.[0-9]+)?)\s*(?:tok/s|tokens/sec|tokens per second))",
-        text,
-        flags=re.IGNORECASE,
-    )
+    tokens_per_sec = _parse_rate_value(text)
     if tokens_per_sec:
-        stats["tokens_per_sec"] = float(tokens_per_sec.group(1) or tokens_per_sec.group(2))
+        stats["tokens_per_sec"] = tokens_per_sec
     input_pattern = (
         r"(?:([0-9]+)[ \t]*(?:input|prompt)[ \t]*tokens?|"
         r"(?:input|prompt)[ \t]*tokens?:[ \t]*([0-9]+))"
@@ -400,6 +416,33 @@ def _parse_lms_stats(text):
     )
     if output_tokens:
         stats["output_tokens"] = int(output_tokens.group(1) or output_tokens.group(2))
+    return stats
+
+
+def _parse_mlx_lm_stats(text):
+    stats = {}
+    for line in str(text).splitlines():
+        normalized = line.strip().lower()
+        if not normalized:
+            continue
+        if "prompt" in normalized:
+            token_count = _parse_token_count(line)
+            if token_count is not None:
+                stats.setdefault("input_tokens", token_count)
+        if any(
+            label in normalized
+            for label in ("generation", "generated", "completion", "output", "predicted")
+        ):
+            token_count = _parse_token_count(line)
+            if token_count is not None:
+                stats["output_tokens"] = token_count
+            rate_value = _parse_rate_value(line)
+            if rate_value is not None:
+                stats["tokens_per_sec"] = rate_value
+    if "tokens_per_sec" not in stats:
+        rate_value = _parse_rate_value(text)
+        if rate_value is not None:
+            stats["tokens_per_sec"] = rate_value
     return stats
 
 
@@ -438,6 +481,58 @@ def _run_lms_chat(lms_path, model_id, prompt, timeout, ttl):
     if result.returncode != 0:
         detail = (error_output or output).strip()
         error = f"LM Studio CLI returned exit {result.returncode}: {detail[:500]}"
+    return {
+        "stdout": output,
+        "stderr": error_output,
+        "returncode": result.returncode,
+        "error": error,
+    }
+
+
+def _resolve_mlx_python_path(path=None):
+    if path:
+        candidate = Path(path).expanduser()
+        if candidate.exists() and candidate.is_file():
+            return str(candidate)
+        raise HarnessError(f"MLX-LM Python executable not found at: {candidate}")
+    return sys.executable
+
+
+def _run_mlx_lm_generate(python_path, model_id, prompt, timeout, max_tokens):
+    command = [
+        python_path,
+        "-m",
+        "mlx_lm",
+        "generate",
+        "--model",
+        model_id,
+        "--prompt",
+        prompt,
+        "--max-tokens",
+        str(max_tokens),
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "stdout": exc.stdout or "",
+            "stderr": exc.stderr or "",
+            "returncode": None,
+            "error": f"MLX-LM generation timed out after {timeout} seconds.",
+        }
+    output = result.stdout or ""
+    error_output = result.stderr or ""
+    error = None
+    if result.returncode != 0:
+        detail = (error_output or output).strip()
+        error = f"MLX-LM generation returned exit {result.returncode}: {detail[:500]}"
     return {
         "stdout": output,
         "stderr": error_output,
@@ -1019,6 +1114,101 @@ def run_ollama(args):
     return raw_path
 
 
+def run_mlx_lm(args):
+    run_dir = Path(args.run_dir).resolve()
+    metadata = _read_json(run_dir / "metadata.json")
+    prompt_set = _load_prompt_set()
+    python_path = _resolve_mlx_python_path(args.python_path)
+    raw_path = run_dir / "raw_responses.jsonl"
+    log_path = run_dir / "mlx-lm-capture.log"
+    _require_absent_empty_or_force(raw_path, args.force)
+    _require_absent_empty_or_force(log_path, args.force)
+
+    records = []
+    log_lines = [
+        "MLX-LM capture",
+        "benchmark_run_id={}".format(metadata["benchmark_run_id"]),
+        f"model_id={args.model_id}",
+        f"started_at={_utc_now()}",
+        "command_shape=python -m mlx_lm generate --model <model-id> "
+        f"--prompt <prompt> --max-tokens {args.max_tokens}",
+        "",
+    ]
+    log_path.write_text("\n".join(log_lines), encoding="utf-8")
+    for prompt in prompt_set["prompts"]:
+        started_at = _utc_now()
+        started = time.monotonic()
+        source = {
+            "prompt_id": prompt["id"],
+            "started_at": started_at,
+            "raw_response": "",
+            "error": None,
+        }
+        result = _run_mlx_lm_generate(
+            python_path,
+            args.model_id,
+            prompt["prompt"],
+            args.timeout,
+            args.max_tokens,
+        )
+        completed = time.monotonic()
+        latency_ms = int(round((completed - started) * 1000))
+        combined_output = "\n".join(part for part in (result["stdout"], result["stderr"]) if part)
+        stats = _parse_mlx_lm_stats(combined_output)
+        output_tokens = stats.get("output_tokens")
+        source.update(
+            {
+                "completed_at": _utc_now(),
+                "latency_ms": latency_ms,
+                "input_tokens": stats.get("input_tokens"),
+                "output_tokens": output_tokens,
+                "tokens_per_sec": stats.get("tokens_per_sec")
+                or (
+                    round(float(output_tokens) / (latency_ms / 1000.0), 2)
+                    if output_tokens and latency_ms > 0
+                    else None
+                ),
+                "stop_reason": ("cli_exit_0" if result["returncode"] == 0 else "error"),
+                "error": result["error"],
+                "raw_response": result["stdout"].strip(),
+            }
+        )
+        records.append(_normalize_response_record(source, metadata, prompt))
+        log_lines.extend(
+            [
+                "## {}".format(prompt["id"]),
+                "returncode={}".format(result["returncode"]),
+                f"latency_ms={latency_ms}",
+                "input_tokens={}".format(source.get("input_tokens") or ""),
+                "output_tokens={}".format(source.get("output_tokens") or ""),
+                "tokens_per_sec={}".format(source.get("tokens_per_sec") or ""),
+                "error={}".format(result["error"] or ""),
+                "stdout:",
+                _neutralize_terminal(result["stdout"].rstrip()),
+                "stderr:",
+                _neutralize_terminal(result["stderr"].rstrip()),
+                "",
+            ]
+        )
+        log_path.write_text("\n".join(log_lines), encoding="utf-8")
+
+    _write_metadata_with_perf(run_dir, metadata, records)
+    _write_jsonl(raw_path, records)
+    evidence_path = run_dir / "evidence.md"
+    with evidence_path.open("a", encoding="utf-8") as handle:
+        handle.write("\n## MLX-LM Runner\n\n")
+        handle.write(
+            "- Command shape: "
+            "`python -m mlx_lm generate --model <model-id> --prompt <prompt> "
+            f"--max-tokens {args.max_tokens}`\n"
+        )
+        handle.write(f"- Model id: `{args.model_id}`\n")
+        handle.write(f"- Completed at: `{_utc_now()}`\n")
+        handle.write(f"- Prompt records: `{len(records)}`\n")
+        handle.write(f"- Capture log: `{_display_path(log_path)}`\n")
+    return raw_path
+
+
 def run_lmstudio_cli(args):
     run_dir = Path(args.run_dir).resolve()
     metadata = _read_json(run_dir / "metadata.json")
@@ -1299,6 +1489,18 @@ def build_parser():
     ollama_parser.add_argument("--top-p", type=float)
     ollama_parser.add_argument("--force", action="store_true")
     ollama_parser.set_defaults(func=run_ollama)
+
+    mlx_parser = subparsers.add_parser(
+        "run-mlx-lm",
+        help="Capture prompt responses from mlx_lm generate via subprocess.",
+    )
+    mlx_parser.add_argument("--run-dir", required=True, type=Path)
+    mlx_parser.add_argument("--model-id", required=True)
+    mlx_parser.add_argument("--python-path")
+    mlx_parser.add_argument("--timeout", type=float, default=180.0)
+    mlx_parser.add_argument("--max-tokens", type=int, default=1024)
+    mlx_parser.add_argument("--force", action="store_true")
+    mlx_parser.set_defaults(func=run_mlx_lm)
 
     lmstudio_parser = subparsers.add_parser(
         "run-lmstudio-cli",

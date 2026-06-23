@@ -452,6 +452,81 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertEqual(failed.returncode, 2)
             self.assertIn("loopback", failed.stderr)
 
+    def test_run_mlx_lm_captures_all_prompts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_id = "20260623-mlx-lm-fixture"
+            fake_python = tmp_path / "python"
+            fake_python.write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env python3",
+                        "import sys",
+                        "assert sys.argv[1:4] == ['-m', 'mlx_lm', 'generate']",
+                        "model_id = sys.argv[sys.argv.index('--model') + 1]",
+                        "prompt = sys.argv[sys.argv.index('--prompt') + 1]",
+                        "max_tokens = sys.argv[sys.argv.index('--max-tokens') + 1]",
+                        "assert max_tokens == '64'",
+                        "prompt_id = 'unknown'",
+                        "for candidate in ('LLMCORE-v0.1-001', 'LLMCORE-v0.1-012'):",
+                        "    if candidate in prompt:",
+                        "        prompt_id = candidate",
+                        "print('mock mlx response for {} using {}'.format(prompt_id, model_id))",
+                        "print('\\x1b[32mgreen\\x1b[0m')",
+                        "print('Prompt: 10 tokens, 20.0 tokens-per-sec')",
+                        "print('Generation: 5 tokens, 12.5 tokens-per-sec')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            fake_python.chmod(0o755)
+            self.run_harness(
+                "init-run",
+                "--benchmark-run-id",
+                run_id,
+                "--model-name",
+                "Fixture MLX-LM Model",
+                "--backend",
+                "MLX-LM",
+                "--output-root",
+                tmp,
+            )
+            run_dir = tmp_path / run_id
+
+            self.run_harness(
+                "run-mlx-lm",
+                "--run-dir",
+                str(run_dir),
+                "--model-id",
+                "mlx-community/Fixture-4bit",
+                "--python-path",
+                str(fake_python),
+                "--max-tokens",
+                "64",
+                "--force",
+            )
+
+            records = [
+                json.loads(line)
+                for line in (run_dir / "raw_responses.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertEqual(len(records), 12)
+            self.assertEqual(records[0]["stop_reason"], "cli_exit_0")
+            self.assertEqual(records[0]["input_tokens"], 10)
+            self.assertEqual(records[0]["output_tokens"], 5)
+            self.assertEqual(records[0]["tokens_per_sec"], 12.5)
+            self.assertIn("mlx-community/Fixture-4bit", records[0]["raw_response"])
+            metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+            self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
+            self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
+            self.assertGreater(metadata["run"]["tokens_per_sec"], 0)
+            self.assertIsNone(metadata["run"]["ttft_seconds"])
+            log_text = (run_dir / "mlx-lm-capture.log").read_text(encoding="utf-8")
+            self.assertIn("\\x1b[32mgreen\\x1b[0m", log_text)
+            self.assertNotIn("\x1b[32mgreen", log_text)
+
     def test_init_run_rejects_traversal_run_id(self):
         with tempfile.TemporaryDirectory() as tmp:
             failed = self.run_harness_raw(
@@ -561,6 +636,26 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
         )
 
         self.assertEqual(stats["tokens_per_sec"], 72.34)
+        self.assertEqual(stats["input_tokens"], 310)
+        self.assertEqual(stats["output_tokens"], 475)
+
+    def test_mlx_lm_parser_handles_generate_stats_labels(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("harness", HARNESS)
+        harness = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(harness)
+
+        stats = harness._parse_mlx_lm_stats(
+            "\n".join(
+                [
+                    "Prompt: 310 tokens, 82.12 tokens-per-sec",
+                    "Generation: 475 tokens, 34.66 tokens-per-sec",
+                ]
+            )
+        )
+
+        self.assertEqual(stats["tokens_per_sec"], 34.66)
         self.assertEqual(stats["input_tokens"], 310)
         self.assertEqual(stats["output_tokens"], 475)
 
