@@ -1,6 +1,6 @@
 [project]
 name = "local-ai-lab"
-version = "0.1.0"
+version = "1.0.0"
 description = "Apple Silicon local AI engineering lab with local RAG, model evaluation, radar, and dashboard workflows."
 readme = "README.md"
 requires-python = ">=3.12"
