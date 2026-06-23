@@ -1,0 +1,3 @@
+{"query_id": "RAGRET-v0.1-001", "retrieved_chunk_ids": ["sample-local-first-0000", "sample-qdrant-0001"]}
+{"query_id": "RAGRET-v0.1-002", "retrieved_chunk_ids": ["sample-local-first-0000", "sample-qdrant-0002", "sample-qdrant-0001"]}
+{"query_id": "RAGRET-v0.1-003", "retrieved_chunk_ids": ["sample-qdrant-0001"]}

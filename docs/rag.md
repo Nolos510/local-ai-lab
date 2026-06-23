@@ -21,6 +21,7 @@ markdown/text source
 - Deterministic embedding provider for repeatable development.
 - Ollama semantic embedding provider for local real retrieval.
 - Qdrant vector search.
+- Offline retrieval-eval scorer with a tiny labeled fixture set.
 
 ## Embedding Providers
 
@@ -97,12 +98,30 @@ uv run local-ai-lab ingest --path data/sample_docs
 Use a different collection name instead of deleting if you need to preserve the
 old deterministic index for comparison.
 
+## Retrieval Evaluation
+
+RAG Quality changes are measured against the offline retrieval eval before
+changing ranking behavior. The initial fixture uses labeled query-to-chunk IDs
+and computes `recall@k` plus `MRR` without Qdrant, Ollama, network access, or a
+model runtime:
+
+```bash
+python3 evals/rag-retrieval/scorer.py \
+  --labels evals/rag-retrieval/fixtures/labels.json \
+  --results evals/rag-retrieval/fixtures/deterministic-results.jsonl \
+  --k 2
+```
+
+The fixture is deliberately small. Treat it as an offline regression harness,
+not proof of real-corpus retrieval quality. Live BGE-M3 retrieval runs remain
+manual smoke checks until a local corpus export is approved.
+
 ## TODO
 
 - [x] Add BGE-M3-capable Ollama embedding provider.
+- [x] Add retrieval evaluation datasets.
 - [ ] Add dedicated reindex command.
 - [ ] Add hybrid dense/sparse retrieval.
 - [ ] Add reranker abstraction.
-- [ ] Add retrieval evaluation datasets.
 - [ ] Add citation rendering helpers.
 - [ ] Add parser version tracking.

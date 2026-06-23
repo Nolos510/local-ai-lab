@@ -51,6 +51,7 @@ apps/model-dashboard/          Local model performance dashboard
 src/local_ai_lab/              Local RAG/provider app
 automations/ai-lab-radar/      Radar inputs, reports, and guardrails
 evals/local-llm-benchmark/     Personal local LLM benchmark suite
+evals/rag-retrieval/           Offline RAG retrieval quality fixtures and scorer
 data/model_registry/           Approved model candidate registry
 data/project_registry/         GitHub/project opportunity registry
 data/eval_results/             Benchmark artifacts and dashboard CSV exports
@@ -148,6 +149,19 @@ it as passed.
 The `/ask` response intentionally returns an answer plus citation identifiers
 only. It does not include raw retrieved chunks, chunk previews, or private source
 paths by default; see `docs/adr/0003-privacy-narrow-ask-response.md`.
+
+Offline retrieval quality checks live under `evals/rag-retrieval/` and compute
+`recall@k` plus `MRR` against a tiny labeled fixture set:
+
+```bash
+python3 evals/rag-retrieval/scorer.py \
+  --labels evals/rag-retrieval/fixtures/labels.json \
+  --results evals/rag-retrieval/fixtures/deterministic-results.jsonl \
+  --k 2
+```
+
+This scorer is local and stdlib-only. It does not call Qdrant, Ollama, model
+providers, cloud APIs, or network services.
 
 ## Dashboard Quick Start
 

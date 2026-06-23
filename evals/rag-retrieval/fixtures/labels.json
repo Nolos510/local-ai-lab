@@ -1,0 +1,19 @@
+{
+  "queries": [
+    {
+      "query_id": "RAGRET-v0.1-001",
+      "query": "What keeps the lab local-first?",
+      "relevant_chunk_ids": ["sample-local-first-0000"]
+    },
+    {
+      "query_id": "RAGRET-v0.1-002",
+      "query": "Which store backs the v0 retrieval path?",
+      "relevant_chunk_ids": ["sample-qdrant-0001", "sample-qdrant-0002"]
+    },
+    {
+      "query_id": "RAGRET-v0.1-003",
+      "query": "What should default citations avoid exposing?",
+      "relevant_chunk_ids": ["sample-privacy-0000"]
+    }
+  ]
+}

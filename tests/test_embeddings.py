@@ -185,3 +185,12 @@ def test_embedding_factory_returns_ollama_provider() -> None:
 
     assert isinstance(provider, OllamaEmbeddingProvider)
     assert provider.vector_size == 1024
+
+
+def test_embedding_default_stays_deterministic_with_bge_m3_available_as_option() -> None:
+    settings = Settings()
+    provider = build_embedding_provider(settings)
+
+    assert settings.embedding_provider == "deterministic"
+    assert settings.ollama_embedding_model == "bge-m3"
+    assert isinstance(provider, DeterministicEmbeddingProvider)
