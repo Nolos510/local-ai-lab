@@ -80,6 +80,23 @@ Allowed endpoints are `localhost`, loopback IPs, and literal private LAN IPs.
 Public hosts and public IP addresses are rejected. Runtime errors are preserved
 as raw benchmark evidence instead of being turned into scores.
 
+For an Ollama-native run, use the local Ollama API lane. The default endpoint is
+`http://127.0.0.1:11434`, and the harness posts to `/api/generate` with
+`stream: false`:
+
+```bash
+python3 evals/local-llm-benchmark/harness.py run-ollama \
+  --run-dir data/eval_results/<run_id> \
+  --model-id llama3.2:latest \
+  --force
+```
+
+The Ollama runner records measured per-prompt latency plus Ollama-reported
+`prompt_eval_count`, `eval_count`, and `eval_duration` when available.
+Aggregate `total_latency_seconds` and `tokens_per_sec` are written through the
+same dashboard CSV contract as the other runners. `ttft_seconds` remains empty
+because this non-streaming lane does not measure time to first token.
+
 If LM Studio's OpenAI-compatible server is reachable but returns `401
 Unauthorized`, use the installed-model CLI lane for models that appear in local
 LM Studio inventory:

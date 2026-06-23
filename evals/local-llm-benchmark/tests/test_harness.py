@@ -41,6 +41,31 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             def do_POST(self):
                 request_body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
                 payload = json.loads(request_body.decode("utf-8"))
+                self.server.requests.append({"path": self.path, "payload": payload})
+                if mode == "ollama":
+                    content = payload.get("prompt", "")
+                    prompt_id = "unknown"
+                    for candidate in ("LLMCORE-v0.1-001", "LLMCORE-v0.1-012"):
+                        if candidate in content:
+                            prompt_id = candidate
+                    body = json.dumps(
+                        {
+                            "model": payload.get("model"),
+                            "response": f"mock ollama response for {prompt_id}",
+                            "done": True,
+                            "done_reason": "stop",
+                            "prompt_eval_count": 10,
+                            "eval_count": 5,
+                            "eval_duration": 500_000_000,
+                            "total_duration": 800_000_000,
+                        }
+                    ).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
                 messages = payload.get("messages", [])
                 content = messages[-1].get("content", "") if messages else ""
                 if mode == "judge":
@@ -86,6 +111,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             server = ThreadingHTTPServer(("127.0.0.1", 0), ChatHandler)
         except PermissionError as exc:
             self.skipTest(f"local bind unavailable in this environment: {exc}")
+        server.requests = []
         server.metric_fields = [
             "instruction_following",
             "truthfulness_uncertainty",
@@ -338,6 +364,89 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
                 str(run_dir),
                 "--endpoint",
                 "http://192.168.1.10/v1",
+                "--force",
+            )
+            self.assertEqual(failed.returncode, 2)
+            self.assertIn("loopback", failed.stderr)
+
+    def test_run_ollama_captures_all_prompts_and_rejects_non_loopback_endpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_id = "20260623-fixture-ollama-runner"
+            self.run_harness(
+                "init-run",
+                "--benchmark-run-id",
+                run_id,
+                "--model-name",
+                "Fixture Ollama Model",
+                "--backend",
+                "Ollama",
+                "--output-root",
+                tmp,
+            )
+            run_dir = Path(tmp) / run_id
+            server = self.start_chat_server("ollama")
+            try:
+                endpoint = f"http://127.0.0.1:{server.server_port}"
+                self.run_harness(
+                    "run-ollama",
+                    "--run-dir",
+                    str(run_dir),
+                    "--endpoint",
+                    endpoint,
+                    "--model-id",
+                    "fixture-ollama:latest",
+                    "--max-tokens",
+                    "64",
+                    "--force",
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+
+            records = [
+                json.loads(line)
+                for line in (run_dir / "raw_responses.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertEqual(len(records), 12)
+            self.assertTrue(all(record["raw_response"] for record in records))
+            self.assertTrue(all(record["error"] is None for record in records))
+            self.assertEqual(records[0]["stop_reason"], "stop")
+            self.assertEqual(records[0]["input_tokens"], 10)
+            self.assertEqual(records[0]["output_tokens"], 5)
+            self.assertEqual(records[0]["tokens_per_sec"], 10.0)
+            metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+            self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
+            self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
+            self.assertGreater(metadata["run"]["tokens_per_sec"], 0)
+            self.assertIsNone(metadata["run"]["ttft_seconds"])
+            self.assertEqual(server.requests[0]["path"], "/api/generate")
+            self.assertEqual(server.requests[0]["payload"]["model"], "fixture-ollama:latest")
+            self.assertIs(server.requests[0]["payload"]["stream"], False)
+            self.assertEqual(server.requests[0]["payload"]["options"]["num_predict"], 64)
+
+            self.run_harness(
+                "export-dashboard",
+                "--run-dir",
+                str(run_dir),
+            )
+            with (run_dir / "dashboard-import" / "model_runs.csv").open(
+                newline="",
+                encoding="utf-8",
+            ) as handle:
+                run_rows = list(csv.DictReader(handle))
+            self.assertNotEqual(run_rows[0]["total_latency_seconds"], "")
+            self.assertNotEqual(run_rows[0]["tokens_per_sec"], "")
+
+            failed = self.run_harness_raw(
+                "run-ollama",
+                "--run-dir",
+                str(run_dir),
+                "--endpoint",
+                "http://192.168.1.10:11434",
+                "--model-id",
+                "fixture-ollama:latest",
                 "--force",
             )
             self.assertEqual(failed.returncode, 2)

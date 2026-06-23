@@ -34,6 +34,7 @@ REPO_ROOT = HARNESS_ROOT.parents[1]
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "data" / "eval_results"
 PROMPT_PATH = HARNESS_ROOT / "prompts" / "ai-lab-local-llm-core-v0.1.json"
 RUBRIC_PATH = HARNESS_ROOT / "rubrics" / "ai-lab-local-llm-rubric-v0.1.json"
+DEFAULT_OLLAMA_ENDPOINT = "http://127.0.0.1:11434"
 
 TABLE_FIELDS = {
     "models": (
@@ -222,6 +223,14 @@ def _chat_completions_url(endpoint):
     return parsed._replace(path=path, params="", query="", fragment="")
 
 
+def _ollama_generate_url(endpoint):
+    parsed = _validate_local_endpoint(endpoint)
+    path = parsed.path.rstrip("/")
+    if not path.endswith("/api/generate"):
+        path = "{}/api/generate".format(path or "")
+    return parsed._replace(path=path, params="", query="", fragment="")
+
+
 def _safe_endpoint(parsed):
     return urlunparse(parsed._replace(query="", fragment=""))
 
@@ -250,6 +259,40 @@ def _post_chat_completion(endpoint, payload, timeout):
         return json.loads(response_body)
     except json.JSONDecodeError as exc:
         raise HarnessError(f"Local endpoint response was not JSON: {exc}") from exc
+
+
+def _post_ollama_generate(endpoint, payload, timeout):
+    parsed = _ollama_generate_url(endpoint)
+    body = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    connection_class = (
+        http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    )
+    conn = connection_class(parsed.hostname, port=parsed.port, timeout=timeout)
+    try:
+        path = parsed.path
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+        conn.request("POST", path, body=body, headers=headers)
+        response = conn.getresponse()
+        response_body = response.read().decode("utf-8", errors="replace")
+    except OSError as exc:
+        raise HarnessError(f"Ollama endpoint request failed: {exc}") from exc
+    finally:
+        conn.close()
+    if response.status < 200 or response.status >= 300:
+        raise HarnessError(
+            f"Ollama endpoint returned HTTP {response.status}: {response_body[:500]}"
+        )
+    try:
+        parsed_response = json.loads(response_body)
+    except json.JSONDecodeError as exc:
+        raise HarnessError(f"Ollama endpoint response was not JSON: {exc}") from exc
+    if not isinstance(parsed_response, dict):
+        raise HarnessError("Ollama endpoint response was not a JSON object.")
+    if parsed_response.get("error"):
+        raise HarnessError(f"Ollama endpoint returned an error: {parsed_response['error']}")
+    return parsed_response
 
 
 def _message_content(response):
@@ -283,6 +326,29 @@ def _usage_value(response, key):
     usage = response.get("usage") or {}
     value = usage.get(key)
     return value if isinstance(value, (int, float)) else None
+
+
+def _numeric_value(response, key):
+    value = response.get(key)
+    return value if isinstance(value, (int, float)) else None
+
+
+def _nanoseconds_to_seconds(value):
+    if not isinstance(value, (int, float)) or value <= 0:
+        return None
+    return float(value) / 1_000_000_000.0
+
+
+def _ollama_tokens_per_sec(response, latency_ms):
+    output_tokens = _numeric_value(response, "eval_count")
+    if not output_tokens:
+        return None
+    eval_seconds = _nanoseconds_to_seconds(_numeric_value(response, "eval_duration"))
+    if eval_seconds:
+        return round(float(output_tokens) / eval_seconds, 2)
+    if latency_ms > 0:
+        return round(float(output_tokens) / (latency_ms / 1000.0), 2)
+    return None
 
 
 def _resolve_lms_path(path=None):
@@ -849,6 +915,110 @@ def run_local(args):
     return raw_path
 
 
+def run_ollama(args):
+    run_dir = Path(args.run_dir).resolve()
+    metadata = _read_json(run_dir / "metadata.json")
+    prompt_set = _load_prompt_set()
+    endpoint = _safe_endpoint(_ollama_generate_url(args.endpoint))
+    raw_path = run_dir / "raw_responses.jsonl"
+    log_path = run_dir / "ollama-capture.log"
+    _require_absent_empty_or_force(raw_path, args.force)
+    _require_absent_empty_or_force(log_path, args.force)
+
+    records = []
+    log_lines = [
+        "Ollama API capture",
+        "benchmark_run_id={}".format(metadata["benchmark_run_id"]),
+        f"model_id={args.model_id}",
+        f"endpoint={endpoint}",
+        f"started_at={_utc_now()}",
+        "command_shape=POST <ollama-endpoint>/api/generate stream=false",
+        "",
+    ]
+    log_path.write_text("\n".join(log_lines), encoding="utf-8")
+    for prompt in prompt_set["prompts"]:
+        started_at = _utc_now()
+        started = time.monotonic()
+        source = {
+            "prompt_id": prompt["id"],
+            "started_at": started_at,
+            "raw_response": "",
+            "error": None,
+        }
+        options = {
+            "temperature": (
+                args.temperature
+                if args.temperature is not None
+                else metadata["run"].get("temperature")
+            ),
+            "top_p": args.top_p if args.top_p is not None else metadata["run"].get("top_p"),
+            "num_predict": args.max_tokens,
+        }
+        options = {key: value for key, value in options.items() if value is not None}
+        payload = {
+            "model": args.model_id,
+            "prompt": prompt["prompt"],
+            "stream": False,
+        }
+        if options:
+            payload["options"] = options
+        try:
+            response = _post_ollama_generate(args.endpoint, payload, args.timeout)
+            completed = time.monotonic()
+            latency_ms = int(round((completed - started) * 1000))
+            input_tokens = _numeric_value(response, "prompt_eval_count")
+            output_tokens = _numeric_value(response, "eval_count")
+            source.update(
+                {
+                    "completed_at": _utc_now(),
+                    "latency_ms": latency_ms,
+                    "input_tokens": int(input_tokens) if input_tokens is not None else None,
+                    "output_tokens": int(output_tokens) if output_tokens is not None else None,
+                    "tokens_per_sec": _ollama_tokens_per_sec(response, latency_ms),
+                    "stop_reason": response.get("done_reason")
+                    or ("done" if response.get("done") is True else None),
+                    "raw_response": str(response.get("response") or ""),
+                }
+            )
+        except HarnessError as exc:
+            latency_ms = int(round((time.monotonic() - started) * 1000))
+            source.update(
+                {
+                    "completed_at": _utc_now(),
+                    "latency_ms": latency_ms,
+                    "error": str(exc),
+                    "stop_reason": "error",
+                }
+            )
+        records.append(_normalize_response_record(source, metadata, prompt))
+        log_lines.extend(
+            [
+                "## {}".format(prompt["id"]),
+                f"latency_ms={source.get('latency_ms')}",
+                "input_tokens={}".format(source.get("input_tokens") or ""),
+                "output_tokens={}".format(source.get("output_tokens") or ""),
+                "tokens_per_sec={}".format(source.get("tokens_per_sec") or ""),
+                "stop_reason={}".format(source.get("stop_reason") or ""),
+                "error={}".format(source.get("error") or ""),
+                "",
+            ]
+        )
+        log_path.write_text("\n".join(log_lines), encoding="utf-8")
+
+    _write_metadata_with_perf(run_dir, metadata, records)
+    _write_jsonl(raw_path, records)
+    evidence_path = run_dir / "evidence.md"
+    with evidence_path.open("a", encoding="utf-8") as handle:
+        handle.write("\n## Ollama Runner\n\n")
+        handle.write(f"- Endpoint: `{endpoint}`\n")
+        handle.write("- Command shape: `POST <ollama-endpoint>/api/generate stream=false`\n")
+        handle.write(f"- Model id: `{args.model_id}`\n")
+        handle.write(f"- Completed at: `{_utc_now()}`\n")
+        handle.write(f"- Prompt records: `{len(records)}`\n")
+        handle.write(f"- Capture log: `{_display_path(log_path)}`\n")
+    return raw_path
+
+
 def run_lmstudio_cli(args):
     run_dir = Path(args.run_dir).resolve()
     metadata = _read_json(run_dir / "metadata.json")
@@ -1115,6 +1285,20 @@ def build_parser():
     run_parser.add_argument("--top-p", type=float)
     run_parser.add_argument("--force", action="store_true")
     run_parser.set_defaults(func=run_local)
+
+    ollama_parser = subparsers.add_parser(
+        "run-ollama",
+        help="Capture prompt responses from a local Ollama API model.",
+    )
+    ollama_parser.add_argument("--run-dir", required=True, type=Path)
+    ollama_parser.add_argument("--model-id", required=True)
+    ollama_parser.add_argument("--endpoint", default=DEFAULT_OLLAMA_ENDPOINT)
+    ollama_parser.add_argument("--timeout", type=float, default=180.0)
+    ollama_parser.add_argument("--max-tokens", type=int, default=1024)
+    ollama_parser.add_argument("--temperature", type=float)
+    ollama_parser.add_argument("--top-p", type=float)
+    ollama_parser.add_argument("--force", action="store_true")
+    ollama_parser.set_defaults(func=run_ollama)
 
     lmstudio_parser = subparsers.add_parser(
         "run-lmstudio-cli",
