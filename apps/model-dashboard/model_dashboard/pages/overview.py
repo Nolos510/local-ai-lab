@@ -28,7 +28,6 @@ def _overview(conn, query=None):
     score_chart = charts.horizontal_bars(
         [(_model_chart_label(row), row["total_score"]) for row in filtered_summaries],
         value_format="{:.2f}",
-        max_value=10,
         title="Model total scores",
     )
     throughput_chart = charts.horizontal_bars(

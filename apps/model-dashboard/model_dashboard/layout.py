@@ -155,7 +155,7 @@ def _layout(title, current_path, body):
     }}
     .grid {{
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 14px;
       margin-bottom: 22px;
     }}
@@ -168,7 +168,7 @@ def _layout(title, current_path, body):
     }}
     .chart-grid {{
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: 1fr;
       gap: 14px;
       margin: 0 0 22px;
     }}
@@ -176,7 +176,7 @@ def _layout(title, current_path, body):
       overflow: hidden;
     }}
     .capability-chart-grid {{
-      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      grid-template-columns: 1fr;
     }}
     .chart-panel-large {{
       display: grid;
@@ -304,7 +304,11 @@ def _layout(title, current_path, body):
       line-height: 1.1;
     }}
     .stat-breakdown {{
-      min-width: 220px;
+      grid-column: span 2;
+      min-width: 0;
+    }}
+    .stat-breakdown > div {{
+      min-width: 0;
     }}
     .stat-metrics {{
       display: grid;
@@ -759,6 +763,7 @@ def _layout(title, current_path, body):
       .filters {{ grid-template-columns: 1fr; }}
       .filter-actions {{ justify-content: flex-start; }}
       .split {{ grid-template-columns: 1fr; }}
+      .stat-breakdown {{ grid-column: auto; }}
       .chart-summary-row {{ grid-template-columns: 1fr; gap: 4px; }}
       h1 {{ font-size: 24px; }}
       th, td {{ padding: 11px 9px; }}
