@@ -402,6 +402,47 @@ def test_bench_execute_refuses_mlx_lm_without_approval_before_subprocess(
     assert "approval: missing" in captured.err
 
 
+def test_bench_execute_refuses_llama_cpp_without_approval_before_subprocess(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    registry = tmp_path / "candidates.csv"
+    output_root = tmp_path / "eval_results"
+    write_registry(registry)
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("bench execute must not call subprocess without approval")
+
+    monkeypatch.setattr(lab.subprocess, "run", fail_if_called)
+    monkeypatch.setattr(lab.sys.stdin, "isatty", lambda: False)
+
+    exit_code = lab.main(
+        [
+            "bench",
+            "execute",
+            "--candidate",
+            "candidate-ready",
+            "--registry",
+            str(registry),
+            "--model-id",
+            "/tmp/fixture-model.gguf",
+            "--runner",
+            "llama-cpp",
+            "--run-id",
+            "20260623-fixture-llama-r1",
+            "--output-root",
+            str(output_root),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "runner: llama-cpp" in captured.out
+    assert "llama-cli -m <model-id>" in captured.out
+    assert "approval: missing" in captured.err
+
+
 def test_bench_execute_approved_lmstudio_flow_builds_expected_commands(
     tmp_path,
     monkeypatch,
@@ -567,6 +608,66 @@ def test_bench_execute_approved_mlx_lm_flow_builds_expected_commands(
     assert "mlx-community/Fixture-4bit" in commands[1]
     assert "--python-path" in commands[1]
     assert str(fake_python) in commands[1]
+    assert "--max-tokens" in commands[1]
+    assert "64" in commands[1]
+    assert commands[2][:3] == [
+        lab.sys.executable,
+        str(lab.HARNESS_PATH),
+        "export-dashboard",
+    ]
+
+
+def test_bench_execute_approved_llama_cpp_flow_builds_expected_commands(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    registry = tmp_path / "candidates.csv"
+    output_root = tmp_path / "eval_results"
+    fake_llama = tmp_path / "llama-cli"
+    fake_llama.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    write_registry(registry)
+    commands = capture_commands(monkeypatch)
+
+    exit_code = lab.main(
+        [
+            "bench",
+            "execute",
+            "--candidate",
+            "candidate-ready",
+            "--registry",
+            str(registry),
+            "--model-id",
+            "/tmp/fixture-model.gguf",
+            "--runner",
+            "llama-cpp",
+            "--run-id",
+            "20260623-fixture-llama-r1",
+            "--output-root",
+            str(output_root),
+            "--llama-cli-path",
+            str(fake_llama),
+            "--max-tokens",
+            "64",
+            "--i-approve-local-run",
+            "--force",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "approval: explicit --i-approve-local-run" in output
+    assert len(commands) == 3
+    assert commands[0][:3] == [lab.sys.executable, str(lab.HARNESS_PATH), "init-run"]
+    assert commands[1][:3] == [
+        lab.sys.executable,
+        str(lab.HARNESS_PATH),
+        "run-llama-cpp",
+    ]
+    assert "--model-id" in commands[1]
+    assert "/tmp/fixture-model.gguf" in commands[1]
+    assert "--llama-cli-path" in commands[1]
+    assert str(fake_llama) in commands[1]
     assert "--max-tokens" in commands[1]
     assert "64" in commands[1]
     assert commands[2][:3] == [

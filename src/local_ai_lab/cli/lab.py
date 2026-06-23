@@ -239,6 +239,12 @@ def _bench_execute_capture_shape(args: argparse.Namespace) -> str:
             "python -m mlx_lm generate --model <model-id> --prompt <prompt> "
             f"--max-tokens {max_tokens}"
         )
+    if args.runner == "llama-cpp":
+        max_tokens = args.max_tokens if args.max_tokens is not None else 1024
+        return (
+            "llama-cli -m <model-id> -p <prompt> "
+            f"-n {max_tokens} --no-display-prompt"
+        )
     endpoint = _redact_endpoint(args.endpoint) if args.endpoint else "<required-local-endpoint>"
     return f"POST {endpoint.rstrip('/')}/chat/completions model={args.model_id}"
 
@@ -367,6 +373,22 @@ def _bench_execute_capture_command(args: argparse.Namespace, run_dir: Path) -> l
         ]
         if args.mlx_python:
             command.extend(["--python-path", args.mlx_python])
+        if args.max_tokens is not None:
+            command.extend(["--max-tokens", str(args.max_tokens)])
+    elif args.runner == "llama-cpp":
+        command = [
+            sys.executable,
+            str(HARNESS_PATH),
+            "run-llama-cpp",
+            "--run-dir",
+            str(run_dir),
+            "--model-id",
+            args.model_id,
+            "--timeout",
+            str(args.timeout),
+        ]
+        if args.llama_cli_path:
+            command.extend(["--llama-cli-path", args.llama_cli_path])
         if args.max_tokens is not None:
             command.extend(["--max-tokens", str(args.max_tokens)])
     elif args.runner == "openai-compatible":
@@ -677,13 +699,14 @@ def build_parser() -> argparse.ArgumentParser:
     bench_execute.add_argument(
         "--runner",
         required=True,
-        choices=("lmstudio-cli", "mlx-lm", "ollama", "openai-compatible"),
+        choices=("llama-cpp", "lmstudio-cli", "mlx-lm", "ollama", "openai-compatible"),
     )
     bench_execute.add_argument("--run-id", required=True)
     bench_execute.add_argument("--output-root", type=Path, default=DEFAULT_EVAL_RESULTS)
     bench_execute.add_argument("--db", type=Path, default=DEFAULT_DASHBOARD_DB)
     bench_execute.add_argument("--endpoint")
     bench_execute.add_argument("--lms-path")
+    bench_execute.add_argument("--llama-cli-path")
     bench_execute.add_argument("--mlx-python")
     bench_execute.add_argument("--timeout", type=float, default=180.0)
     bench_execute.add_argument("--ttl", type=int, default=3600)

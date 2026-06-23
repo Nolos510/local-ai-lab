@@ -115,6 +115,27 @@ counts and tokens-per-second labels, the harness records them in
 `tokens_per_sec` to `model_runs.csv`. `ttft_seconds` remains empty because this
 non-streaming subprocess lane does not measure time to first token.
 
+For a llama.cpp run, use the `llama-cli` subprocess lane. The `--model-id`
+argument is passed to `llama-cli -m`; in typical GGUF workflows it should be the
+local model path or another value your local `llama-cli` build accepts. The
+harness does not install llama.cpp, download models, or resolve remote model
+names:
+
+```bash
+python3 evals/local-llm-benchmark/harness.py run-llama-cpp \
+  --run-dir data/eval_results/<run_id> \
+  --model-id /path/to/model.gguf \
+  --force
+```
+
+The llama.cpp runner measures wall-clock latency around each
+`llama-cli -m <model-id> -p <prompt> -n <tokens>` call. It records prompt token
+count, output token count, and tokens/sec only when `llama-cli` prints
+`llama_perf_context_print` timing lines. If those lines are missing or hidden by
+a local build flag, the token fields remain empty instead of being approximated.
+`ttft_seconds` remains empty because this non-streaming subprocess lane does not
+measure time to first token.
+
 If LM Studio's OpenAI-compatible server is reachable but returns `401
 Unauthorized`, use the installed-model CLI lane for models that appear in local
 LM Studio inventory:

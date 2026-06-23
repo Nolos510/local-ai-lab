@@ -446,6 +446,34 @@ def _parse_mlx_lm_stats(text):
     return stats
 
 
+def _parse_llama_cpp_count(line):
+    match = re.search(r"/[ \t]*([0-9]+)[ \t]*(?:tokens?|runs?)", line, flags=re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    return _parse_token_count(line)
+
+
+def _parse_llama_cpp_stats(text):
+    stats = {}
+    for line in str(text).splitlines():
+        normalized = line.strip().lower()
+        if not normalized:
+            continue
+        if "prompt eval time" in normalized:
+            token_count = _parse_llama_cpp_count(line)
+            if token_count is not None:
+                stats["input_tokens"] = token_count
+            continue
+        if "eval time" in normalized and "prompt eval" not in normalized:
+            rate_value = _parse_rate_value(line)
+            token_count = _parse_llama_cpp_count(line)
+            if rate_value is not None:
+                stats["tokens_per_sec"] = rate_value
+                if token_count is not None:
+                    stats["output_tokens"] = token_count
+    return stats
+
+
 def _run_lms_chat(lms_path, model_id, prompt, timeout, ttl):
     command = [
         lms_path,
@@ -481,6 +509,59 @@ def _run_lms_chat(lms_path, model_id, prompt, timeout, ttl):
     if result.returncode != 0:
         detail = (error_output or output).strip()
         error = f"LM Studio CLI returned exit {result.returncode}: {detail[:500]}"
+    return {
+        "stdout": output,
+        "stderr": error_output,
+        "returncode": result.returncode,
+        "error": error,
+    }
+
+
+def _resolve_llama_cli_path(path=None):
+    if path:
+        candidate = Path(path).expanduser()
+        if candidate.exists() and candidate.is_file():
+            return str(candidate)
+        raise HarnessError(f"llama.cpp CLI not found at: {candidate}")
+    found = shutil.which("llama-cli")
+    if found:
+        return found
+    raise HarnessError("llama.cpp CLI not found on PATH as `llama-cli`.")
+
+
+def _run_llama_cpp_generate(llama_cli_path, model_id, prompt, timeout, max_tokens):
+    command = [
+        llama_cli_path,
+        "-m",
+        model_id,
+        "-p",
+        prompt,
+        "-n",
+        str(max_tokens),
+        "--no-display-prompt",
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "stdout": exc.stdout or "",
+            "stderr": exc.stderr or "",
+            "returncode": None,
+            "error": f"llama.cpp CLI timed out after {timeout} seconds.",
+        }
+    output = result.stdout or ""
+    error_output = result.stderr or ""
+    error = None
+    if result.returncode != 0:
+        detail = (error_output or output).strip()
+        error = f"llama.cpp CLI returned exit {result.returncode}: {detail[:500]}"
     return {
         "stdout": output,
         "stderr": error_output,
@@ -1114,6 +1195,95 @@ def run_ollama(args):
     return raw_path
 
 
+def run_llama_cpp(args):
+    run_dir = Path(args.run_dir).resolve()
+    metadata = _read_json(run_dir / "metadata.json")
+    prompt_set = _load_prompt_set()
+    llama_cli_path = _resolve_llama_cli_path(args.llama_cli_path)
+    raw_path = run_dir / "raw_responses.jsonl"
+    log_path = run_dir / "llama-cpp-capture.log"
+    _require_absent_empty_or_force(raw_path, args.force)
+    _require_absent_empty_or_force(log_path, args.force)
+
+    records = []
+    log_lines = [
+        "llama.cpp CLI capture",
+        "benchmark_run_id={}".format(metadata["benchmark_run_id"]),
+        f"model_id={args.model_id}",
+        f"started_at={_utc_now()}",
+        "command_shape=llama-cli -m <model-id> -p <prompt> "
+        f"-n {args.max_tokens} --no-display-prompt",
+        "",
+    ]
+    log_path.write_text("\n".join(log_lines), encoding="utf-8")
+    for prompt in prompt_set["prompts"]:
+        started_at = _utc_now()
+        started = time.monotonic()
+        source = {
+            "prompt_id": prompt["id"],
+            "started_at": started_at,
+            "raw_response": "",
+            "error": None,
+        }
+        result = _run_llama_cpp_generate(
+            llama_cli_path,
+            args.model_id,
+            prompt["prompt"],
+            args.timeout,
+            args.max_tokens,
+        )
+        completed = time.monotonic()
+        latency_ms = int(round((completed - started) * 1000))
+        combined_output = "\n".join(part for part in (result["stdout"], result["stderr"]) if part)
+        stats = _parse_llama_cpp_stats(combined_output)
+        source.update(
+            {
+                "completed_at": _utc_now(),
+                "latency_ms": latency_ms,
+                "input_tokens": stats.get("input_tokens"),
+                "output_tokens": stats.get("output_tokens"),
+                "tokens_per_sec": stats.get("tokens_per_sec"),
+                "stop_reason": ("cli_exit_0" if result["returncode"] == 0 else "error"),
+                "error": result["error"],
+                "raw_response": result["stdout"].strip(),
+            }
+        )
+        records.append(_normalize_response_record(source, metadata, prompt))
+        log_lines.extend(
+            [
+                "## {}".format(prompt["id"]),
+                "returncode={}".format(result["returncode"]),
+                f"latency_ms={latency_ms}",
+                "input_tokens={}".format(source.get("input_tokens") or ""),
+                "output_tokens={}".format(source.get("output_tokens") or ""),
+                "tokens_per_sec={}".format(source.get("tokens_per_sec") or ""),
+                "error={}".format(result["error"] or ""),
+                "stdout:",
+                _neutralize_terminal(result["stdout"].rstrip()),
+                "stderr:",
+                _neutralize_terminal(result["stderr"].rstrip()),
+                "",
+            ]
+        )
+        log_path.write_text("\n".join(log_lines), encoding="utf-8")
+
+    _write_metadata_with_perf(run_dir, metadata, records)
+    _write_jsonl(raw_path, records)
+    evidence_path = run_dir / "evidence.md"
+    with evidence_path.open("a", encoding="utf-8") as handle:
+        handle.write("\n## llama.cpp Runner\n\n")
+        handle.write(
+            "- Command shape: "
+            f"`llama-cli -m <model-id> -p <prompt> -n {args.max_tokens} "
+            "--no-display-prompt`\n"
+        )
+        handle.write(f"- Model id: `{args.model_id}`\n")
+        handle.write(f"- Completed at: `{_utc_now()}`\n")
+        handle.write(f"- Prompt records: `{len(records)}`\n")
+        handle.write(f"- Capture log: `{_display_path(log_path)}`\n")
+    return raw_path
+
+
 def run_mlx_lm(args):
     run_dir = Path(args.run_dir).resolve()
     metadata = _read_json(run_dir / "metadata.json")
@@ -1489,6 +1659,18 @@ def build_parser():
     ollama_parser.add_argument("--top-p", type=float)
     ollama_parser.add_argument("--force", action="store_true")
     ollama_parser.set_defaults(func=run_ollama)
+
+    llama_parser = subparsers.add_parser(
+        "run-llama-cpp",
+        help="Capture prompt responses from llama.cpp llama-cli via subprocess.",
+    )
+    llama_parser.add_argument("--run-dir", required=True, type=Path)
+    llama_parser.add_argument("--model-id", required=True)
+    llama_parser.add_argument("--llama-cli-path")
+    llama_parser.add_argument("--timeout", type=float, default=180.0)
+    llama_parser.add_argument("--max-tokens", type=int, default=1024)
+    llama_parser.add_argument("--force", action="store_true")
+    llama_parser.set_defaults(func=run_llama_cpp)
 
     mlx_parser = subparsers.add_parser(
         "run-mlx-lm",

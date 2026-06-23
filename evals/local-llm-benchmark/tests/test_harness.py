@@ -527,6 +527,93 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertIn("\\x1b[32mgreen\\x1b[0m", log_text)
             self.assertNotIn("\x1b[32mgreen", log_text)
 
+    def test_run_llama_cpp_captures_all_prompts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_id = "20260623-llama-cpp-fixture"
+            fake_llama = tmp_path / "llama-cli"
+            fake_llama.write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env python3",
+                        "import sys",
+                        "model_id = sys.argv[sys.argv.index('-m') + 1]",
+                        "prompt = sys.argv[sys.argv.index('-p') + 1]",
+                        "max_tokens = sys.argv[sys.argv.index('-n') + 1]",
+                        "assert max_tokens == '64'",
+                        "assert '--no-display-prompt' in sys.argv",
+                        "prompt_id = 'unknown'",
+                        "for candidate in ('LLMCORE-v0.1-001', 'LLMCORE-v0.1-012'):",
+                        "    if candidate in prompt:",
+                        "        prompt_id = candidate",
+                        "print('mock llama.cpp response for {} using {}'.format(",
+                        "    prompt_id, model_id",
+                        "))",
+                        "print('\\x1b[34mblue\\x1b[0m')",
+                        "prompt_stats = (",
+                        "    'llama_perf_context_print: prompt eval time = '",
+                        "    '100.00 ms / 10 tokens '",
+                        "    '(10.00 ms per token, 100.00 tokens per second)'",
+                        ")",
+                        "eval_stats = (",
+                        "    'llama_perf_context_print:        eval time = '",
+                        "    '400.00 ms / 5 runs   '",
+                        "    '(80.00 ms per token, 12.50 tokens per second)'",
+                        ")",
+                        "print(prompt_stats, file=sys.stderr)",
+                        "print(eval_stats, file=sys.stderr)",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            fake_llama.chmod(0o755)
+            self.run_harness(
+                "init-run",
+                "--benchmark-run-id",
+                run_id,
+                "--model-name",
+                "Fixture llama.cpp Model",
+                "--backend",
+                "llama.cpp",
+                "--output-root",
+                tmp,
+            )
+            run_dir = tmp_path / run_id
+
+            self.run_harness(
+                "run-llama-cpp",
+                "--run-dir",
+                str(run_dir),
+                "--model-id",
+                str(tmp_path / "fixture-model.gguf"),
+                "--llama-cli-path",
+                str(fake_llama),
+                "--max-tokens",
+                "64",
+                "--force",
+            )
+
+            records = [
+                json.loads(line)
+                for line in (run_dir / "raw_responses.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertEqual(len(records), 12)
+            self.assertEqual(records[0]["stop_reason"], "cli_exit_0")
+            self.assertEqual(records[0]["input_tokens"], 10)
+            self.assertEqual(records[0]["output_tokens"], 5)
+            self.assertEqual(records[0]["tokens_per_sec"], 12.5)
+            self.assertIn("fixture-model.gguf", records[0]["raw_response"])
+            metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+            self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
+            self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
+            self.assertGreater(metadata["run"]["tokens_per_sec"], 0)
+            self.assertIsNone(metadata["run"]["ttft_seconds"])
+            log_text = (run_dir / "llama-cpp-capture.log").read_text(encoding="utf-8")
+            self.assertIn("\\x1b[34mblue\\x1b[0m", log_text)
+            self.assertNotIn("\x1b[34mblue", log_text)
+
     def test_init_run_rejects_traversal_run_id(self):
         with tempfile.TemporaryDirectory() as tmp:
             failed = self.run_harness_raw(
@@ -651,6 +738,34 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
                 [
                     "Prompt: 310 tokens, 82.12 tokens-per-sec",
                     "Generation: 475 tokens, 34.66 tokens-per-sec",
+                ]
+            )
+        )
+
+        self.assertEqual(stats["tokens_per_sec"], 34.66)
+        self.assertEqual(stats["input_tokens"], 310)
+        self.assertEqual(stats["output_tokens"], 475)
+
+    def test_llama_cpp_parser_handles_perf_context_labels(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("harness", HARNESS)
+        harness = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(harness)
+
+        stats = harness._parse_llama_cpp_stats(
+            "\n".join(
+                [
+                    (
+                        "llama_perf_context_print: prompt eval time = "
+                        "280.00 ms / 310 tokens "
+                        "(0.90 ms per token, 1107.14 tokens per second)"
+                    ),
+                    (
+                        "llama_perf_context_print:        eval time = "
+                        "13707.15 ms / 475 runs   "
+                        "(28.86 ms per token, 34.66 tokens per second)"
+                    ),
                 ]
             )
         )
