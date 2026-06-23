@@ -11,6 +11,12 @@ the dashboard, compare models, and make a keep/watchlist/retest/skip decision.
 The target machine is an Apple Silicon Mac Studio with 256 GB unified memory,
 large local storage, and a local-first operating model.
 
+## Start Here
+
+New operators should start with [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md).
+It provides a five-minute no-model path, the full local RAG and benchmark paths,
+and the dashboard `--enable-*` action flags with their safety boundaries.
+
 ## Current Product Lines
 
 ### Local RAG Backbone + Provider Harness
