@@ -56,7 +56,12 @@ class RAGService:
 
     def ask(self, question: str, *, top_k: int | None = None) -> AskResult:
         query_vector = self.embedding_provider.embed(question)
-        retrieved = self.vector_store.search(query_vector, top_k=top_k or self.settings.top_k)
+        retrieved = self.vector_store.search(
+            query_vector,
+            top_k=top_k or self.settings.top_k,
+            query_text=question,
+            retrieval_mode=self.settings.retrieval_mode,
+        )
         reranked = self.reranker.rerank(question, retrieved)
         prompt = build_rag_prompt(question, reranked)
         answer = self.chat_provider.generate(prompt, system_prompt=SYSTEM_PROMPT)

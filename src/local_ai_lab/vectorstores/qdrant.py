@@ -11,7 +11,15 @@ from qdrant_client.models import (
 )
 
 from local_ai_lab.ingestion.chunking import DocumentChunk
-from local_ai_lab.vectorstores.base import RetrievedChunk
+from local_ai_lab.vectorstores.base import (
+    RetrievedChunk,
+    lexical_rank_chunks,
+    reciprocal_rank_fuse,
+    validate_retrieval_mode,
+)
+
+HYBRID_CANDIDATE_MULTIPLIER = 4
+SCROLL_PAGE_SIZE = 256
 
 
 class QdrantVectorStore:
@@ -53,7 +61,30 @@ class QdrantVectorStore:
                 wait=True,
             )
 
-    def search(self, vector: list[float], *, top_k: int) -> list[RetrievedChunk]:
+    def search(
+        self,
+        vector: list[float],
+        *,
+        top_k: int,
+        query_text: str | None = None,
+        retrieval_mode: str = "dense",
+    ) -> list[RetrievedChunk]:
+        mode = validate_retrieval_mode(retrieval_mode)
+        if mode == "dense":
+            return self._search_dense(vector, top_k=top_k)
+        if not query_text:
+            return self._search_dense(vector, top_k=top_k)
+
+        candidate_limit = max(top_k, top_k * HYBRID_CANDIDATE_MULTIPLIER)
+        dense_results = self._search_dense(vector, top_k=candidate_limit)
+        lexical_results = lexical_rank_chunks(
+            query_text,
+            self._scroll_all_chunks(),
+            limit=candidate_limit,
+        )
+        return reciprocal_rank_fuse([dense_results, lexical_results], limit=top_k)
+
+    def _search_dense(self, vector: list[float], *, top_k: int) -> list[RetrievedChunk]:
         self.ensure_collection()
         response = self.client.query_points(
             collection_name=self.collection_name,
@@ -63,18 +94,26 @@ class QdrantVectorStore:
         )
         results = []
         for point in response.points:
-            payload = point.payload or {}
-            text = str(payload.get("text", ""))
-            metadata = {key: value for key, value in payload.items() if key != "text"}
-            results.append(
-                RetrievedChunk(
-                    id=str(point.id),
-                    text=text,
-                    score=float(point.score),
-                    metadata=metadata,
-                )
-            )
+            results.append(_point_to_retrieved_chunk(point))
         return results
+
+    def _scroll_all_chunks(self) -> list[RetrievedChunk]:
+        self.ensure_collection()
+        chunks: list[RetrievedChunk] = []
+        offset: Any | None = None
+        while True:
+            records, offset = self.client.scroll(
+                collection_name=self.collection_name,
+                limit=SCROLL_PAGE_SIZE,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            chunks.extend(
+                _point_to_retrieved_chunk(record, default_score=0.0) for record in records
+            )
+            if offset is None:
+                return chunks
 
     def _delete_existing_sources(self, chunks: list[DocumentChunk]) -> None:
         source_hashes = {
@@ -104,3 +143,17 @@ def _json_safe_payload(payload: dict[str, Any]) -> dict[str, Any]:
         else value
         for key, value in payload.items()
     }
+
+
+def _point_to_retrieved_chunk(point: Any, *, default_score: float | None = None) -> RetrievedChunk:
+    payload = point.payload or {}
+    text = str(payload.get("text", ""))
+    metadata = {key: value for key, value in payload.items() if key != "text"}
+    raw_score = getattr(point, "score", default_score)
+    score = float(raw_score) if raw_score is not None else 0.0
+    return RetrievedChunk(
+        id=str(point.id),
+        text=text,
+        score=score,
+        metadata=metadata,
+    )

@@ -8,9 +8,17 @@ from local_ai_lab.vectorstores.base import RetrievedChunk
 
 
 class FakeVectorStore:
-    def search(self, vector: list[float], *, top_k: int) -> list[RetrievedChunk]:
-        del vector
+    def search(
+        self,
+        vector: list[float],
+        *,
+        top_k: int,
+        query_text: str | None = None,
+        retrieval_mode: str = "dense",
+    ) -> list[RetrievedChunk]:
+        del vector, query_text
         assert top_k == 1
+        assert retrieval_mode == "dense"
         return [
             RetrievedChunk(
                 id="chunk-1",
@@ -25,8 +33,21 @@ class FakeVectorStore:
 
 
 class TwoChunkVectorStore:
-    def search(self, vector: list[float], *, top_k: int) -> list[RetrievedChunk]:
+    def __init__(self) -> None:
+        self.seen_query_text: str | None = None
+        self.seen_retrieval_mode = ""
+
+    def search(
+        self,
+        vector: list[float],
+        *,
+        top_k: int,
+        query_text: str | None = None,
+        retrieval_mode: str = "dense",
+    ) -> list[RetrievedChunk]:
         del vector, top_k
+        self.seen_query_text = query_text
+        self.seen_retrieval_mode = retrieval_mode
         return [
             RetrievedChunk(
                 id="chunk-low",
@@ -84,16 +105,19 @@ def test_rag_service_ask_returns_answer_and_citations() -> None:
 def test_rag_service_applies_reranker_before_prompt_and_citations() -> None:
     reranker = ReverseReranker()
     chat_provider = RecordingChatProvider()
+    vector_store = TwoChunkVectorStore()
     service = RAGService(
-        settings=Settings(llm_provider="mock", top_k=2),
+        settings=Settings(llm_provider="mock", top_k=2, retrieval_mode="hybrid"),
         embedding_provider=DeterministicEmbeddingProvider(vector_size=32),
-        vector_store=TwoChunkVectorStore(),
+        vector_store=vector_store,
         chat_provider=chat_provider,
         reranker=reranker,
     )
 
     result = service.ask("Which context should lead?", top_k=2)
 
+    assert vector_store.seen_query_text == "Which context should lead?"
+    assert vector_store.seen_retrieval_mode == "hybrid"
     assert reranker.seen_query == "Which context should lead?"
     assert [citation.chunk_id for citation in result.citations] == ["chunk-high", "chunk-low"]
     assert chat_provider.prompt.index("High priority context.") < chat_provider.prompt.index(

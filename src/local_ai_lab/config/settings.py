@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     ollama_embedding_model: str = "bge-m3"
 
     vector_store_provider: str = "qdrant"
+    retrieval_mode: str = "dense"
     reranker_provider: str = "identity"
 
     llm_provider: str = "ollama"
@@ -49,6 +50,14 @@ class Settings(BaseSettings):
         if host in {"localhost", "127.0.0.1", "::1"}:
             return value
         raise ValueError("local service URLs must use localhost or a loopback IP")
+
+    @field_validator("retrieval_mode")
+    @classmethod
+    def _require_supported_retrieval_mode(cls, value: str) -> str:
+        normalized = value.lower()
+        if normalized in {"dense", "hybrid"}:
+            return normalized
+        raise ValueError("retrieval mode must be 'dense' or 'hybrid'")
 
 
 @lru_cache
