@@ -397,6 +397,106 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertNotIn("TinyCoder Local 1.1B</a>", html)
             self.assertNotIn("Qwen2.5-Coder 14B Instruct</a>", html)
 
+    def test_overview_ranked_models_table_keeps_columns_readable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with db.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO models
+                    (id, model_name, model_family, provider, params_b, license, source_url, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        1,
+                        "Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
+                        "Qwen",
+                        "local",
+                        30,
+                        "reviewed",
+                        "local-file://qwen",
+                        "",
+                    ),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO model_runs
+                    (
+                        id, model_id, date_tested, backend, format, quantization,
+                        context_window, hardware, temperature, top_p, tokens_per_sec,
+                        ram_usage_gb, stability_notes, run_notes
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        2,
+                        1,
+                        "2026-06-20",
+                        "LM Studio CLI",
+                        "MLX",
+                        "4bit",
+                        32768,
+                        "Mac Studio",
+                        0.2,
+                        0.9,
+                        66.5,
+                        48.2,
+                        "",
+                        "",
+                    ),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO eval_scores
+                    (
+                        id, run_id, instruction_following, truthfulness_uncertainty,
+                        reasoning, coding_debugging, agent_planning,
+                        local_ai_lab_usefulness, research_synthesis,
+                        business_seo_strategy, long_context, creativity,
+                        speed_practicality, total_score, final_label, score_status
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        3,
+                        2,
+                        7,
+                        7,
+                        7,
+                        8,
+                        7,
+                        8,
+                        7,
+                        6,
+                        8,
+                        6,
+                        7,
+                        72.5,
+                        "WATCHLIST",
+                        "confirmed",
+                    ),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO decisions
+                    (
+                        id, model_id, decision, keep_installed, best_use_case,
+                        weakness, retest_condition
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (4, 1, "watch", 1, "coding", "memory", "new quant"),
+                )
+                conn.commit()
+
+                html = server._overview(conn)
+
+        self.assertIn('class="overview-table"', html)
+        self.assertIn(".overview-table {", html)
+        self.assertIn("min-width: 1240px", html)
+        self.assertIn(".overview-table th:nth-child(1)", html)
+
     def test_demo_page_shows_fixture_data_explicitly(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "dashboard.sqlite"

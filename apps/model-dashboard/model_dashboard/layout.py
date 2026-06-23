@@ -539,6 +539,40 @@ def _layout(title, current_path, body):
     .runs-table td:nth-child(2) {{
       width: 210px;
     }}
+    .overview-table {{
+      table-layout: fixed;
+      min-width: 1240px;
+    }}
+    .overview-table th:nth-child(1),
+    .overview-table td:nth-child(1) {{
+      width: 260px;
+    }}
+    .overview-table th:nth-child(2),
+    .overview-table td:nth-child(2) {{
+      width: 170px;
+    }}
+    .overview-table th:nth-child(3),
+    .overview-table td:nth-child(3),
+    .overview-table th:nth-child(5),
+    .overview-table td:nth-child(5),
+    .overview-table th:nth-child(6),
+    .overview-table td:nth-child(6),
+    .overview-table th:nth-child(7),
+    .overview-table td:nth-child(7) {{
+      width: 96px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .overview-table th:nth-child(4),
+    .overview-table td:nth-child(4),
+    .overview-table th:nth-child(8),
+    .overview-table td:nth-child(8),
+    .overview-table th:nth-child(9),
+    .overview-table td:nth-child(9),
+    .overview-table th:nth-child(10),
+    .overview-table td:nth-child(10) {{
+      width: 130px;
+    }}
     .runs-table th:nth-child(3),
     .runs-table td:nth-child(3) {{
       width: 135px;

@@ -104,6 +104,7 @@ def _overview(conn, query=None):
             ],
             rows,
             empty_message="No real benchmark imports yet.",
+            table_class="overview-table",
         ),
     )
     return _layout("Overview", "/", body)
