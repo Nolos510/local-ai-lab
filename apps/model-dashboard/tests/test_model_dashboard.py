@@ -1142,6 +1142,10 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("import-csv", html)
             self.assertIn("ready-local-7b", html)
             self.assertIn("/capability", html)
+            self.assertIn('class="lab-artifacts-table"', html)
+            self.assertIn(".lab-artifacts-table {", html)
+            self.assertIn("min-width: 1560px", html)
+            self.assertIn(".lab-artifacts-table th:nth-child(1)", html)
 
     def test_capability_page_renders_empty_hardware_state(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -526,6 +526,40 @@ def _layout(title, current_path, body):
     .lab-queue td:nth-child(4) {{
       width: 120px;
     }}
+    .lab-artifacts-table {{
+      table-layout: fixed;
+      min-width: 1560px;
+    }}
+    .lab-artifacts-table th:nth-child(1),
+    .lab-artifacts-table td:nth-child(1) {{
+      width: 280px;
+    }}
+    .lab-artifacts-table th:nth-child(2),
+    .lab-artifacts-table td:nth-child(2),
+    .lab-artifacts-table th:nth-child(3),
+    .lab-artifacts-table td:nth-child(3),
+    .lab-artifacts-table th:nth-child(4),
+    .lab-artifacts-table td:nth-child(4),
+    .lab-artifacts-table th:nth-child(5),
+    .lab-artifacts-table td:nth-child(5),
+    .lab-artifacts-table th:nth-child(6),
+    .lab-artifacts-table td:nth-child(6) {{
+      width: 96px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .lab-artifacts-table th:nth-child(7),
+    .lab-artifacts-table td:nth-child(7) {{
+      width: 150px;
+    }}
+    .lab-artifacts-table th:nth-child(8),
+    .lab-artifacts-table td:nth-child(8) {{
+      width: 190px;
+    }}
+    .lab-artifacts-table th:nth-child(9),
+    .lab-artifacts-table td:nth-child(9) {{
+      width: 460px;
+    }}
     .runs-table {{
       min-width: 1380px;
     }}
