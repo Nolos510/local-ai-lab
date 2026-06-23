@@ -74,6 +74,7 @@ def _compare(conn, query=None):
       {score_chart}
       {dimension_chart}
     </section>
+    {table}
     <section style="margin-top:16px">
       <h2>Performance Signals</h2>
       <p class="empty">Latency values come from approved local benchmark artifacts when imported; lower latency is better, higher tokens/sec is better.</p>
@@ -83,7 +84,6 @@ def _compare(conn, query=None):
         {latency_chart}
       </div>
     </section>
-    {table}
     """.format(
         notice=_real_data_notice(len(_demo_rows(all_scores))),
         filters=_compare_filters(scores, filters),
@@ -99,6 +99,10 @@ def _compare(conn, query=None):
             headers,
             rows,
             empty_message="No real confirmed or draft score rows match these filters.",
+            table_class="compare-table",
+            scroll_controls=True,
+            scroll_id="compare-models-table-scroll",
+            scroll_label="Compare models table",
         ),
     )
     return _layout("Compare Models", "/compare", body)

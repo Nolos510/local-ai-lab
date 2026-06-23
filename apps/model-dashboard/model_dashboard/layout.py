@@ -467,6 +467,33 @@ def _layout(title, current_path, body):
       overflow-x: auto;
       border-radius: 12px;
     }}
+    .table-scroll-shell {{
+      display: grid;
+      gap: 8px;
+    }}
+    .table-scroll-toolbar {{
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }}
+    .table-scroll-toolbar button {{
+      min-height: 34px;
+      padding: 6px 10px;
+    }}
+    .icon-button {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      min-width: 38px;
+      height: 38px;
+      padding: 0;
+    }}
+    .icon-button .ti {{
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+    }}
     tr:last-child td {{ border-bottom: 0; }}
     a {{ color: var(--accent); }}
     .pill {{
@@ -704,6 +731,36 @@ def _layout(title, current_path, body):
     .runs-table th:nth-child(13),
     .runs-table td:nth-child(13) {{
       width: 240px;
+    }}
+    .compare-table {{
+      table-layout: fixed;
+      min-width: 2960px;
+    }}
+    .compare-table th:nth-child(1),
+    .compare-table td:nth-child(1) {{
+      width: 260px;
+    }}
+    .compare-table th:nth-child(2),
+    .compare-table td:nth-child(2) {{
+      width: 90px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .compare-table th:nth-child(3),
+    .compare-table td:nth-child(3) {{
+      width: 130px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .compare-table th:nth-child(4),
+    .compare-table td:nth-child(4) {{
+      width: 170px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .compare-table th:nth-child(n+5),
+    .compare-table td:nth-child(n+5) {{
+      width: 210px;
     }}
     .model-detail-results-scroll {{
       width: 100%;
@@ -1035,6 +1092,14 @@ def _layout(title, current_path, body):
       -webkit-backdrop-filter: blur(14px);
       backdrop-filter: blur(14px);
       box-shadow: var(--shadow);
+    }}
+    .table-scroll-toolbar {{
+      margin-bottom: 2px;
+    }}
+    .table-scroll-toolbar button {{
+      border-color: var(--line);
+      background: var(--panel-soft);
+      color: var(--ink);
     }}
     table {{ border-collapse: separate; border-spacing: 0; }}
     th {{

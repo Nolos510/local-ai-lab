@@ -36,6 +36,8 @@ ICONS: dict[str, tuple[str, ...]] = {
         _path("M4 20h14"),
     ),
     "ti-chart-line": (_path("M4 19l16 0"), _path("M4 15l4 -6l4 2l4 -5l4 4")),
+    "ti-chevron-left": (_path("M15 6l-6 6l6 6"),),
+    "ti-chevron-right": (_path("M9 6l6 6l-6 6"),),
     "ti-checkup-list": (
         _path("M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2"),
         _path("M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z"),

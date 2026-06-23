@@ -100,7 +100,15 @@ def _performance_chart(rows, field, title, value_format, empty_message):
     )
 
 
-def _table(headers, rows, empty_message="No rows yet.", table_class=""):
+def _table(
+    headers,
+    rows,
+    empty_message="No rows yet.",
+    table_class="",
+    scroll_controls=False,
+    scroll_id="",
+    scroll_label="Table",
+):
     if not rows:
         return f'<p class="empty">{escape(empty_message)}</p>'
     header_html = "".join(f"<th>{escape(header)}</th>" for header in headers)
@@ -115,7 +123,20 @@ def _table(headers, rows, empty_message="No rows yet.", table_class=""):
     table = "<table{}><thead><tr>{}</tr></thead><tbody>{}</tbody></table>".format(
         class_attr, header_html, "".join(row_html)
     )
-    return f'<div class="table-wrap">{table}</div>'
+    if not scroll_controls:
+        return f'<div class="table-wrap">{table}</div>'
+
+    target_id = _text(scroll_id or f"table-scroll-{_slug(table_class or scroll_label)}")
+    label = _text(scroll_label)
+    return f"""
+    <div class="table-scroll-shell">
+      <div class="table-scroll-toolbar" aria-label="{label} horizontal scroll controls">
+        <button class="icon-button" type="button" data-scroll-target="{target_id}" data-scroll-by="-420" aria-label="Scroll {label} left" title="Scroll {label} left">{render_icon("ti-chevron-left")}</button>
+        <button class="icon-button" type="button" data-scroll-target="{target_id}" data-scroll-by="420" aria-label="Scroll {label} right" title="Scroll {label} right">{render_icon("ti-chevron-right")}</button>
+      </div>
+      <div class="table-wrap" id="{target_id}">{table}</div>
+    </div>
+    """
 
 
 def _is_demo_row(row):

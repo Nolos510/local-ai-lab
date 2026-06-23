@@ -1026,6 +1026,16 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Qwen Filter Model", runs_html)
             self.assertNotIn("Research Filter Model", runs_html)
             self.assertIn("Compare Models (1 of 2)", compare_html)
+            self.assertIn('class="compare-table"', compare_html)
+            self.assertIn('id="compare-models-table-scroll"', compare_html)
+            self.assertIn('data-scroll-target="compare-models-table-scroll"', compare_html)
+            self.assertIn(".compare-table {", compare_html)
+            self.assertIn("min-width: 2960px", compare_html)
+            self.assertIn(".compare-table th:nth-child(1)", compare_html)
+            self.assertLess(
+                compare_html.index('id="compare-models-table-scroll"'),
+                compare_html.index("Performance Signals"),
+            )
             self.assertIn("Research Filter Model", compare_html)
             self.assertNotIn("Qwen Filter Model", compare_html)
             self.assertIn("Decision Log (1 of 2)", storage_html)
@@ -1452,6 +1462,35 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("max-height: 220px", layout_html)
         self.assertIn("overflow: auto", layout_html)
         self.assertIn("overscroll-behavior: contain", layout_html)
+
+    def test_table_can_render_horizontal_scroll_controls(self):
+        table_html = server._table(
+            ["Wide"],
+            [["A wide row"]],
+            table_class="wide-table",
+            scroll_controls=True,
+            scroll_id="wide-table-scroll",
+            scroll_label="Wide table",
+        )
+        layout_html = server._layout("Fixture", "/runs", table_html)
+
+        self.assertIn('class="table-scroll-toolbar"', table_html)
+        self.assertIn('aria-label="Wide table horizontal scroll controls"', table_html)
+        self.assertIn('id="wide-table-scroll"', table_html)
+        self.assertIn('data-scroll-target="wide-table-scroll"', table_html)
+        self.assertIn('data-scroll-by="-420"', table_html)
+        self.assertIn('data-scroll-by="420"', table_html)
+        self.assertIn('title="Scroll Wide table left"', table_html)
+        self.assertIn('title="Scroll Wide table right"', table_html)
+        self.assertIn("ti-chevron-left", table_html)
+        self.assertIn("ti-chevron-right", table_html)
+        self.assertNotIn(">Left</button>", table_html)
+        self.assertNotIn(">Right</button>", table_html)
+        self.assertIn(".table-scroll-shell {", layout_html)
+        self.assertIn(".table-scroll-toolbar {", layout_html)
+        self.assertIn(".icon-button {", layout_html)
+        self.assertIn(".icon-button .ti {", layout_html)
+        self.assertIn("target.scrollBy", layout_html)
 
     def test_model_runs_table_keeps_date_column_readable(self):
         html = server._layout("Fixture", "/runs", "<p>Body</p>")
