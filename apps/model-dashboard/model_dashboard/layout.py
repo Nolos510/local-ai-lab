@@ -560,6 +560,68 @@ def _layout(title, current_path, body):
     .lab-artifacts-table td:nth-child(9) {{
       width: 460px;
     }}
+    .capability-ready-table {{
+      table-layout: fixed;
+      min-width: 1280px;
+    }}
+    .capability-ready-table th:nth-child(1),
+    .capability-ready-table td:nth-child(1) {{
+      width: 300px;
+    }}
+    .capability-ready-table th:nth-child(2),
+    .capability-ready-table td:nth-child(2) {{
+      width: 110px;
+    }}
+    .capability-ready-table th:nth-child(3),
+    .capability-ready-table td:nth-child(3) {{
+      width: 150px;
+    }}
+    .capability-ready-table th:nth-child(4),
+    .capability-ready-table td:nth-child(4) {{
+      width: 240px;
+    }}
+    .capability-ready-table th:nth-child(5),
+    .capability-ready-table td:nth-child(5) {{
+      width: 280px;
+    }}
+    .capability-ready-table th:nth-child(6),
+    .capability-ready-table td:nth-child(6) {{
+      width: 200px;
+    }}
+    .capability-quant-table {{
+      table-layout: fixed;
+      min-width: 1520px;
+    }}
+    .capability-quant-table th:nth-child(1),
+    .capability-quant-table td:nth-child(1) {{
+      width: 280px;
+    }}
+    .capability-quant-table th:nth-child(2),
+    .capability-quant-table td:nth-child(2) {{
+      width: 300px;
+    }}
+    .capability-quant-table th:nth-child(3),
+    .capability-quant-table td:nth-child(3) {{
+      width: 110px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .capability-quant-table th:nth-child(4),
+    .capability-quant-table td:nth-child(4) {{
+      width: 180px;
+    }}
+    .capability-quant-table th:nth-child(5),
+    .capability-quant-table td:nth-child(5) {{
+      width: 160px;
+    }}
+    .capability-quant-table th:nth-child(6),
+    .capability-quant-table td:nth-child(6) {{
+      width: 260px;
+    }}
+    .capability-quant-table th:nth-child(7),
+    .capability-quant-table td:nth-child(7) {{
+      width: 230px;
+    }}
     .runs-table {{
       min-width: 1380px;
     }}

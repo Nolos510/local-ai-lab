@@ -1240,6 +1240,9 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn('aria-label="Score status counts"', html)
             self.assertIn("<em>confirmed</em>", html)
             self.assertIn("<em>draft</em>", html)
+            self.assertIn('class="capability-ready-table"', html)
+            self.assertIn(".capability-ready-table {", html)
+            self.assertIn("min-width: 1280px", html)
             self.assertIn(".stat-metrics {", html)
 
     def test_capability_page_renders_perf_values_when_imported(self):
@@ -1330,6 +1333,9 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("DeepSeek-R1-0528-Qwen3-8B", html)
             self.assertIn("Q5_K_M", html)
             self.assertIn("recommended_balanced", html)
+            self.assertIn('class="capability-quant-table"', html)
+            self.assertIn(".capability-quant-table {", html)
+            self.assertIn("min-width: 1520px", html)
             self.assertNotIn("<script src=", html)
 
     def test_capability_page_renders_missing_quant_advice_empty_state(self):
