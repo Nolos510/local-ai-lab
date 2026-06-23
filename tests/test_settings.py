@@ -11,6 +11,7 @@ def test_settings_defaults_are_local_first() -> None:
     assert settings.ollama_embedding_model == "bge-m3"
     assert settings.qdrant_vector_size == 1024
     assert settings.vector_store_provider == "qdrant"
+    assert settings.reranker_provider == "identity"
     assert settings.llm_provider == "ollama"
 
 

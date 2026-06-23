@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     ollama_embedding_model: str = "bge-m3"
 
     vector_store_provider: str = "qdrant"
+    reranker_provider: str = "identity"
 
     llm_provider: str = "ollama"
     ollama_base_url: str = "http://localhost:11434"

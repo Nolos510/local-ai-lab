@@ -8,6 +8,8 @@ from local_ai_lab.ingestion.chunking import chunk_documents
 from local_ai_lab.ingestion.documents import load_documents
 from local_ai_lab.llms.base import ChatProvider
 from local_ai_lab.prompts.templates import SYSTEM_PROMPT, build_rag_prompt
+from local_ai_lab.rerankers.base import Reranker
+from local_ai_lab.rerankers.identity import IdentityReranker
 from local_ai_lab.vectorstores.base import RetrievedChunk
 
 
@@ -33,11 +35,13 @@ class RAGService:
         embedding_provider: EmbeddingProvider,
         vector_store: Any,
         chat_provider: ChatProvider,
+        reranker: Reranker | None = None,
     ) -> None:
         self.settings = settings
         self.embedding_provider = embedding_provider
         self.vector_store = vector_store
         self.chat_provider = chat_provider
+        self.reranker = reranker or IdentityReranker()
 
     def ingest_path(self, path: Path) -> dict[str, int]:
         documents = load_documents(path)
@@ -53,11 +57,12 @@ class RAGService:
     def ask(self, question: str, *, top_k: int | None = None) -> AskResult:
         query_vector = self.embedding_provider.embed(question)
         retrieved = self.vector_store.search(query_vector, top_k=top_k or self.settings.top_k)
-        prompt = build_rag_prompt(question, retrieved)
+        reranked = self.reranker.rerank(question, retrieved)
+        prompt = build_rag_prompt(question, reranked)
         answer = self.chat_provider.generate(prompt, system_prompt=SYSTEM_PROMPT)
         return AskResult(
             answer=answer,
-            citations=[_to_citation(chunk) for chunk in retrieved],
+            citations=[_to_citation(chunk) for chunk in reranked],
         )
 
 
