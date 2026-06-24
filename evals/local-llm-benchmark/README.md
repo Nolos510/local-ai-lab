@@ -163,9 +163,10 @@ python3 evals/local-llm-benchmark/harness.py run-lmstudio-cli \
 
 This runs
 `lms chat <model-id> -p <prompt> --stats --ttl 3600 --yes --dont-fetch-catalog`,
-captures all prompt responses into `raw_responses.jsonl`, and preserves CLI
-output in `lms-cli-capture.log`. It does not download, install, or fetch
-models.
+captures all prompt responses into `raw_responses.jsonl`, and writes a
+metadata-only `lms-cli-capture.log` with return codes, timing, token counts,
+stop reason, and sanitized error summaries. It does not download, install, or
+fetch models.
 
 Normalize human-supplied responses into the run artifact:
 

@@ -540,7 +540,9 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertEqual(records[0]["input_tokens"], 10)
             self.assertEqual(records[0]["output_tokens"], 5)
             self.assertEqual(records[0]["tokens_per_sec"], 12.5)
+            self.assertIn("mock mlx response for unknown", records[0]["raw_response"])
             self.assertIn("mlx-community/Fixture-4bit", records[0]["raw_response"])
+            self.assertIn("\x1b[32mgreen\x1b[0m", records[0]["raw_response"])
             metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
             self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
             self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
@@ -548,7 +550,17 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertEqual(metadata["run"]["ram_usage_gb"], 10.0)
             self.assertIsNone(metadata["run"]["ttft_seconds"])
             log_text = (run_dir / "mlx-lm-capture.log").read_text(encoding="utf-8")
-            self.assertIn("\\x1b[32mgreen\\x1b[0m", log_text)
+            self.assertIn("returncode=0", log_text)
+            self.assertIn("input_tokens=10", log_text)
+            self.assertIn("output_tokens=5", log_text)
+            self.assertIn("tokens_per_sec=12.5", log_text)
+            self.assertIn("stop_reason=cli_exit_0", log_text)
+            self.assertNotIn("mock mlx response", log_text)
+            self.assertNotIn("green", log_text)
+            self.assertNotIn("Prompt: 10 tokens", log_text)
+            self.assertNotIn("Generation: 5 tokens", log_text)
+            self.assertNotIn("stdout:", log_text)
+            self.assertNotIn("stderr:", log_text)
             self.assertNotIn("\x1b[32mgreen", log_text)
 
     def test_run_llama_cpp_captures_all_prompts(self):
@@ -628,7 +640,9 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertEqual(records[0]["input_tokens"], 10)
             self.assertEqual(records[0]["output_tokens"], 5)
             self.assertEqual(records[0]["tokens_per_sec"], 12.5)
+            self.assertIn("mock llama.cpp response for unknown", records[0]["raw_response"])
             self.assertIn("fixture-model.gguf", records[0]["raw_response"])
+            self.assertIn("\x1b[34mblue\x1b[0m", records[0]["raw_response"])
             metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
             self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
             self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
@@ -636,7 +650,16 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertEqual(metadata["run"]["ram_usage_gb"], 10.0)
             self.assertIsNone(metadata["run"]["ttft_seconds"])
             log_text = (run_dir / "llama-cpp-capture.log").read_text(encoding="utf-8")
-            self.assertIn("\\x1b[34mblue\\x1b[0m", log_text)
+            self.assertIn("returncode=0", log_text)
+            self.assertIn("input_tokens=10", log_text)
+            self.assertIn("output_tokens=5", log_text)
+            self.assertIn("tokens_per_sec=12.5", log_text)
+            self.assertIn("stop_reason=cli_exit_0", log_text)
+            self.assertNotIn("mock llama.cpp response", log_text)
+            self.assertNotIn("blue", log_text)
+            self.assertNotIn("llama_perf_context_print", log_text)
+            self.assertNotIn("stdout:", log_text)
+            self.assertNotIn("stderr:", log_text)
             self.assertNotIn("\x1b[34mblue", log_text)
 
     def test_init_run_rejects_traversal_run_id(self):
@@ -720,15 +743,42 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertEqual(records[0]["input_tokens"], 10)
             self.assertEqual(records[0]["output_tokens"], 5)
             self.assertEqual(records[0]["tokens_per_sec"], 12.5)
+            self.assertIn("mock lms response for unknown", records[0]["raw_response"])
             self.assertIn("fixture-model-id", records[0]["raw_response"])
+            self.assertIn("\x1b[31mred\x1b[0m", records[0]["raw_response"])
             metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
             self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
             self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
             self.assertGreater(metadata["run"]["tokens_per_sec"], 0)
             self.assertEqual(metadata["run"]["ram_usage_gb"], 10.0)
             log_text = (run_dir / "lms-cli-capture.log").read_text(encoding="utf-8")
-            self.assertIn("\\x1b[31mred\\x1b[0m", log_text)
+            self.assertIn("returncode=0", log_text)
+            self.assertIn("input_tokens=10", log_text)
+            self.assertIn("output_tokens=5", log_text)
+            self.assertIn("tokens_per_sec=12.5", log_text)
+            self.assertIn("stop_reason=cli_exit_0", log_text)
+            self.assertNotIn("mock lms response", log_text)
+            self.assertNotIn("red", log_text)
+            self.assertNotIn("prompt tokens: 10", log_text)
+            self.assertNotIn("completion tokens: 5", log_text)
+            self.assertNotIn("12.5 tok/s", log_text)
+            self.assertNotIn("stdout:", log_text)
+            self.assertNotIn("stderr:", log_text)
             self.assertNotIn("\x1b[31mred", log_text)
+
+    def test_capture_log_error_summarizes_cli_output_detail(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("harness", HARNESS)
+        harness = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(harness)
+
+        self.assertEqual(
+            harness._capture_log_error("llama.cpp CLI returned exit 1: private response"),
+            "llama.cpp CLI returned exit 1",
+        )
+        self.assertNotIn("\x1b[31m", harness._capture_log_error("timeout\x1b[31m"))
+        self.assertTrue(harness._capture_log_error("x" * 600).endswith("...[truncated]"))
 
     def test_lmstudio_cli_parser_handles_lms_stats_labels(self):
         import importlib.util

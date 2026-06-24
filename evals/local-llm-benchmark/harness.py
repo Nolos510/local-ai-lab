@@ -1094,6 +1094,40 @@ def _normalize_response_record(source, metadata, prompt):
     return {field: normalized.get(field) for field in RESPONSE_FIELDS}
 
 
+def _capture_log_error(error):
+    if not error:
+        return ""
+    text = _neutralize_terminal(error)
+    text = " ".join(part.strip() for part in text.splitlines() if part.strip())
+    for prefix in (
+        "llama.cpp CLI returned exit ",
+        "MLX-LM generation returned exit ",
+        "LM Studio CLI returned exit ",
+    ):
+        if text.startswith(prefix) and ":" in text:
+            text = text.split(":", 1)[0]
+            break
+    if len(text) > 500:
+        return text[:500] + "...[truncated]"
+    return text
+
+
+def _append_cli_capture_metadata(log_lines, prompt_id, source, returncode):
+    log_lines.extend(
+        [
+            f"## {prompt_id}",
+            f"returncode={_blank(returncode)}",
+            f"latency_ms={_blank(source.get('latency_ms'))}",
+            f"input_tokens={_blank(source.get('input_tokens'))}",
+            f"output_tokens={_blank(source.get('output_tokens'))}",
+            f"tokens_per_sec={_blank(source.get('tokens_per_sec'))}",
+            f"stop_reason={_blank(source.get('stop_reason'))}",
+            f"error={_capture_log_error(source.get('error'))}",
+            "",
+        ]
+    )
+
+
 def record_responses(args):
     run_dir = Path(args.run_dir).resolve()
     metadata = _read_json(run_dir / "metadata.json")
@@ -1365,22 +1399,7 @@ def run_llama_cpp(args):
             }
         )
         records.append(_normalize_response_record(source, metadata, prompt))
-        log_lines.extend(
-            [
-                "## {}".format(prompt["id"]),
-                "returncode={}".format(result["returncode"]),
-                f"latency_ms={latency_ms}",
-                "input_tokens={}".format(source.get("input_tokens") or ""),
-                "output_tokens={}".format(source.get("output_tokens") or ""),
-                "tokens_per_sec={}".format(source.get("tokens_per_sec") or ""),
-                "error={}".format(result["error"] or ""),
-                "stdout:",
-                _neutralize_terminal(result["stdout"].rstrip()),
-                "stderr:",
-                _neutralize_terminal(result["stderr"].rstrip()),
-                "",
-            ]
-        )
+        _append_cli_capture_metadata(log_lines, prompt["id"], source, result["returncode"])
         log_path.write_text("\n".join(log_lines), encoding="utf-8")
 
     _write_metadata_with_perf(run_dir, metadata, records)
@@ -1467,22 +1486,7 @@ def run_mlx_lm(args):
             }
         )
         records.append(_normalize_response_record(source, metadata, prompt))
-        log_lines.extend(
-            [
-                "## {}".format(prompt["id"]),
-                "returncode={}".format(result["returncode"]),
-                f"latency_ms={latency_ms}",
-                "input_tokens={}".format(source.get("input_tokens") or ""),
-                "output_tokens={}".format(source.get("output_tokens") or ""),
-                "tokens_per_sec={}".format(source.get("tokens_per_sec") or ""),
-                "error={}".format(result["error"] or ""),
-                "stdout:",
-                _neutralize_terminal(result["stdout"].rstrip()),
-                "stderr:",
-                _neutralize_terminal(result["stderr"].rstrip()),
-                "",
-            ]
-        )
+        _append_cli_capture_metadata(log_lines, prompt["id"], source, result["returncode"])
         log_path.write_text("\n".join(log_lines), encoding="utf-8")
 
     _write_metadata_with_perf(run_dir, metadata, records)
@@ -1564,19 +1568,7 @@ def run_lmstudio_cli(args):
             }
         )
         records.append(_normalize_response_record(source, metadata, prompt))
-        log_lines.extend(
-            [
-                "## {}".format(prompt["id"]),
-                "returncode={}".format(result["returncode"]),
-                f"latency_ms={latency_ms}",
-                "error={}".format(result["error"] or ""),
-                "stdout:",
-                _neutralize_terminal(result["stdout"].rstrip()),
-                "stderr:",
-                _neutralize_terminal(result["stderr"].rstrip()),
-                "",
-            ]
-        )
+        _append_cli_capture_metadata(log_lines, prompt["id"], source, result["returncode"])
         log_path.write_text("\n".join(log_lines), encoding="utf-8")
 
     _write_metadata_with_perf(run_dir, metadata, records)
