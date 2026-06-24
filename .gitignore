@@ -58,3 +58,4 @@ reports/evals/*
 !reports/evals/README.md
 reports/postmortems/*
 !reports/postmortems/README.md
+.claude/
