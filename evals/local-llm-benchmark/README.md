@@ -84,9 +84,9 @@ python3 evals/local-llm-benchmark/harness.py run-local \
   --force
 ```
 
-Allowed endpoints are `localhost`, loopback IPs, and literal private LAN IPs.
-Public hosts and public IP addresses are rejected. Runtime errors are preserved
-as raw benchmark evidence instead of being turned into scores.
+Allowed endpoints are `localhost` and loopback IPs such as `127.0.0.1` or
+`::1`. Private LAN and public hosts/IPs are rejected. Runtime errors are
+preserved as raw benchmark evidence instead of being turned into scores.
 
 For an Ollama-native run, use the local Ollama API lane. The default endpoint is
 `http://127.0.0.1:11434`, and the harness posts to `/api/generate` with
