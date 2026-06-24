@@ -2,29 +2,50 @@ from fastapi.testclient import TestClient
 
 from local_ai_lab.api.app import create_app
 from local_ai_lab.llms.base import ChatProviderResponseError
-from local_ai_lab.rag.service import AskResult, Citation
+from local_ai_lab.rag.service import AskResult, Citation, RetrievalInspection
 
 
 class FakeRAGService:
-    def ask(self, question: str, *, top_k: int | None = None) -> AskResult:
+    def ask(
+        self,
+        question: str,
+        *,
+        top_k: int | None = None,
+        inspect_retrieval: bool = False,
+    ) -> AskResult:
         assert question == "What is this lab for?"
         assert top_k == 1
         return AskResult(
             answer="It is for local AI engineering.",
             citations=[
                 Citation(
+                    source_name="README.md",
+                    chunk_index=0,
+                )
+            ],
+            retrieval_inspection=[
+                RetrievalInspection(
                     chunk_id="chunk-1",
                     source_name="README.md",
                     chunk_index=0,
                     score=0.9,
+                    text="PRIVATE_CHUNK_TEXT",
                 )
-            ],
+            ]
+            if inspect_retrieval
+            else None,
         )
 
 
 class FailingRAGService:
-    def ask(self, question: str, *, top_k: int | None = None) -> None:
-        del question, top_k
+    def ask(
+        self,
+        question: str,
+        *,
+        top_k: int | None = None,
+        inspect_retrieval: bool = False,
+    ) -> None:
+        del question, top_k, inspect_retrieval
         raise ChatProviderResponseError(
             "LM Studio/OpenAI-compatible provider failed: HTTP 500. "
             "Endpoint: http://localhost:1234. "
@@ -42,10 +63,37 @@ def test_ask_endpoint_returns_answer(monkeypatch) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["answer"] == "It is for local AI engineering."
-    assert payload["citations"][0]["source_name"] == "README.md"
+    assert payload["citations"] == [{"source_name": "README.md", "chunk_index": 0}]
+    assert "retrieval_inspection" not in payload
     assert "retrieved_chunks" not in payload
     assert "source_path" not in payload["citations"][0]
     assert "preview" not in payload["citations"][0]
+    assert "chunk_id" not in payload["citations"][0]
+    assert "score" not in payload["citations"][0]
+    assert "PRIVATE_CHUNK_TEXT" not in response.text
+
+
+def test_ask_endpoint_returns_retrieval_inspection_only_when_requested(monkeypatch) -> None:
+    monkeypatch.setattr("local_ai_lab.api.app.build_rag_service", lambda settings: FakeRAGService())
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/ask",
+        json={"question": "What is this lab for?", "top_k": 1, "inspect_retrieval": True},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["citations"] == [{"source_name": "README.md", "chunk_index": 0}]
+    assert payload["retrieval_inspection"] == [
+        {
+            "chunk_id": "chunk-1",
+            "source_name": "README.md",
+            "chunk_index": 0,
+            "score": 0.9,
+            "text": "PRIVATE_CHUNK_TEXT",
+        }
+    ]
 
 
 def test_ask_endpoint_rejects_large_top_k(monkeypatch) -> None:

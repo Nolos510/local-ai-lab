@@ -15,16 +15,24 @@ from local_ai_lab.vectorstores.base import RetrievedChunk
 
 @dataclass(frozen=True)
 class Citation:
+    source_name: str
+    chunk_index: int | str
+
+
+@dataclass(frozen=True)
+class RetrievalInspection:
     chunk_id: str
     source_name: str
     chunk_index: int | str
     score: float
+    text: str
 
 
 @dataclass(frozen=True)
 class AskResult:
     answer: str
     citations: list[Citation]
+    retrieval_inspection: list[RetrievalInspection] | None = None
 
 
 class RAGService:
@@ -54,7 +62,13 @@ class RAGService:
         self.vector_store.upsert_chunks(chunks, vectors)
         return {"documents": len(documents), "chunks": len(chunks)}
 
-    def ask(self, question: str, *, top_k: int | None = None) -> AskResult:
+    def ask(
+        self,
+        question: str,
+        *,
+        top_k: int | None = None,
+        inspect_retrieval: bool = False,
+    ) -> AskResult:
         query_vector = self.embedding_provider.embed(question)
         retrieved = self.vector_store.search(
             query_vector,
@@ -68,13 +82,24 @@ class RAGService:
         return AskResult(
             answer=answer,
             citations=[_to_citation(chunk) for chunk in reranked],
+            retrieval_inspection=[_to_inspection(chunk) for chunk in reranked]
+            if inspect_retrieval
+            else None,
         )
 
 
 def _to_citation(chunk: RetrievedChunk) -> Citation:
     return Citation(
+        source_name=str(chunk.metadata.get("source_name", "")),
+        chunk_index=chunk.metadata.get("chunk_index", "?"),
+    )
+
+
+def _to_inspection(chunk: RetrievedChunk) -> RetrievalInspection:
+    return RetrievalInspection(
         chunk_id=chunk.id,
         source_name=str(chunk.metadata.get("source_name", "")),
         chunk_index=chunk.metadata.get("chunk_index", "?"),
         score=chunk.score,
+        text=chunk.text,
     )

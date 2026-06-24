@@ -99,6 +99,9 @@ def test_rag_service_ask_returns_answer_and_citations() -> None:
     assert "Mock local answer" in result.answer
     assert result.citations[0].source_name == "sample.md"
     assert not hasattr(result.citations[0], "source_path")
+    assert not hasattr(result.citations[0], "chunk_id")
+    assert not hasattr(result.citations[0], "score")
+    assert result.retrieval_inspection is None
     assert not hasattr(result, "retrieved_chunks")
 
 
@@ -119,7 +122,24 @@ def test_rag_service_applies_reranker_before_prompt_and_citations() -> None:
     assert vector_store.seen_query_text == "Which context should lead?"
     assert vector_store.seen_retrieval_mode == "hybrid"
     assert reranker.seen_query == "Which context should lead?"
-    assert [citation.chunk_id for citation in result.citations] == ["chunk-high", "chunk-low"]
+    assert [citation.source_name for citation in result.citations] == ["high.md", "low.md"]
     assert chat_provider.prompt.index("High priority context.") < chat_provider.prompt.index(
         "Low priority context."
     )
+
+
+def test_rag_service_exposes_retrieval_inspection_only_when_requested() -> None:
+    service = RAGService(
+        settings=Settings(llm_provider="mock", top_k=1),
+        embedding_provider=DeterministicEmbeddingProvider(vector_size=32),
+        vector_store=FakeVectorStore(),
+        chat_provider=MockChatProvider(),
+    )
+
+    result = service.ask("What does the lab run?", top_k=1, inspect_retrieval=True)
+
+    assert result.retrieval_inspection is not None
+    assert result.retrieval_inspection[0].chunk_id == "chunk-1"
+    assert result.retrieval_inspection[0].score == 0.9
+    assert result.retrieval_inspection[0].text == "The lab runs local RAG on Apple Silicon."
+    assert result.retrieval_inspection[0].source_name == "sample.md"

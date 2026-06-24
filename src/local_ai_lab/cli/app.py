@@ -22,6 +22,11 @@ def main() -> int:
     ask_parser.add_argument("question")
     ask_parser.add_argument("--top-k", type=int, default=None)
     ask_parser.add_argument("--json", action="store_true", help="Print the full response as JSON.")
+    ask_parser.add_argument(
+        "--inspect-retrieval",
+        action="store_true",
+        help="Include retrieved chunk text and scores for local debugging.",
+    )
 
     args = parser.parse_args()
 
@@ -41,7 +46,11 @@ def main() -> int:
     if args.command == "ask":
         service = build_rag_service()
         try:
-            result = service.ask(args.question, top_k=args.top_k)
+            result = service.ask(
+                args.question,
+                top_k=args.top_k,
+                inspect_retrieval=args.inspect_retrieval,
+            )
         except EmbeddingProviderError as exc:
             print(f"Embedding provider error: {exc}", file=sys.stderr)
             return 1
@@ -49,25 +58,30 @@ def main() -> int:
             print(f"Provider error: {exc}", file=sys.stderr)
             return 1
         if args.json:
-            print(
-                json.dumps(
-                    {
-                        "answer": result.answer,
-                        "citations": [citation.__dict__ for citation in result.citations],
-                    },
-                    indent=2,
-                )
-            )
+            payload = {
+                "answer": result.answer,
+                "citations": [citation.__dict__ for citation in result.citations],
+            }
+            if result.retrieval_inspection is not None:
+                payload["retrieval_inspection"] = [
+                    inspection.__dict__ for inspection in result.retrieval_inspection
+                ]
+            print(json.dumps(payload, indent=2))
             return 0
 
         print(result.answer)
         if result.citations:
             print("\nCitations:")
             for citation in result.citations:
+                print(f"- {citation.source_name}#chunk_{citation.chunk_index}")
+        if result.retrieval_inspection:
+            print("\nRetrieval inspection:")
+            for inspection in result.retrieval_inspection:
                 print(
-                    f"- {citation.source_name}#chunk_{citation.chunk_index} "
-                    f"score={citation.score:.4f} id={citation.chunk_id}"
+                    f"- {inspection.source_name}#chunk_{inspection.chunk_index} "
+                    f"score={inspection.score:.4f} id={inspection.chunk_id}"
                 )
+                print(inspection.text)
         return 0
 
     return 1
