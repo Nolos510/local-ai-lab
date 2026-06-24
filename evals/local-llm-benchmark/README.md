@@ -136,6 +136,12 @@ a local build flag, the token fields remain empty instead of being approximated.
 `ttft_seconds` remains empty because this non-streaming subprocess lane does not
 measure time to first token.
 
+Automatic capture runners also record observed RAM high-water data into
+`ram_usage_gb` when the local machine exposes it. Endpoint runners sample
+macOS `vm_stat` around each prompt. Subprocess runners also sample child RSS via
+`ps` while the command is running. These are local measurements only; the harness
+does not install profilers or infer missing model memory.
+
 If LM Studio's OpenAI-compatible server is reachable but returns `401
 Unauthorized`, use the installed-model CLI lane for models that appear in local
 LM Studio inventory:

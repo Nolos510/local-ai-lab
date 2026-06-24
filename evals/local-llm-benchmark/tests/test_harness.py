@@ -1,5 +1,6 @@
 import csv
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -12,28 +13,47 @@ HARNESS_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = HARNESS_DIR.parents[1]
 HARNESS = HARNESS_DIR / "harness.py"
 APP_DIR = REPO_ROOT / "apps" / "model-dashboard"
+FAKE_VM_STAT = "\n".join(
+    [
+        "Mach Virtual Memory Statistics: (page size of 4096 bytes)",
+        "Pages active: 1048576.",
+        "Pages inactive: 1048576.",
+        "Pages speculative: 0.",
+        "Pages wired down: 524288.",
+        "Pages occupied by compressor: 0.",
+    ]
+)
 sys.path.insert(0, str(APP_DIR))
 
 from model_dashboard import csv_io, db  # noqa: E402
 
 
 class LocalBenchmarkHarnessTests(unittest.TestCase):
-    def run_harness(self, *args):
+    def harness_env(self, env=None):
+        merged = os.environ.copy()
+        merged["LOCAL_AI_LAB_FAKE_VM_STAT"] = FAKE_VM_STAT
+        if env:
+            merged.update(env)
+        return merged
+
+    def run_harness(self, *args, env=None):
         result = subprocess.run(
             [sys.executable, str(HARNESS), *args],
             text=True,
             capture_output=True,
             check=False,
+            env=self.harness_env(env),
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         return result
 
-    def run_harness_raw(self, *args):
+    def run_harness_raw(self, *args, env=None):
         return subprocess.run(
             [sys.executable, str(HARNESS), *args],
             text=True,
             capture_output=True,
             check=False,
+            env=self.harness_env(env),
         )
 
     def start_chat_server(self, mode):
@@ -342,6 +362,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
             self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
             self.assertGreater(metadata["run"]["tokens_per_sec"], 0)
+            self.assertEqual(metadata["run"]["ram_usage_gb"], 10.0)
             self.assertIsNone(metadata["run"]["ttft_seconds"])
 
             self.run_harness(
@@ -357,6 +378,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertIn("ttft_seconds", run_rows[0])
             self.assertIn("total_latency_seconds", run_rows[0])
             self.assertNotEqual(run_rows[0]["total_latency_seconds"], "")
+            self.assertEqual(run_rows[0]["ram_usage_gb"], "10.0")
 
             failed = self.run_harness_raw(
                 "run-local",
@@ -420,6 +442,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
             self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
             self.assertGreater(metadata["run"]["tokens_per_sec"], 0)
+            self.assertEqual(metadata["run"]["ram_usage_gb"], 10.0)
             self.assertIsNone(metadata["run"]["ttft_seconds"])
             self.assertEqual(server.requests[0]["path"], "/api/generate")
             self.assertEqual(server.requests[0]["payload"]["model"], "fixture-ollama:latest")
@@ -522,6 +545,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
             self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
             self.assertGreater(metadata["run"]["tokens_per_sec"], 0)
+            self.assertEqual(metadata["run"]["ram_usage_gb"], 10.0)
             self.assertIsNone(metadata["run"]["ttft_seconds"])
             log_text = (run_dir / "mlx-lm-capture.log").read_text(encoding="utf-8")
             self.assertIn("\\x1b[32mgreen\\x1b[0m", log_text)
@@ -609,6 +633,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
             self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
             self.assertGreater(metadata["run"]["tokens_per_sec"], 0)
+            self.assertEqual(metadata["run"]["ram_usage_gb"], 10.0)
             self.assertIsNone(metadata["run"]["ttft_seconds"])
             log_text = (run_dir / "llama-cpp-capture.log").read_text(encoding="utf-8")
             self.assertIn("\\x1b[34mblue\\x1b[0m", log_text)
@@ -700,6 +725,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
             self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
             self.assertGreater(metadata["run"]["tokens_per_sec"], 0)
+            self.assertEqual(metadata["run"]["ram_usage_gb"], 10.0)
             log_text = (run_dir / "lms-cli-capture.log").read_text(encoding="utf-8")
             self.assertIn("\\x1b[31mred\\x1b[0m", log_text)
             self.assertNotIn("\x1b[31mred", log_text)
@@ -773,6 +799,22 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
         self.assertEqual(stats["tokens_per_sec"], 34.66)
         self.assertEqual(stats["input_tokens"], 310)
         self.assertEqual(stats["output_tokens"], 475)
+
+    def test_vm_stat_parser_and_run_summary_use_peak_memory(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("harness", HARNESS)
+        harness = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(harness)
+
+        self.assertEqual(harness._parse_vm_stat_gb(FAKE_VM_STAT), 10.0)
+        metadata = {"run": {"ram_usage_gb": None}}
+        harness._apply_run_perf_summary(
+            metadata,
+            [{"ram_usage_gb": 4.0}, {"ram_usage_gb": 7.5}, {"ram_usage_gb": 5.0}],
+        )
+
+        self.assertEqual(metadata["run"]["ram_usage_gb"], 7.5)
 
     def test_suggest_scores_writes_draft_and_exports_draft_csv(self):
         with tempfile.TemporaryDirectory() as tmp:

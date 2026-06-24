@@ -13,6 +13,7 @@ import hashlib
 import http.client
 import ipaddress
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -35,6 +36,8 @@ DEFAULT_OUTPUT_ROOT = REPO_ROOT / "data" / "eval_results"
 PROMPT_PATH = HARNESS_ROOT / "prompts" / "ai-lab-local-llm-core-v0.1.json"
 RUBRIC_PATH = HARNESS_ROOT / "rubrics" / "ai-lab-local-llm-rubric-v0.1.json"
 DEFAULT_OLLAMA_ENDPOINT = "http://127.0.0.1:11434"
+BYTES_PER_GIB = 1024**3
+VM_STAT_FIXTURE_ENV = "LOCAL_AI_LAB_FAKE_VM_STAT"
 
 TABLE_FIELDS = {
     "models": (
@@ -328,6 +331,120 @@ def _usage_value(response, key):
     return value if isinstance(value, (int, float)) else None
 
 
+def _max_memory_gb(*values):
+    numeric = [float(value) for value in values if value not in (None, "")]
+    if not numeric:
+        return None
+    return round(max(numeric), 3)
+
+
+def _parse_vm_stat_gb(text):
+    if not text:
+        return None
+    page_size = 4096
+    header = re.search(r"page size of ([0-9]+) bytes", text, flags=re.IGNORECASE)
+    if header:
+        page_size = int(header.group(1))
+    pages = {}
+    for line in str(text).splitlines():
+        match = re.match(r"([^:]+):\s*([0-9]+)\.", line.strip())
+        if not match:
+            continue
+        label = re.sub(r"\s+", " ", match.group(1).strip().lower())
+        pages[label] = int(match.group(2))
+    used_page_count = sum(
+        pages.get(label, 0)
+        for label in (
+            "pages active",
+            "pages inactive",
+            "pages speculative",
+            "pages wired down",
+            "pages occupied by compressor",
+        )
+    )
+    if used_page_count <= 0:
+        return None
+    return round((used_page_count * page_size) / BYTES_PER_GIB, 3)
+
+
+def _vm_stat_memory_gb():
+    fixture = os.environ.get(VM_STAT_FIXTURE_ENV)
+    if fixture:
+        return _parse_vm_stat_gb(fixture)
+    try:
+        result = subprocess.run(
+            ["vm_stat"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=2.0,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return _parse_vm_stat_gb(result.stdout)
+
+
+def _process_rss_gb(pid):
+    try:
+        result = subprocess.run(
+            ["ps", "-o", "rss=", "-p", str(pid)],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=1.0,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    text = result.stdout.strip()
+    if not text:
+        return None
+    try:
+        rss_kib = int(text.splitlines()[-1].strip())
+    except ValueError:
+        return None
+    return round((rss_kib * 1024) / BYTES_PER_GIB, 3)
+
+
+def _run_subprocess_capture(command, timeout):
+    process = subprocess.Popen(
+        command,
+        cwd=REPO_ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    peak_rss_gb = _process_rss_gb(process.pid)
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            process.kill()
+            stdout, stderr = process.communicate()
+            return {
+                "stdout": stdout or "",
+                "stderr": stderr or "",
+                "returncode": None,
+                "timed_out": True,
+                "peak_rss_gb": peak_rss_gb,
+            }
+        try:
+            stdout, stderr = process.communicate(timeout=min(0.1, remaining))
+            peak_rss_gb = _max_memory_gb(peak_rss_gb, _process_rss_gb(process.pid))
+            return {
+                "stdout": stdout or "",
+                "stderr": stderr or "",
+                "returncode": process.returncode,
+                "timed_out": False,
+                "peak_rss_gb": peak_rss_gb,
+            }
+        except subprocess.TimeoutExpired:
+            peak_rss_gb = _max_memory_gb(peak_rss_gb, _process_rss_gb(process.pid))
+
+
 def _numeric_value(response, key):
     value = response.get(key)
     return value if isinstance(value, (int, float)) else None
@@ -487,33 +604,27 @@ def _run_lms_chat(lms_path, model_id, prompt, timeout, ttl):
         "--yes",
         "--dont-fetch-catalog",
     ]
-    try:
-        result = subprocess.run(
-            command,
-            cwd=REPO_ROOT,
-            text=True,
-            capture_output=True,
-            check=False,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired as exc:
+    result = _run_subprocess_capture(command, timeout)
+    if result["timed_out"]:
         return {
-            "stdout": exc.stdout or "",
-            "stderr": exc.stderr or "",
+            "stdout": result["stdout"],
+            "stderr": result["stderr"],
             "returncode": None,
             "error": f"LM Studio CLI timed out after {timeout} seconds.",
+            "peak_rss_gb": result.get("peak_rss_gb"),
         }
-    output = result.stdout or ""
-    error_output = result.stderr or ""
+    output = result["stdout"]
+    error_output = result["stderr"]
     error = None
-    if result.returncode != 0:
+    if result["returncode"] != 0:
         detail = (error_output or output).strip()
-        error = f"LM Studio CLI returned exit {result.returncode}: {detail[:500]}"
+        error = f"LM Studio CLI returned exit {result['returncode']}: {detail[:500]}"
     return {
         "stdout": output,
         "stderr": error_output,
-        "returncode": result.returncode,
+        "returncode": result["returncode"],
         "error": error,
+        "peak_rss_gb": result.get("peak_rss_gb"),
     }
 
 
@@ -540,33 +651,27 @@ def _run_llama_cpp_generate(llama_cli_path, model_id, prompt, timeout, max_token
         str(max_tokens),
         "--no-display-prompt",
     ]
-    try:
-        result = subprocess.run(
-            command,
-            cwd=REPO_ROOT,
-            text=True,
-            capture_output=True,
-            check=False,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired as exc:
+    result = _run_subprocess_capture(command, timeout)
+    if result["timed_out"]:
         return {
-            "stdout": exc.stdout or "",
-            "stderr": exc.stderr or "",
+            "stdout": result["stdout"],
+            "stderr": result["stderr"],
             "returncode": None,
             "error": f"llama.cpp CLI timed out after {timeout} seconds.",
+            "peak_rss_gb": result.get("peak_rss_gb"),
         }
-    output = result.stdout or ""
-    error_output = result.stderr or ""
+    output = result["stdout"]
+    error_output = result["stderr"]
     error = None
-    if result.returncode != 0:
+    if result["returncode"] != 0:
         detail = (error_output or output).strip()
-        error = f"llama.cpp CLI returned exit {result.returncode}: {detail[:500]}"
+        error = f"llama.cpp CLI returned exit {result['returncode']}: {detail[:500]}"
     return {
         "stdout": output,
         "stderr": error_output,
-        "returncode": result.returncode,
+        "returncode": result["returncode"],
         "error": error,
+        "peak_rss_gb": result.get("peak_rss_gb"),
     }
 
 
@@ -592,33 +697,27 @@ def _run_mlx_lm_generate(python_path, model_id, prompt, timeout, max_tokens):
         "--max-tokens",
         str(max_tokens),
     ]
-    try:
-        result = subprocess.run(
-            command,
-            cwd=REPO_ROOT,
-            text=True,
-            capture_output=True,
-            check=False,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired as exc:
+    result = _run_subprocess_capture(command, timeout)
+    if result["timed_out"]:
         return {
-            "stdout": exc.stdout or "",
-            "stderr": exc.stderr or "",
+            "stdout": result["stdout"],
+            "stderr": result["stderr"],
             "returncode": None,
             "error": f"MLX-LM generation timed out after {timeout} seconds.",
+            "peak_rss_gb": result.get("peak_rss_gb"),
         }
-    output = result.stdout or ""
-    error_output = result.stderr or ""
+    output = result["stdout"]
+    error_output = result["stderr"]
     error = None
-    if result.returncode != 0:
+    if result["returncode"] != 0:
         detail = (error_output or output).strip()
-        error = f"MLX-LM generation returned exit {result.returncode}: {detail[:500]}"
+        error = f"MLX-LM generation returned exit {result['returncode']}: {detail[:500]}"
     return {
         "stdout": output,
         "stderr": error_output,
-        "returncode": result.returncode,
+        "returncode": result["returncode"],
         "error": error,
+        "peak_rss_gb": result.get("peak_rss_gb"),
     }
 
 
@@ -845,7 +944,7 @@ def _apply_run_perf_summary(metadata, records):
     elif tokens_per_sec and run.get("tokens_per_sec") in (None, ""):
         run["tokens_per_sec"] = round(sum(tokens_per_sec) / len(tokens_per_sec), 2)
     if ram_values and run.get("ram_usage_gb") in (None, ""):
-        run["ram_usage_gb"] = round(sum(ram_values) / len(ram_values), 2)
+        run["ram_usage_gb"] = round(max(ram_values), 2)
     run.setdefault("ttft_seconds", None)
     return metadata
 
@@ -1048,9 +1147,11 @@ def run_local(args):
             "max_tokens": args.max_tokens,
         }
         payload = {key: value for key, value in payload.items() if value is not None}
+        memory_before = _vm_stat_memory_gb()
         try:
             response = _post_chat_completion(args.endpoint, payload, args.timeout)
             completed = time.monotonic()
+            memory_after = _vm_stat_memory_gb()
             output_tokens = _usage_value(response, "completion_tokens")
             latency_ms = int(round((completed - started) * 1000))
             source.update(
@@ -1065,15 +1166,18 @@ def run_local(args):
                         else None
                     ),
                     "stop_reason": _finish_reason(response),
+                    "ram_usage_gb": _max_memory_gb(memory_before, memory_after),
                     "raw_response": _message_content(response),
                 }
             )
         except HarnessError as exc:
+            memory_after = _vm_stat_memory_gb()
             source.update(
                 {
                     "completed_at": _utc_now(),
                     "latency_ms": int(round((time.monotonic() - started) * 1000)),
                     "error": str(exc),
+                    "ram_usage_gb": _max_memory_gb(memory_before, memory_after),
                     "stop_reason": "error",
                 }
             )
@@ -1138,9 +1242,11 @@ def run_ollama(args):
         }
         if options:
             payload["options"] = options
+        memory_before = _vm_stat_memory_gb()
         try:
             response = _post_ollama_generate(args.endpoint, payload, args.timeout)
             completed = time.monotonic()
+            memory_after = _vm_stat_memory_gb()
             latency_ms = int(round((completed - started) * 1000))
             input_tokens = _numeric_value(response, "prompt_eval_count")
             output_tokens = _numeric_value(response, "eval_count")
@@ -1153,16 +1259,19 @@ def run_ollama(args):
                     "tokens_per_sec": _ollama_tokens_per_sec(response, latency_ms),
                     "stop_reason": response.get("done_reason")
                     or ("done" if response.get("done") is True else None),
+                    "ram_usage_gb": _max_memory_gb(memory_before, memory_after),
                     "raw_response": str(response.get("response") or ""),
                 }
             )
         except HarnessError as exc:
+            memory_after = _vm_stat_memory_gb()
             latency_ms = int(round((time.monotonic() - started) * 1000))
             source.update(
                 {
                     "completed_at": _utc_now(),
                     "latency_ms": latency_ms,
                     "error": str(exc),
+                    "ram_usage_gb": _max_memory_gb(memory_before, memory_after),
                     "stop_reason": "error",
                 }
             )
@@ -1225,6 +1334,7 @@ def run_llama_cpp(args):
             "raw_response": "",
             "error": None,
         }
+        memory_before = _vm_stat_memory_gb()
         result = _run_llama_cpp_generate(
             llama_cli_path,
             args.model_id,
@@ -1233,6 +1343,7 @@ def run_llama_cpp(args):
             args.max_tokens,
         )
         completed = time.monotonic()
+        memory_after = _vm_stat_memory_gb()
         latency_ms = int(round((completed - started) * 1000))
         combined_output = "\n".join(part for part in (result["stdout"], result["stderr"]) if part)
         stats = _parse_llama_cpp_stats(combined_output)
@@ -1245,6 +1356,11 @@ def run_llama_cpp(args):
                 "tokens_per_sec": stats.get("tokens_per_sec"),
                 "stop_reason": ("cli_exit_0" if result["returncode"] == 0 else "error"),
                 "error": result["error"],
+                "ram_usage_gb": _max_memory_gb(
+                    memory_before,
+                    memory_after,
+                    result.get("peak_rss_gb"),
+                ),
                 "raw_response": result["stdout"].strip(),
             }
         )
@@ -1314,6 +1430,7 @@ def run_mlx_lm(args):
             "raw_response": "",
             "error": None,
         }
+        memory_before = _vm_stat_memory_gb()
         result = _run_mlx_lm_generate(
             python_path,
             args.model_id,
@@ -1322,6 +1439,7 @@ def run_mlx_lm(args):
             args.max_tokens,
         )
         completed = time.monotonic()
+        memory_after = _vm_stat_memory_gb()
         latency_ms = int(round((completed - started) * 1000))
         combined_output = "\n".join(part for part in (result["stdout"], result["stderr"]) if part)
         stats = _parse_mlx_lm_stats(combined_output)
@@ -1340,6 +1458,11 @@ def run_mlx_lm(args):
                 ),
                 "stop_reason": ("cli_exit_0" if result["returncode"] == 0 else "error"),
                 "error": result["error"],
+                "ram_usage_gb": _max_memory_gb(
+                    memory_before,
+                    memory_after,
+                    result.get("peak_rss_gb"),
+                ),
                 "raw_response": result["stdout"].strip(),
             }
         )
@@ -1410,6 +1533,7 @@ def run_lmstudio_cli(args):
             "raw_response": "",
             "error": None,
         }
+        memory_before = _vm_stat_memory_gb()
         result = _run_lms_chat(
             lms_path,
             args.model_id,
@@ -1418,6 +1542,7 @@ def run_lmstudio_cli(args):
             args.ttl,
         )
         completed = time.monotonic()
+        memory_after = _vm_stat_memory_gb()
         latency_ms = int(round((completed - started) * 1000))
         combined_output = "\n".join(part for part in (result["stdout"], result["stderr"]) if part)
         stats = _parse_lms_stats(combined_output)
@@ -1430,6 +1555,11 @@ def run_lmstudio_cli(args):
                 "tokens_per_sec": stats.get("tokens_per_sec"),
                 "stop_reason": ("cli_exit_0" if result["returncode"] == 0 else "error"),
                 "error": result["error"],
+                "ram_usage_gb": _max_memory_gb(
+                    memory_before,
+                    memory_after,
+                    result.get("peak_rss_gb"),
+                ),
                 "raw_response": result["stdout"].strip(),
             }
         )
