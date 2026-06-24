@@ -1023,6 +1023,8 @@ class ModelDashboardQaTests(unittest.TestCase):
 
             self.assertIn("Model Runs (1 of 2)", runs_html)
             self.assertIn('class="runs-table"', runs_html)
+            self.assertIn('id="model-runs-table-scroll"', runs_html)
+            self.assertIn('data-scroll-target="model-runs-table-scroll"', runs_html)
             self.assertIn("Qwen Filter Model", runs_html)
             self.assertNotIn("Research Filter Model", runs_html)
             self.assertIn("Compare Models (1 of 2)", compare_html)
@@ -1498,7 +1500,10 @@ class ModelDashboardQaTests(unittest.TestCase):
         html = server._layout("Fixture", "/runs", "<p>Body</p>")
 
         self.assertIn(".runs-table {", html)
-        self.assertIn("min-width: 1380px", html)
+        self.assertIn("table-layout: fixed", html)
+        self.assertIn(".runs-table th:nth-child(12)", html)
+        self.assertIn(".runs-table th:nth-child(13)", html)
+        self.assertIn("min-width: 1640px", html)
         self.assertIn(".runs-table th:nth-child(1)", html)
         self.assertIn("white-space: nowrap", html)
         self.assertIn("overflow-wrap: normal", html)

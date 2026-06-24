@@ -67,6 +67,9 @@ def _runs(conn, query=None):
             rows,
             empty_message="No real benchmark runs match these filters.",
             table_class="runs-table",
+            scroll_controls=True,
+            scroll_id="model-runs-table-scroll",
+            scroll_label="Model runs table",
         ),
     )
     return _layout("Model Runs", "/runs", body)

@@ -650,7 +650,8 @@ def _layout(title, current_path, body):
       width: 230px;
     }}
     .runs-table {{
-      min-width: 1380px;
+      table-layout: fixed;
+      min-width: 1640px;
     }}
     .runs-table th:nth-child(1),
     .runs-table td:nth-child(1) {{
