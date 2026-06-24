@@ -11,6 +11,12 @@ the dashboard, compare models, and make a keep/watchlist/retest/skip decision.
 The target machine is an Apple Silicon Mac Studio with 256 GB unified memory,
 large local storage, and a local-first operating model.
 
+## Start Here
+
+New operators should start with [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md).
+It provides a five-minute no-model path, the full local RAG and benchmark paths,
+and the dashboard `--enable-*` action flags with their safety boundaries.
+
 ## Current Product Lines
 
 ### Local RAG Backbone + Provider Harness
@@ -105,13 +111,31 @@ uv run ruff check .
 uv run pytest
 ```
 
-Local RAG smoke checks requiring Qdrant and indexed docs, but not a real model:
+Local RAG smoke checks requiring Qdrant and indexed docs, but not a real model.
+The smoke path uses an isolated Qdrant collection so it does not mutate an
+existing personal RAG index:
 
 ```bash
 docker compose up -d qdrant
-uv run local-ai-lab ingest --path data/sample_docs
-LOCAL_AI_LAB_LLM_PROVIDER=mock uv run local-ai-lab ask "What is this lab for?"
+curl -fsS -X DELETE http://localhost:6333/collections/local_ai_lab_quickstart_smoke || true
+LOCAL_AI_LAB_QDRANT_COLLECTION=local_ai_lab_quickstart_smoke LOCAL_AI_LAB_LLM_PROVIDER=mock uv run local-ai-lab doctor
+LOCAL_AI_LAB_QDRANT_COLLECTION=local_ai_lab_quickstart_smoke uv run local-ai-lab ingest --path data/sample_docs
+LOCAL_AI_LAB_QDRANT_COLLECTION=local_ai_lab_quickstart_smoke LOCAL_AI_LAB_LLM_PROVIDER=mock uv run local-ai-lab ask "What is this lab for?"
 ```
+
+If `docker compose up -d qdrant` reports that `local-ai-lab-qdrant` is already
+in use, another checkout or previous run already owns the fixed local container
+name. Do not remove an unknown container just to continue onboarding. First
+verify the existing loopback service:
+
+```bash
+curl -fsS http://localhost:6333/collections
+```
+
+Continue the mock smoke path only when Qdrant is reachable. If ingest reports a
+Qdrant vector dimension mismatch, the target collection was created with a
+different embedding vector size. Use the quickstart smoke collection above, or
+delete/recreate only the collection you intentionally want to rebuild.
 
 Semantic local embeddings can be enabled through Ollama after installing the
 configured embedding model:
@@ -191,26 +215,25 @@ call cloud APIs, or require secrets.
 
 ## AI Lab OS CLI
 
-The unified local workflow CLI is available as `ai-lab`:
+The unified local workflow CLI is available as `ai-lab`. These read-only
+commands inspect repo-local state and sanitized local runtime context:
 
 ```bash
 uv run ai-lab status
 uv run ai-lab hardware snapshot
-uv run ai-lab radar list --status ready_for_eval
+uv run ai-lab radar list --status ready_for_eval --limit 5
 uv run ai-lab bench matrix --limit 5
-uv run ai-lab bench run --candidate 20260605-dolphin-mistral-24b-venice-edition
-uv run ai-lab bench execute --candidate <candidate_id> --model-id <exact_local_id> --runner lmstudio-cli --run-id <benchmark_run_id> --i-approve-local-run
-uv run ai-lab import --run <benchmark_run_id>
-uv run ai-lab report
-uv run ai-lab dashboard --port 8765
 ```
 
 `ai-lab status` and `ai-lab radar list` read local CSV/SQLite/artifact state.
 `ai-lab bench matrix` reads the candidate registry and prints an auditable
 benchmark queue without running models, inspecting private model folders, or
-initializing artifacts. Action commands dispatch to the existing benchmark
-harness and dashboard entrypoints. They do not download models or call
-model/cloud APIs implicitly.
+initializing artifacts.
+
+Action commands dispatch to the existing benchmark harness and dashboard
+entrypoints. They do not download models or call model/cloud APIs implicitly.
+Use the repeatable `/tmp` smoke sequence below for a pasteable prepared-artifact
+import path.
 
 `ai-lab bench execute` is the sanctioned local execution wrapper. It refuses to
 run unless the operator supplies an explicit candidate, exact local model id,
@@ -222,6 +245,25 @@ be run only after confirming the exact local model id and runtime.
 JSON. Use `--out docs/lab-notes/<name>.json` to write a repo-local copy for
 benchmark evidence. It does not include usernames, home directories,
 environment variables, model inventory, prompts, documents, or secrets.
+
+For a repeatable no-model lab-loop smoke run that writes only to `/tmp`, use:
+
+```bash
+rm -rf /tmp/ai-lab-quickstart-eval /tmp/ai-lab-quickstart-dashboard.sqlite /tmp/ai-lab-quickstart-dashboard-report.md
+uv run ai-lab radar list --status ready_for_eval --limit 5
+uv run ai-lab bench matrix --limit 5
+uv run ai-lab bench run --candidate 20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit --run-id quickstart-qwen3-coder-prep --output-root /tmp/ai-lab-quickstart-eval
+uv run ai-lab import --run quickstart-qwen3-coder-prep --eval-results /tmp/ai-lab-quickstart-eval --db /tmp/ai-lab-quickstart-dashboard.sqlite
+uv run ai-lab report --db /tmp/ai-lab-quickstart-dashboard.sqlite --out /tmp/ai-lab-quickstart-dashboard-report.md
+uv run ai-lab status --eval-results /tmp/ai-lab-quickstart-eval --db /tmp/ai-lab-quickstart-dashboard.sqlite
+uv run ai-lab dashboard --db /tmp/ai-lab-quickstart-dashboard.sqlite --port 8767
+```
+
+This prepares a benchmark artifact and imports dashboard-compatible model/run
+metadata only. It does not execute a model, capture raw benchmark responses,
+create scores, or create decisions. The expected status after import is one
+artifact, one model row, one run row, zero score rows, and zero decision rows.
+Stop the dashboard with `Ctrl-C` when finished.
 
 ## Benchmark Harness
 
