@@ -18,7 +18,9 @@ uv run ai-lab bench execute \
   --i-approve-local-run
 ```
 
-For a local OpenAI-compatible endpoint, use:
+Supported runner values now include `lmstudio-cli`, `openai-compatible`,
+`ollama`, `mlx-lm`, and `llama-cpp`. For a local OpenAI-compatible endpoint,
+use:
 
 ```bash
 uv run ai-lab bench execute \
@@ -49,7 +51,8 @@ subprocess is invoked.
 After approval, the wrapper delegates to existing local harness commands:
 
 1. `init-run`
-2. `run-lmstudio-cli` or `run-local`
+2. one capture command: `run-lmstudio-cli`, `run-local`, `run-ollama`,
+   `run-mlx-lm`, or `run-llama-cpp`
 3. `export-dashboard`
 4. optional dashboard `import-csv`
 

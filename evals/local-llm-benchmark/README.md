@@ -28,6 +28,14 @@ clients.
 - `prompts/ai-lab-local-llm-core-v0.1.json` is the canonical prompt set.
 - `rubrics/ai-lab-local-llm-rubric-v0.1.json` is the local scoring rubric.
 - `harness.py` is a Python stdlib-only capture/export CLI.
+- `BENCHMARK_METHODOLOGY.md` is the approved reproducible local run procedure.
+
+## Methodology
+
+Use `BENCHMARK_METHODOLOGY.md` for approved local runs that should populate
+dashboard performance charts with live latency, throughput, and RAM data. Live
+execution remains behind `ai-lab bench execute --i-approve-local-run`; tests and
+implementation loops use fake endpoints or fake subprocesses only.
 
 ## Harness Flow
 
