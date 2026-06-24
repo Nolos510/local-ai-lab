@@ -1490,7 +1490,9 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn(".table-scroll-toolbar {", layout_html)
         self.assertIn(".icon-button {", layout_html)
         self.assertIn(".icon-button .ti {", layout_html)
+        self.assertIn("document.addEventListener('click'", layout_html)
         self.assertIn("target.scrollBy", layout_html)
+        self.assertIn("target.scrollLeft = before + amount", layout_html)
 
     def test_model_runs_table_keeps_date_column_readable(self):
         html = server._layout("Fixture", "/runs", "<p>Body</p>")
@@ -1564,6 +1566,49 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("Last refresh: not checked yet", html)
         self.assertIn('method="get" action="/inventory"', html)
         self.assertIn("No inventory refresh has run yet.", html)
+
+    def test_inventory_tables_use_horizontal_scroll_contracts(self):
+        result = {
+            "checked_at": "2026-06-05T12:00:00-07:00",
+            "checks": [
+                {
+                    "name": "LM Studio models",
+                    "command": "/Users/example/.lmstudio/bin/lms ls --json",
+                    "status": "ok",
+                    "exit_code": "0",
+                    "stdout": '{"models":[{"modelKey":"local-long-model"}]}',
+                    "stderr": "",
+                }
+            ],
+            "models": [
+                {
+                    "runtime": "LM Studio",
+                    "model_id": "publisher/local-long-model-id-for-inventory-layout",
+                    "display_name": "Local Long Model",
+                    "status": "loaded",
+                    "source_path": "publisher/local-long-model-id-for-inventory-layout",
+                    "local_path": (
+                        "/Users/example/.lmstudio/models/publisher/"
+                        "local-long-model-id-for-inventory-layout"
+                    ),
+                }
+            ],
+        }
+
+        html = server._inventory(inventory_result=result, action_token="fixture-token")
+
+        self.assertIn('class="inventory-models-table"', html)
+        self.assertIn('id="inventory-models-table-scroll"', html)
+        self.assertIn('data-scroll-target="inventory-models-table-scroll"', html)
+        self.assertIn(".inventory-models-table {", html)
+        self.assertIn("min-width: 1760px", html)
+        self.assertIn(".inventory-models-table th:nth-child(5)", html)
+        self.assertIn('class="inventory-checks-table"', html)
+        self.assertIn('id="inventory-checks-table-scroll"', html)
+        self.assertIn('data-scroll-target="inventory-checks-table-scroll"', html)
+        self.assertIn(".inventory-checks-table {", html)
+        self.assertIn("min-width: 1360px", html)
+        self.assertIn(".inventory-checks-table th:nth-child(5)", html)
 
     def test_inventory_filters_detected_models_by_runtime_and_registry_match(self):
         result = {

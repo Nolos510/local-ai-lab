@@ -653,11 +653,19 @@ def _inventory(
                 if not result
                 else "No detected models match these filters."
             ),
+            table_class="inventory-models-table",
+            scroll_controls=True,
+            scroll_id="inventory-models-table-scroll",
+            scroll_label="Detected models table",
         ),
         checks=_table(
             ["Check", "Status", "Exit", "Command", "Output"],
             check_rows,
             empty_message="No runtime checks have run yet.",
+            table_class="inventory-checks-table",
+            scroll_controls=True,
+            scroll_id="inventory-checks-table-scroll",
+            scroll_label="Runtime checks table",
         ),
     )
     return _layout("Installed Models", "/inventory", body)

@@ -762,6 +762,66 @@ def _layout(title, current_path, body):
     .compare-table td:nth-child(n+5) {{
       width: 210px;
     }}
+    .inventory-models-table {{
+      table-layout: fixed;
+      min-width: 1760px;
+    }}
+    .inventory-models-table th:nth-child(1),
+    .inventory-models-table td:nth-child(1) {{
+      width: 130px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .inventory-models-table th:nth-child(2),
+    .inventory-models-table td:nth-child(2) {{
+      width: 300px;
+    }}
+    .inventory-models-table th:nth-child(3),
+    .inventory-models-table td:nth-child(3) {{
+      width: 260px;
+    }}
+    .inventory-models-table th:nth-child(4),
+    .inventory-models-table td:nth-child(4) {{
+      width: 140px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .inventory-models-table th:nth-child(5),
+    .inventory-models-table td:nth-child(5) {{
+      width: 460px;
+    }}
+    .inventory-models-table th:nth-child(6),
+    .inventory-models-table td:nth-child(6) {{
+      width: 230px;
+    }}
+    .inventory-models-table th:nth-child(7),
+    .inventory-models-table td:nth-child(7) {{
+      width: 240px;
+    }}
+    .inventory-checks-table {{
+      table-layout: fixed;
+      min-width: 1360px;
+    }}
+    .inventory-checks-table th:nth-child(1),
+    .inventory-checks-table td:nth-child(1) {{
+      width: 180px;
+    }}
+    .inventory-checks-table th:nth-child(2),
+    .inventory-checks-table td:nth-child(2),
+    .inventory-checks-table th:nth-child(3),
+    .inventory-checks-table td:nth-child(3) {{
+      width: 100px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .inventory-checks-table th:nth-child(4),
+    .inventory-checks-table td:nth-child(4) {{
+      width: 360px;
+    }}
+    .inventory-checks-table th:nth-child(5),
+    .inventory-checks-table td:nth-child(5) {{
+      width: 620px;
+    }}
     .model-detail-results-scroll {{
       width: 100%;
       overflow-x: auto;
@@ -1257,17 +1317,20 @@ def _layout(title, current_path, body):
         }}
       }});
     }});
-    document.querySelectorAll('[data-scroll-target]').forEach(function(trigger) {{
-      trigger.addEventListener('click', function() {{
-        var target = document.getElementById(trigger.getAttribute('data-scroll-target'));
-        var amount = parseInt(trigger.getAttribute('data-scroll-by') || '0', 10);
-        if (!target || !amount) {{ return; }}
-        if (typeof target.scrollBy === 'function') {{
-          target.scrollBy({{ left: amount, top: 0, behavior: 'smooth' }});
-        }} else {{
-          target.scrollLeft += amount;
-        }}
-      }});
+    document.addEventListener('click', function(event) {{
+      var trigger = event.target.closest('[data-scroll-target]');
+      if (!trigger) {{ return; }}
+      var target = document.getElementById(trigger.getAttribute('data-scroll-target'));
+      var amount = parseInt(trigger.getAttribute('data-scroll-by') || '0', 10);
+      if (!target || !amount) {{ return; }}
+      event.preventDefault();
+      var before = target.scrollLeft;
+      if (typeof target.scrollBy === 'function') {{
+        target.scrollBy({{ left: amount, top: 0, behavior: 'auto' }});
+      }}
+      if (target.scrollLeft === before) {{
+        target.scrollLeft = before + amount;
+      }}
     }});
   }})();
   </script>
