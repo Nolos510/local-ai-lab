@@ -25,15 +25,19 @@ The `/ask` API response returns:
 
 Each citation includes:
 
-- `chunk_id`
 - `source_name`
 - `chunk_index`
 
 The response no longer returns `retrieved_chunks`. Citation objects no longer
-include `source_path` or `preview`.
+include `chunk_id`, `score`, `source_path`, or `preview`.
 
 `top_k` is capped at 20 at the API and settings boundaries to keep retrieval
 scope explicit.
+
+RAG Quality R4 added explicit local retrieval inspection via
+`inspect_retrieval` / `--inspect-retrieval`. That inspection path can include
+retrieved chunk text, scores, and chunk IDs for local debugging. It is opt-in
+and remains outside the default `/ask` response.
 
 ## Consequences
 
@@ -44,5 +48,5 @@ The default API surface is safer for private local documents because answers can
 cite stable chunk/source names without echoing raw retrieved content or private
 filesystem paths.
 
-Future retrieval inspection should be an explicit local diagnostic command or
-debug-only endpoint with separate documentation, tests, and privacy review.
+Retrieval inspection is now an explicit local diagnostic workflow with separate
+tests proving the default response remains privacy-narrow.

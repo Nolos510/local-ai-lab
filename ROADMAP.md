@@ -66,13 +66,19 @@
 ## v2: Retrieval Quality
 
 - [x] Add a real local embedding backend.
-- [ ] Add retrieval evaluation fixtures.
-- [ ] Add sparse or hybrid retrieval in Qdrant.
-- [ ] Add reranker abstraction and BGE/Jina reranker integrations.
-- [ ] Add source-aware citation rendering and retrieval inspection reports.
-- [ ] Add RAG evaluation set format and scoring scripts.
-- [ ] Consider hybrid retrieval after the basic path is measured.
-- [ ] Add reranking only when retrieval failure analysis justifies it.
+- [x] Add retrieval evaluation fixtures and a stdlib scorer for `recall@k` and
+  `MRR`.
+- [x] Add opt-in hybrid dense plus local lexical retrieval with reciprocal-rank
+  fusion.
+- [x] Add reranker abstraction with an identity default.
+- [x] Add source-aware default citation rendering plus explicit local retrieval
+  inspection.
+- [ ] Run the retrieval scorer on a real local corpus with BGE-M3 embeddings and
+  record the measured recall/MRR evidence.
+- [ ] Add a reviewed real local cross-encoder reranker backend behind the
+  optional `[rerank]` extra.
+- [ ] Add RAG answer/citation evaluation set format and scoring scripts.
+- [ ] Track retrieval scores, model/provider choices, and command outputs.
 
 ## v3: Benchmarking Lab
 
@@ -85,7 +91,6 @@
 - [ ] Expand the model registry for large 24B, 30B, 70B-class, and specialty
   abliterated/Dolphin candidates that fit the 256 GB RAM environment.
 - [ ] Add an evaluation harness for RAG answers and citations.
-- [ ] Track retrieval scores, model/provider choices, and command outputs.
 - [ ] Add a second unique model benchmark after security and exact local
   runtime-id approval.
 

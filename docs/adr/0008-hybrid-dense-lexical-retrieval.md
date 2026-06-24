@@ -40,9 +40,10 @@ model downloads, telemetry, or heavy default dependencies.
 - The lexical pass scrolls local chunk payloads from Qdrant when hybrid mode is
   selected. This is acceptable for the v0 local lab but should be revisited if
   corpus size grows substantially.
-- Raw chunk text remains internal retrieval state. Default `/ask` responses must
-  still preserve the ADR 0003 privacy narrowing until R4 adds explicit local
-  inspection controls.
+- Raw chunk text remains internal retrieval state by default. Explicit local
+  retrieval inspection may expose chunk text, scores, and chunk IDs for
+  debugging, but the default `/ask` response still preserves the ADR 0003
+  privacy narrowing.
 
 ## Validation
 

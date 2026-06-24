@@ -8,7 +8,8 @@ markdown/text source
   -> chunk with metadata
   -> embed chunks
   -> index in Qdrant
-  -> retrieve top-k chunks
+  -> retrieve top-k chunks with dense or opt-in hybrid retrieval
+  -> optionally rerank retrieved chunks
   -> assemble prompt with citations
   -> generate answer with local model
 ```
@@ -22,6 +23,12 @@ markdown/text source
 - Ollama semantic embedding provider for local real retrieval.
 - Qdrant vector search.
 - Offline retrieval-eval scorer with a tiny labeled fixture set.
+- Reranker protocol with an identity default and optional `[rerank]` dependency
+  extra reserved for a future reviewed local cross-encoder backend.
+- Opt-in hybrid retrieval that combines dense Qdrant candidates with a local
+  BM25-style lexical signal and reciprocal-rank fusion.
+- Privacy-narrow default citations plus explicit local retrieval inspection for
+  debugging.
 
 ## Embedding Providers
 
@@ -58,14 +65,14 @@ uv run local-ai-lab ask "What is this lab for?"
 
 ## Ask API Response
 
-The FastAPI `/ask` endpoint returns the answer plus privacy-narrow citations:
+The FastAPI `/ask` endpoint returns the answer plus privacy-narrow citations by
+default:
 
 ```json
 {
   "answer": "The lab is for local-first AI workflows.",
   "citations": [
     {
-      "chunk_id": "sample-doc-0001",
       "source_name": "sample.md",
       "chunk_index": 0
     }
@@ -73,9 +80,53 @@ The FastAPI `/ask` endpoint returns the answer plus privacy-narrow citations:
 }
 ```
 
-The default response does not include raw retrieved chunks, chunk previews, or
-private source paths. `top_k` is capped at 20. See
-`docs/adr/0003-privacy-narrow-ask-response.md` for the privacy decision record.
+The default response does not include raw retrieved chunks, chunk previews,
+chunk IDs, retrieval scores, or private source paths. `top_k` is capped at 20.
+See `docs/adr/0003-privacy-narrow-ask-response.md` for the privacy decision
+record.
+
+For local debugging only, explicitly opt into retrieval inspection:
+
+```bash
+uv run local-ai-lab ask "What is this lab for?" --json --inspect-retrieval
+```
+
+The inspection payload includes retrieved chunk text, scores, and chunk IDs.
+Treat that output as local private data and do not use it in default logs,
+reports, or shared artifacts.
+
+## Retrieval Modes
+
+Dense retrieval remains the default:
+
+```bash
+LOCAL_AI_LAB_RETRIEVAL_MODE=dense
+```
+
+Hybrid retrieval is available as an explicit local option:
+
+```bash
+LOCAL_AI_LAB_RETRIEVAL_MODE=hybrid
+```
+
+Hybrid mode still uses Qdrant as the vector database. It fuses dense vector
+results with a local stdlib BM25-style lexical ranking over chunk text using
+reciprocal-rank fusion. No extra dependency, cloud API, model download, or
+external service is added.
+
+## Reranking
+
+Reranking runs after retrieval and before prompt assembly. The default reranker
+is `identity`, which preserves retrieval order:
+
+```bash
+LOCAL_AI_LAB_RERANKER_PROVIDER=identity
+```
+
+`pyproject.toml` exposes an optional `[rerank]` extra for a future reviewed local
+cross-encoder backend, but no real cross-encoder implementation is enabled in
+the default runtime. Installing or running a real reranker remains future work
+and should follow `docs/adr/0007-reranker-abstraction-and-optional-extra.md`.
 
 ## Reindexing
 
@@ -120,8 +171,9 @@ manual smoke checks until a local corpus export is approved.
 
 - [x] Add BGE-M3-capable Ollama embedding provider.
 - [x] Add retrieval evaluation datasets.
+- [x] Add hybrid dense/local lexical retrieval.
+- [x] Add reranker abstraction.
+- [x] Add citation rendering helpers.
 - [ ] Add dedicated reindex command.
-- [ ] Add hybrid dense/sparse retrieval.
-- [ ] Add reranker abstraction.
-- [ ] Add citation rendering helpers.
+- [ ] Add reviewed real local cross-encoder reranker backend.
 - [ ] Add parser version tracking.
