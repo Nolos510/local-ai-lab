@@ -103,6 +103,7 @@ def _compare(conn, query=None):
             scroll_controls=True,
             scroll_id="compare-models-table-scroll",
             scroll_label="Compare models table",
+            header_tip_keys=RESULT_TABLE_HEADER_TIPS,
         ),
     )
     return _layout("Compare Models", "/compare", body)

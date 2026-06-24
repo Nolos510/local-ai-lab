@@ -80,8 +80,8 @@ def _overview(conn, query=None):
         notice=_real_data_notice(counts["demo_models"]),
         models_stat=_stat_card("Models", counts["models"], "ti-cube"),
         runs_stat=_stat_card("Runs", counts["model_runs"], "ti-player-play"),
-        avg_stat=_stat_card("Average score", _number(avg_score, 1, "0.0"), "ti-chart-line"),
-        kept_stat=_stat_card("Kept installed", keep_count, "ti-checkup-list"),
+        avg_stat=_stat_card("Average Score", _number(avg_score, 1, "0.0"), "ti-chart-line"),
+        kept_stat=_stat_card("Kept Installed", keep_count, "ti-checkup-list"),
         score_chart=_chart_panel("Total Score", score_chart),
         throughput_chart=_chart_panel("Throughput", throughput_chart),
         ram_chart=_chart_panel("RAM Footprint", ram_chart),
@@ -105,6 +105,7 @@ def _overview(conn, query=None):
             rows,
             empty_message="No real benchmark imports yet.",
             table_class="overview-table",
+            header_tip_keys=RESULT_TABLE_HEADER_TIPS,
         ),
     )
     return _layout("Overview", "/", body)

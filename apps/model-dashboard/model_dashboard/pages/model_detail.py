@@ -113,11 +113,13 @@ def _model_detail(conn, model_id):
             ],
             run_rows,
             table_class="model-detail-runs-table",
+            header_tip_keys=RESULT_TABLE_HEADER_TIPS,
         ),
         decisions=_table(
             ["Created", "Decision", "Keep", "Best use case", "Weakness", "Retest"],
             decision_rows,
             table_class="model-detail-decisions-table",
+            header_tip_keys=RESULT_TABLE_HEADER_TIPS,
         ),
     )
     return _layout("Model Detail", "", body)

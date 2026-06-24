@@ -70,6 +70,7 @@ def _runs(conn, query=None):
             scroll_controls=True,
             scroll_id="model-runs-table-scroll",
             scroll_label="Model runs table",
+            header_tip_keys=RESULT_TABLE_HEADER_TIPS,
         ),
     )
     return _layout("Model Runs", "/runs", body)

@@ -1126,6 +1126,108 @@ def _layout(title, current_path, body):
       background: var(--accent-soft);
       flex: 0 0 auto;
     }}
+    .metric-label {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+      min-width: 0;
+      position: relative;
+      vertical-align: middle;
+    }}
+    .metric-tip {{
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel-soft);
+      color: var(--accent-2);
+      cursor: help;
+      vertical-align: -3px;
+      z-index: 70;
+      --metric-tip-opacity: 0;
+      --metric-tip-offset: -2px;
+    }}
+    .metric-tip .ti,
+    .stat .metric-tip .ti {{
+      display: block;
+      width: 13px;
+      height: 13px;
+      margin: 0;
+      padding: 0;
+      border-radius: 0;
+      background: transparent;
+      color: currentColor;
+      font-size: 13px;
+      stroke: currentColor;
+    }}
+    .metric-tip::after {{
+      content: attr(data-tip);
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      width: max-content;
+      max-width: min(280px, calc(100vw - 32px));
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      color: var(--ink);
+      box-shadow: var(--shadow);
+      white-space: normal;
+      overflow-wrap: anywhere;
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 12px;
+      line-height: 1.35;
+      font-weight: 500;
+      opacity: var(--metric-tip-opacity);
+      pointer-events: none;
+      transform: translateY(var(--metric-tip-offset));
+      transition: opacity 140ms ease, transform 140ms ease;
+      z-index: 80;
+    }}
+    th .metric-tip::after {{
+      left: auto;
+      right: 0;
+    }}
+    @media (min-width: 900px) {{
+      .grid .stat:nth-child(4) .metric-tip::after,
+      .chart-grid .chart-panel:nth-child(3) .metric-tip::after {{
+        left: auto;
+        right: 0;
+      }}
+    }}
+    .metric-tip:hover {{
+      --metric-tip-opacity: 1;
+      --metric-tip-offset: 0px;
+    }}
+    .metric-tip:focus {{
+      --metric-tip-opacity: 1;
+      --metric-tip-offset: 0px;
+    }}
+    .metric-tip:focus-visible {{
+      --metric-tip-opacity: 1;
+      --metric-tip-offset: 0px;
+      outline: 2px solid var(--accent-2);
+      outline-offset: 2px;
+    }}
+    .chart-panel:has(.metric-tip:hover),
+    .chart-panel:has(.metric-tip:focus),
+    .chart-panel:has(.metric-tip:focus-visible),
+    .table-wrap:has(.metric-tip:hover),
+    .table-wrap:has(.metric-tip:focus),
+    .table-wrap:has(.metric-tip:focus-visible),
+    table:has(.metric-tip:hover),
+    table:has(.metric-tip:focus),
+    table:has(.metric-tip:focus-visible) {{
+      overflow: visible;
+    }}
     .stat .label {{
       color: var(--muted);
       font-size: 12px;

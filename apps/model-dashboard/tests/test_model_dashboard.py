@@ -4,13 +4,14 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from html import escape
 from pathlib import Path
 from unittest import mock
 
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
 
-from model_dashboard import csv_io, db, reports, server  # noqa: E402
+from model_dashboard import components, csv_io, db, reports, server  # noqa: E402
 from model_dashboard.scoring import METRIC_FIELDS  # noqa: E402
 
 FIXTURE_DIR = APP_DIR / "fixtures"
@@ -496,6 +497,89 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn(".overview-table {", html)
         self.assertIn("min-width: 1240px", html)
         self.assertIn(".overview-table th:nth-child(1)", html)
+
+    def test_overview_metric_explanations_render_without_external_assets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+
+            with db.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO models (id, model_name, model_family, provider, source_url)
+                    VALUES (1, 'Metric Explainer Model', 'Metric', 'local', 'local-model://metric')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO model_runs (
+                        id, model_id, date_tested, backend, tokens_per_sec, ram_usage_gb
+                    )
+                    VALUES (2, 1, '2026-06-20', 'LM Studio CLI', 42.5, 31.2)
+                    """
+                )
+                metric_columns = ", ".join(METRIC_FIELDS)
+                metric_placeholders = ", ".join("?" for _ in METRIC_FIELDS)
+                conn.execute(
+                    f"""
+                    INSERT INTO eval_scores (
+                        id, run_id, {metric_columns}, total_score, final_label, score_status
+                    )
+                    VALUES (?, ?, {metric_placeholders}, ?, ?, ?)
+                    """,
+                    (3, 2, *([7] * len(METRIC_FIELDS)), 72.0, "WATCHLIST", "confirmed"),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO decisions (
+                        id, model_id, decision, keep_installed, best_use_case,
+                        weakness, retest_condition, created_at
+                    )
+                    VALUES (
+                        4, 1, 'watchlist', 1, 'coding', 'memory',
+                        'new quant', '2026-06-20T12:00:00'
+                    )
+                    """
+                )
+                conn.commit()
+                html = server._overview(conn)
+
+        expected_keys = (
+            "total_score",
+            "throughput",
+            "ram_footprint",
+            "models",
+            "runs",
+            "average_score",
+            "kept_installed",
+            "status",
+            "decision",
+        )
+        for key in expected_keys:
+            with self.subTest(key=key):
+                tip = escape(components.METRIC_EXPLANATIONS[key], quote=True)
+                self.assertIn(f'data-tip="{tip}"', html)
+                self.assertIn(f'title="{tip}"', html)
+                self.assertIn(f'aria-label="Metric explanation: {tip}"', html)
+
+        score_tip = escape(components.METRIC_EXPLANATIONS["score"], quote=True)
+        self.assertGreaterEqual(html.count(f'data-tip="{score_tip}"'), 2)
+        self.assertIn('class="metric-tip"', html)
+        self.assertIn('tabindex="0"', html)
+        self.assertIn("content: attr(data-tip)", html)
+        self.assertIn(".metric-tip:hover {", html)
+        self.assertIn(".metric-tip:focus {", html)
+        self.assertIn(".metric-tip:focus-visible {", html)
+        self.assertIn("opacity: var(--metric-tip-opacity)", html)
+        for chunk in html.split("<script")[1:]:
+            opening_tag = chunk.split(">", 1)[0]
+            self.assertNotIn(
+                "src=", opening_tag, "dashboard scripts must be inline (no external src)"
+            )
+        self.assertNotIn("<link", html)
+        self.assertNotIn("http://", html)
+        self.assertNotIn("https://", html)
 
     def test_demo_page_shows_fixture_data_explicitly(self):
         with tempfile.TemporaryDirectory() as tmp:
