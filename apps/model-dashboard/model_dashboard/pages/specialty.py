@@ -96,6 +96,9 @@ def _specialty(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
             rows,
             empty_message="No abliterated or Dolphin candidates match these filters.",
             table_class="radar-table",
+            scroll_controls=True,
+            scroll_id="specialty-candidates-table-scroll",
+            scroll_label="Specialty candidates table",
         ),
     )
     return _layout("Specialty Models", "/specialty", body)

@@ -663,6 +663,27 @@ def _layout(title, current_path, body):
     .runs-table td:nth-child(2) {{
       width: 210px;
     }}
+    .runs-table th:nth-child(2),
+    .runs-table td:nth-child(2),
+    .compare-table th:nth-child(1),
+    .compare-table td:nth-child(1),
+    .radar-table th:nth-child(1),
+    .radar-table td:nth-child(1),
+    .project-table th:nth-child(1),
+    .project-table td:nth-child(1) {{
+      position: sticky;
+      left: 0;
+      z-index: 3;
+      background: var(--control);
+      box-shadow: 1px 0 0 var(--line), 10px 0 18px rgba(0, 0, 0, 0.18);
+    }}
+    .runs-table th:nth-child(2),
+    .compare-table th:nth-child(1),
+    .radar-table th:nth-child(1),
+    .project-table th:nth-child(1) {{
+      z-index: 4;
+      background: #181a29;
+    }}
     .overview-table {{
       table-layout: fixed;
       min-width: 1240px;
@@ -839,7 +860,6 @@ def _layout(title, current_path, body):
     }}
     .model-detail-results-toolbar button {{
       min-height: 34px;
-      padding: 6px 10px;
       border-color: var(--line);
       background: var(--panel-soft);
       color: var(--ink);
@@ -1012,6 +1032,10 @@ def _layout(title, current_path, body):
       .filter-actions {{ justify-content: flex-start; }}
       .split {{ grid-template-columns: 1fr; }}
       .stat-breakdown {{ grid-column: auto; }}
+      .chart-grid {{ gap: 10px; margin-bottom: 14px; }}
+      .chart-panel {{ padding: 14px; }}
+      .chart-panel h2 {{ font-size: 18px; margin: 0 0 8px; }}
+      .chart-panel .chart-empty {{ max-height: 44px; }}
       .chart-summary-row {{ grid-template-columns: 1fr; gap: 4px; }}
       h1 {{ font-size: 24px; }}
       th, td {{ padding: 11px 9px; }}

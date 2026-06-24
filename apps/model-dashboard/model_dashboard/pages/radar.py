@@ -120,6 +120,9 @@ def _radar(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
             rows,
             empty_message="No candidates match these filters.",
             table_class="radar-table",
+            scroll_controls=True,
+            scroll_id="radar-candidates-table-scroll",
+            scroll_label="Radar candidates table",
         ),
     )
     return _layout("Radar Candidates", "/radar", body)

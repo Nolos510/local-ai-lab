@@ -9,6 +9,7 @@ from pathlib import Path
 from .. import capability, charts, db
 from ..components import *
 from ..filters import *
+from ..icons import icon as render_icon
 from ..layout import _layout
 from ..reports import generate_markdown_report
 from ..scoring import METRIC_FIELDS
@@ -77,8 +78,8 @@ def _model_detail(conn, model_id):
       </section>
     </div>
     <div class="model-detail-results-toolbar" aria-label="Model detail results controls">
-      <button type="button" data-scroll-target="model-detail-results" data-scroll-by="-360" aria-label="Scroll model detail results left">Left</button>
-      <button type="button" data-scroll-target="model-detail-results" data-scroll-by="360" aria-label="Scroll model detail results right">Right</button>
+      <button class="icon-button" type="button" data-scroll-target="model-detail-results" data-scroll-by="-360" aria-label="Scroll model detail results left" title="Scroll model detail results left">{left_icon}</button>
+      <button class="icon-button" type="button" data-scroll-target="model-detail-results" data-scroll-by="360" aria-label="Scroll model detail results right" title="Scroll model detail results right">{right_icon}</button>
     </div>
     <div id="model-detail-results" class="model-detail-results-scroll" aria-label="Model detail runs and decisions">
       <section class="model-detail-section"><h2>Runs</h2>{runs}</section>
@@ -93,6 +94,8 @@ def _model_detail(conn, model_id):
         source=_external_link_or_text(model["source_url"], model["source_url"]),
         notes=_text(model["notes"]),
         summary=_text(detail["decisions"][0]["best_use_case"] if detail["decisions"] else ""),
+        left_icon=render_icon("ti-chevron-left"),
+        right_icon=render_icon("ti-chevron-right"),
         runs=_table(
             [
                 "Date",

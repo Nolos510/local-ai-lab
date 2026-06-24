@@ -120,6 +120,9 @@ def _projects(query=None, registry_path=PROJECT_REGISTRY_PATH):
             rows,
             empty_message="No projects match these filters.",
             table_class="project-table",
+            scroll_controls=True,
+            scroll_id="project-radar-table-scroll",
+            scroll_label="Project radar table",
         ),
     )
     return _layout("Project Radar", "/projects", body)

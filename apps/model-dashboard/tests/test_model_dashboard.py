@@ -525,6 +525,9 @@ class ModelDashboardQaTests(unittest.TestCase):
                 )
 
             self.assertIn("Radar Candidates (1 of 2)", html)
+            self.assertIn('class="table-scroll-toolbar"', html)
+            self.assertIn('id="radar-candidates-table-scroll"', html)
+            self.assertIn('data-scroll-target="radar-candidates-table-scroll"', html)
             self.assertIn("Ready Local 7B", html)
             self.assertIn("/artifacts/20260603-ready-local", html)
             self.assertNotIn("Watch Local 13B", html)
@@ -820,6 +823,12 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn('data-scroll-target="model-detail-results"', html)
             self.assertIn('data-scroll-by="-360"', html)
             self.assertIn('data-scroll-by="360"', html)
+            self.assertIn('title="Scroll model detail results left"', html)
+            self.assertIn('title="Scroll model detail results right"', html)
+            self.assertIn("ti-chevron-left", html)
+            self.assertIn("ti-chevron-right", html)
+            self.assertNotIn(">Left</button>", html)
+            self.assertNotIn(">Right</button>", html)
             self.assertIn(".model-detail-results-scroll {", html)
             self.assertIn(".model-detail-results-toolbar {", html)
             self.assertIn("overscroll-behavior-x: contain", html)
@@ -1252,6 +1261,10 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn('aria-label="Score status counts"', html)
             self.assertIn("<em>confirmed</em>", html)
             self.assertIn("<em>draft</em>", html)
+            self.assertIn("grid-template-columns: repeat(auto-fit, minmax(220px, 1fr))", html)
+            self.assertIn(".stat-breakdown {\n      grid-column: span 2;", html)
+            self.assertIn(".stat-breakdown > div {", html)
+            self.assertIn(".stat-breakdown { grid-column: auto; }", html)
             self.assertIn('class="capability-ready-table"', html)
             self.assertIn(".capability-ready-table {", html)
             self.assertIn("min-width: 1280px", html)
@@ -1496,17 +1509,37 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("target.scrollBy", layout_html)
         self.assertIn("target.scrollLeft = before + amount", layout_html)
 
+    def test_mobile_chart_panels_use_compact_spacing(self):
+        html = server._layout("Fixture", "/compare", "<p>Body</p>")
+
+        self.assertIn(".chart-grid { gap: 10px; margin-bottom: 14px; }", html)
+        self.assertIn(".chart-panel { padding: 14px; }", html)
+        self.assertIn(".chart-panel h2 { font-size: 18px; margin: 0 0 8px; }", html)
+        self.assertIn(".chart-panel .chart-empty { max-height: 44px; }", html)
+
     def test_model_runs_table_keeps_date_column_readable(self):
         html = server._layout("Fixture", "/runs", "<p>Body</p>")
 
         self.assertIn(".runs-table {", html)
         self.assertIn("table-layout: fixed", html)
-        self.assertIn(".runs-table th:nth-child(12)", html)
-        self.assertIn(".runs-table th:nth-child(13)", html)
         self.assertIn("min-width: 1640px", html)
         self.assertIn(".runs-table th:nth-child(1)", html)
+        self.assertIn(".runs-table th:nth-child(12)", html)
+        self.assertIn(".runs-table th:nth-child(13)", html)
         self.assertIn("white-space: nowrap", html)
         self.assertIn("overflow-wrap: normal", html)
+
+    def test_wide_table_identity_columns_are_sticky(self):
+        html = server._layout("Fixture", "/compare", "<p>Body</p>")
+
+        self.assertIn(".runs-table th:nth-child(2)", html)
+        self.assertIn(".overview-table th:nth-child(1)", html)
+        self.assertIn(".compare-table th:nth-child(1)", html)
+        self.assertIn(".radar-table th:nth-child(1)", html)
+        self.assertIn(".project-table th:nth-child(1)", html)
+        self.assertIn("position: sticky", html)
+        self.assertIn("left: 0", html)
+        self.assertIn("box-shadow: 1px 0 0 var(--line)", html)
 
     def test_lab_dashboard_can_enable_run_test_button_for_local_models(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1983,6 +2016,8 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Dolphin3.0-Llama3.1-8B-GGUF", specialty_html)
             self.assertNotIn("Ready Local 7B", specialty_html)
             self.assertIn("Specialty Candidates (1 of 2)", dolphin_html)
+            self.assertIn('id="specialty-candidates-table-scroll"', dolphin_html)
+            self.assertIn('data-scroll-target="specialty-candidates-table-scroll"', dolphin_html)
             self.assertIn("Dolphin3.0-Llama3.1-8B-GGUF", dolphin_html)
             self.assertNotIn("Qwen3-8B-Abliterated-GGUF", dolphin_html)
             self.assertIn("Security gate", specialty_html)
@@ -2005,6 +2040,8 @@ class ModelDashboardQaTests(unittest.TestCase):
             )
 
             self.assertIn("Project Radar (1 of 2)", html)
+            self.assertIn('id="project-radar-table-scroll"', html)
+            self.assertIn('data-scroll-target="project-radar-table-scroll"', html)
             self.assertIn("Local Runtime", html)
             self.assertIn("P5", html)
             self.assertIn("Core local runtime for larger models.", html)
