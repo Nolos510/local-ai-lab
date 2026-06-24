@@ -467,6 +467,33 @@ def _layout(title, current_path, body):
       overflow-x: auto;
       border-radius: 12px;
     }}
+    .table-scroll-shell {{
+      display: grid;
+      gap: 8px;
+    }}
+    .table-scroll-toolbar {{
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }}
+    .table-scroll-toolbar button {{
+      min-height: 34px;
+      padding: 6px 10px;
+    }}
+    .icon-button {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      min-width: 38px;
+      height: 38px;
+      padding: 0;
+    }}
+    .icon-button .ti {{
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+    }}
     tr:last-child td {{ border-bottom: 0; }}
     a {{ color: var(--accent); }}
     .pill {{
@@ -526,8 +553,105 @@ def _layout(title, current_path, body):
     .lab-queue td:nth-child(4) {{
       width: 120px;
     }}
+    .lab-artifacts-table {{
+      table-layout: fixed;
+      min-width: 1560px;
+    }}
+    .lab-artifacts-table th:nth-child(1),
+    .lab-artifacts-table td:nth-child(1) {{
+      width: 280px;
+    }}
+    .lab-artifacts-table th:nth-child(2),
+    .lab-artifacts-table td:nth-child(2),
+    .lab-artifacts-table th:nth-child(3),
+    .lab-artifacts-table td:nth-child(3),
+    .lab-artifacts-table th:nth-child(4),
+    .lab-artifacts-table td:nth-child(4),
+    .lab-artifacts-table th:nth-child(5),
+    .lab-artifacts-table td:nth-child(5),
+    .lab-artifacts-table th:nth-child(6),
+    .lab-artifacts-table td:nth-child(6) {{
+      width: 96px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .lab-artifacts-table th:nth-child(7),
+    .lab-artifacts-table td:nth-child(7) {{
+      width: 150px;
+    }}
+    .lab-artifacts-table th:nth-child(8),
+    .lab-artifacts-table td:nth-child(8) {{
+      width: 190px;
+    }}
+    .lab-artifacts-table th:nth-child(9),
+    .lab-artifacts-table td:nth-child(9) {{
+      width: 460px;
+    }}
+    .capability-ready-table {{
+      table-layout: fixed;
+      min-width: 1280px;
+    }}
+    .capability-ready-table th:nth-child(1),
+    .capability-ready-table td:nth-child(1) {{
+      width: 300px;
+    }}
+    .capability-ready-table th:nth-child(2),
+    .capability-ready-table td:nth-child(2) {{
+      width: 110px;
+    }}
+    .capability-ready-table th:nth-child(3),
+    .capability-ready-table td:nth-child(3) {{
+      width: 150px;
+    }}
+    .capability-ready-table th:nth-child(4),
+    .capability-ready-table td:nth-child(4) {{
+      width: 240px;
+    }}
+    .capability-ready-table th:nth-child(5),
+    .capability-ready-table td:nth-child(5) {{
+      width: 280px;
+    }}
+    .capability-ready-table th:nth-child(6),
+    .capability-ready-table td:nth-child(6) {{
+      width: 200px;
+    }}
+    .capability-quant-table {{
+      table-layout: fixed;
+      min-width: 1520px;
+    }}
+    .capability-quant-table th:nth-child(1),
+    .capability-quant-table td:nth-child(1) {{
+      width: 280px;
+    }}
+    .capability-quant-table th:nth-child(2),
+    .capability-quant-table td:nth-child(2) {{
+      width: 300px;
+    }}
+    .capability-quant-table th:nth-child(3),
+    .capability-quant-table td:nth-child(3) {{
+      width: 110px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .capability-quant-table th:nth-child(4),
+    .capability-quant-table td:nth-child(4) {{
+      width: 180px;
+    }}
+    .capability-quant-table th:nth-child(5),
+    .capability-quant-table td:nth-child(5) {{
+      width: 160px;
+    }}
+    .capability-quant-table th:nth-child(6),
+    .capability-quant-table td:nth-child(6) {{
+      width: 260px;
+    }}
+    .capability-quant-table th:nth-child(7),
+    .capability-quant-table td:nth-child(7) {{
+      width: 230px;
+    }}
     .runs-table {{
-      min-width: 1380px;
+      table-layout: fixed;
+      min-width: 1640px;
     }}
     .runs-table th:nth-child(1),
     .runs-table td:nth-child(1) {{
@@ -538,6 +662,27 @@ def _layout(title, current_path, body):
     .runs-table th:nth-child(2),
     .runs-table td:nth-child(2) {{
       width: 210px;
+    }}
+    .runs-table th:nth-child(2),
+    .runs-table td:nth-child(2),
+    .compare-table th:nth-child(1),
+    .compare-table td:nth-child(1),
+    .radar-table th:nth-child(1),
+    .radar-table td:nth-child(1),
+    .project-table th:nth-child(1),
+    .project-table td:nth-child(1) {{
+      position: sticky;
+      left: 0;
+      z-index: 3;
+      background: var(--control);
+      box-shadow: 1px 0 0 var(--line), 10px 0 18px rgba(0, 0, 0, 0.18);
+    }}
+    .runs-table th:nth-child(2),
+    .compare-table th:nth-child(1),
+    .radar-table th:nth-child(1),
+    .project-table th:nth-child(1) {{
+      z-index: 4;
+      background: #181a29;
     }}
     .overview-table {{
       table-layout: fixed;
@@ -609,6 +754,96 @@ def _layout(title, current_path, body):
     .runs-table td:nth-child(13) {{
       width: 240px;
     }}
+    .compare-table {{
+      table-layout: fixed;
+      min-width: 2960px;
+    }}
+    .compare-table th:nth-child(1),
+    .compare-table td:nth-child(1) {{
+      width: 260px;
+    }}
+    .compare-table th:nth-child(2),
+    .compare-table td:nth-child(2) {{
+      width: 90px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .compare-table th:nth-child(3),
+    .compare-table td:nth-child(3) {{
+      width: 130px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .compare-table th:nth-child(4),
+    .compare-table td:nth-child(4) {{
+      width: 170px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .compare-table th:nth-child(n+5),
+    .compare-table td:nth-child(n+5) {{
+      width: 210px;
+    }}
+    .inventory-models-table {{
+      table-layout: fixed;
+      min-width: 1760px;
+    }}
+    .inventory-models-table th:nth-child(1),
+    .inventory-models-table td:nth-child(1) {{
+      width: 130px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .inventory-models-table th:nth-child(2),
+    .inventory-models-table td:nth-child(2) {{
+      width: 300px;
+    }}
+    .inventory-models-table th:nth-child(3),
+    .inventory-models-table td:nth-child(3) {{
+      width: 260px;
+    }}
+    .inventory-models-table th:nth-child(4),
+    .inventory-models-table td:nth-child(4) {{
+      width: 140px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .inventory-models-table th:nth-child(5),
+    .inventory-models-table td:nth-child(5) {{
+      width: 460px;
+    }}
+    .inventory-models-table th:nth-child(6),
+    .inventory-models-table td:nth-child(6) {{
+      width: 230px;
+    }}
+    .inventory-models-table th:nth-child(7),
+    .inventory-models-table td:nth-child(7) {{
+      width: 240px;
+    }}
+    .inventory-checks-table {{
+      table-layout: fixed;
+      min-width: 1360px;
+    }}
+    .inventory-checks-table th:nth-child(1),
+    .inventory-checks-table td:nth-child(1) {{
+      width: 180px;
+    }}
+    .inventory-checks-table th:nth-child(2),
+    .inventory-checks-table td:nth-child(2),
+    .inventory-checks-table th:nth-child(3),
+    .inventory-checks-table td:nth-child(3) {{
+      width: 100px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .inventory-checks-table th:nth-child(4),
+    .inventory-checks-table td:nth-child(4) {{
+      width: 360px;
+    }}
+    .inventory-checks-table th:nth-child(5),
+    .inventory-checks-table td:nth-child(5) {{
+      width: 620px;
+    }}
     .model-detail-results-scroll {{
       width: 100%;
       overflow-x: auto;
@@ -625,7 +860,6 @@ def _layout(title, current_path, body):
     }}
     .model-detail-results-toolbar button {{
       min-height: 34px;
-      padding: 6px 10px;
       border-color: var(--line);
       background: var(--panel-soft);
       color: var(--ink);
@@ -798,6 +1032,10 @@ def _layout(title, current_path, body):
       .filter-actions {{ justify-content: flex-start; }}
       .split {{ grid-template-columns: 1fr; }}
       .stat-breakdown {{ grid-column: auto; }}
+      .chart-grid {{ gap: 10px; margin-bottom: 14px; }}
+      .chart-panel {{ padding: 14px; }}
+      .chart-panel h2 {{ font-size: 18px; margin: 0 0 8px; }}
+      .chart-panel .chart-empty {{ max-height: 44px; }}
       .chart-summary-row {{ grid-template-columns: 1fr; gap: 4px; }}
       h1 {{ font-size: 24px; }}
       th, td {{ padding: 11px 9px; }}
@@ -939,6 +1177,14 @@ def _layout(title, current_path, body):
       -webkit-backdrop-filter: blur(14px);
       backdrop-filter: blur(14px);
       box-shadow: var(--shadow);
+    }}
+    .table-scroll-toolbar {{
+      margin-bottom: 2px;
+    }}
+    .table-scroll-toolbar button {{
+      border-color: var(--line);
+      background: var(--panel-soft);
+      color: var(--ink);
     }}
     table {{ border-collapse: separate; border-spacing: 0; }}
     th {{
@@ -1096,17 +1342,20 @@ def _layout(title, current_path, body):
         }}
       }});
     }});
-    document.querySelectorAll('[data-scroll-target]').forEach(function(trigger) {{
-      trigger.addEventListener('click', function() {{
-        var target = document.getElementById(trigger.getAttribute('data-scroll-target'));
-        var amount = parseInt(trigger.getAttribute('data-scroll-by') || '0', 10);
-        if (!target || !amount) {{ return; }}
-        if (typeof target.scrollBy === 'function') {{
-          target.scrollBy({{ left: amount, top: 0, behavior: 'smooth' }});
-        }} else {{
-          target.scrollLeft += amount;
-        }}
-      }});
+    document.addEventListener('click', function(event) {{
+      var trigger = event.target.closest('[data-scroll-target]');
+      if (!trigger) {{ return; }}
+      var target = document.getElementById(trigger.getAttribute('data-scroll-target'));
+      var amount = parseInt(trigger.getAttribute('data-scroll-by') || '0', 10);
+      if (!target || !amount) {{ return; }}
+      event.preventDefault();
+      var before = target.scrollLeft;
+      if (typeof target.scrollBy === 'function') {{
+        target.scrollBy({{ left: amount, top: 0, behavior: 'auto' }});
+      }}
+      if (target.scrollLeft === before) {{
+        target.scrollLeft = before + amount;
+      }}
     }});
   }})();
   </script>

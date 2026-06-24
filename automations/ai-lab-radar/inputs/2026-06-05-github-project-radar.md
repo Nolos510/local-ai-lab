@@ -3,6 +3,7 @@
 Packet title: Popular GitHub AI Project And Business Tie-In Scan
 Packet date: 2026-06-05
 Prepared by: Codex
+Approved for radar review: yes - project-only; user requested a dedicated GitHub project section
 Approved for project radar review: yes - user requested a dedicated GitHub project section
 Safe to commit: yes - public GitHub metadata only; project registry records only
 

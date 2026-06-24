@@ -28,6 +28,14 @@ clients.
 - `prompts/ai-lab-local-llm-core-v0.1.json` is the canonical prompt set.
 - `rubrics/ai-lab-local-llm-rubric-v0.1.json` is the local scoring rubric.
 - `harness.py` is a Python stdlib-only capture/export CLI.
+- `BENCHMARK_METHODOLOGY.md` is the approved reproducible local run procedure.
+
+## Methodology
+
+Use `BENCHMARK_METHODOLOGY.md` for approved local runs that should populate
+dashboard performance charts with live latency, throughput, and RAM data. Live
+execution remains behind `ai-lab bench execute --i-approve-local-run`; tests and
+implementation loops use fake endpoints or fake subprocesses only.
 
 ## Harness Flow
 
@@ -79,6 +87,68 @@ python3 evals/local-llm-benchmark/harness.py run-local \
 Allowed endpoints are `localhost`, loopback IPs, and literal private LAN IPs.
 Public hosts and public IP addresses are rejected. Runtime errors are preserved
 as raw benchmark evidence instead of being turned into scores.
+
+For an Ollama-native run, use the local Ollama API lane. The default endpoint is
+`http://127.0.0.1:11434`, and the harness posts to `/api/generate` with
+`stream: false`:
+
+```bash
+python3 evals/local-llm-benchmark/harness.py run-ollama \
+  --run-dir data/eval_results/<run_id> \
+  --model-id llama3.2:latest \
+  --force
+```
+
+The Ollama runner records measured per-prompt latency plus Ollama-reported
+`prompt_eval_count`, `eval_count`, and `eval_duration` when available.
+Aggregate `total_latency_seconds` and `tokens_per_sec` are written through the
+same dashboard CSV contract as the other runners. `ttft_seconds` remains empty
+because this non-streaming lane does not measure time to first token.
+
+For an MLX-LM run, use the subprocess lane. It invokes the local Python
+environment with `mlx_lm` installed; it does not install packages or download
+models:
+
+```bash
+python3 evals/local-llm-benchmark/harness.py run-mlx-lm \
+  --run-dir data/eval_results/<run_id> \
+  --model-id mlx-community/Example-Model-4bit \
+  --force
+```
+
+The MLX-LM runner measures wall-clock latency around each
+`python -m mlx_lm generate` call. When the CLI prints prompt/generation token
+counts and tokens-per-second labels, the harness records them in
+`raw_responses.jsonl` and exports aggregate `total_latency_seconds` and
+`tokens_per_sec` to `model_runs.csv`. `ttft_seconds` remains empty because this
+non-streaming subprocess lane does not measure time to first token.
+
+For a llama.cpp run, use the `llama-cli` subprocess lane. The `--model-id`
+argument is passed to `llama-cli -m`; in typical GGUF workflows it should be the
+local model path or another value your local `llama-cli` build accepts. The
+harness does not install llama.cpp, download models, or resolve remote model
+names:
+
+```bash
+python3 evals/local-llm-benchmark/harness.py run-llama-cpp \
+  --run-dir data/eval_results/<run_id> \
+  --model-id /path/to/model.gguf \
+  --force
+```
+
+The llama.cpp runner measures wall-clock latency around each
+`llama-cli -m <model-id> -p <prompt> -n <tokens>` call. It records prompt token
+count, output token count, and tokens/sec only when `llama-cli` prints
+`llama_perf_context_print` timing lines. If those lines are missing or hidden by
+a local build flag, the token fields remain empty instead of being approximated.
+`ttft_seconds` remains empty because this non-streaming subprocess lane does not
+measure time to first token.
+
+Automatic capture runners also record observed RAM high-water data into
+`ram_usage_gb` when the local machine exposes it. Endpoint runners sample
+macOS `vm_stat` around each prompt. Subprocess runners also sample child RSS via
+`ps` while the command is running. These are local measurements only; the harness
+does not install profilers or infer missing model memory.
 
 If LM Studio's OpenAI-compatible server is reachable but returns `401
 Unauthorized`, use the installed-model CLI lane for models that appear in local

@@ -525,6 +525,9 @@ class ModelDashboardQaTests(unittest.TestCase):
                 )
 
             self.assertIn("Radar Candidates (1 of 2)", html)
+            self.assertIn('class="table-scroll-toolbar"', html)
+            self.assertIn('id="radar-candidates-table-scroll"', html)
+            self.assertIn('data-scroll-target="radar-candidates-table-scroll"', html)
             self.assertIn("Ready Local 7B", html)
             self.assertIn("/artifacts/20260603-ready-local", html)
             self.assertNotIn("Watch Local 13B", html)
@@ -820,6 +823,12 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn('data-scroll-target="model-detail-results"', html)
             self.assertIn('data-scroll-by="-360"', html)
             self.assertIn('data-scroll-by="360"', html)
+            self.assertIn('title="Scroll model detail results left"', html)
+            self.assertIn('title="Scroll model detail results right"', html)
+            self.assertIn("ti-chevron-left", html)
+            self.assertIn("ti-chevron-right", html)
+            self.assertNotIn(">Left</button>", html)
+            self.assertNotIn(">Right</button>", html)
             self.assertIn(".model-detail-results-scroll {", html)
             self.assertIn(".model-detail-results-toolbar {", html)
             self.assertIn("overscroll-behavior-x: contain", html)
@@ -1023,9 +1032,21 @@ class ModelDashboardQaTests(unittest.TestCase):
 
             self.assertIn("Model Runs (1 of 2)", runs_html)
             self.assertIn('class="runs-table"', runs_html)
+            self.assertIn('id="model-runs-table-scroll"', runs_html)
+            self.assertIn('data-scroll-target="model-runs-table-scroll"', runs_html)
             self.assertIn("Qwen Filter Model", runs_html)
             self.assertNotIn("Research Filter Model", runs_html)
             self.assertIn("Compare Models (1 of 2)", compare_html)
+            self.assertIn('class="compare-table"', compare_html)
+            self.assertIn('id="compare-models-table-scroll"', compare_html)
+            self.assertIn('data-scroll-target="compare-models-table-scroll"', compare_html)
+            self.assertIn(".compare-table {", compare_html)
+            self.assertIn("min-width: 2960px", compare_html)
+            self.assertIn(".compare-table th:nth-child(1)", compare_html)
+            self.assertLess(
+                compare_html.index('id="compare-models-table-scroll"'),
+                compare_html.index("Performance Signals"),
+            )
             self.assertIn("Research Filter Model", compare_html)
             self.assertNotIn("Qwen Filter Model", compare_html)
             self.assertIn("Decision Log (1 of 2)", storage_html)
@@ -1142,6 +1163,10 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("import-csv", html)
             self.assertIn("ready-local-7b", html)
             self.assertIn("/capability", html)
+            self.assertIn('class="lab-artifacts-table"', html)
+            self.assertIn(".lab-artifacts-table {", html)
+            self.assertIn("min-width: 1560px", html)
+            self.assertIn(".lab-artifacts-table th:nth-child(1)", html)
 
     def test_capability_page_renders_empty_hardware_state(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1236,6 +1261,13 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn('aria-label="Score status counts"', html)
             self.assertIn("<em>confirmed</em>", html)
             self.assertIn("<em>draft</em>", html)
+            self.assertIn("grid-template-columns: repeat(auto-fit, minmax(220px, 1fr))", html)
+            self.assertIn(".stat-breakdown {\n      grid-column: span 2;", html)
+            self.assertIn(".stat-breakdown > div {", html)
+            self.assertIn(".stat-breakdown { grid-column: auto; }", html)
+            self.assertIn('class="capability-ready-table"', html)
+            self.assertIn(".capability-ready-table {", html)
+            self.assertIn("min-width: 1280px", html)
             self.assertIn(".stat-metrics {", html)
 
     def test_capability_page_renders_perf_values_when_imported(self):
@@ -1326,6 +1358,9 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("DeepSeek-R1-0528-Qwen3-8B", html)
             self.assertIn("Q5_K_M", html)
             self.assertIn("recommended_balanced", html)
+            self.assertIn('class="capability-quant-table"', html)
+            self.assertIn(".capability-quant-table {", html)
+            self.assertIn("min-width: 1520px", html)
             self.assertNotIn("<script src=", html)
 
     def test_capability_page_renders_missing_quant_advice_empty_state(self):
@@ -1443,14 +1478,68 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("overflow: auto", layout_html)
         self.assertIn("overscroll-behavior: contain", layout_html)
 
+    def test_table_can_render_horizontal_scroll_controls(self):
+        table_html = server._table(
+            ["Wide"],
+            [["A wide row"]],
+            table_class="wide-table",
+            scroll_controls=True,
+            scroll_id="wide-table-scroll",
+            scroll_label="Wide table",
+        )
+        layout_html = server._layout("Fixture", "/runs", table_html)
+
+        self.assertIn('class="table-scroll-toolbar"', table_html)
+        self.assertIn('aria-label="Wide table horizontal scroll controls"', table_html)
+        self.assertIn('id="wide-table-scroll"', table_html)
+        self.assertIn('data-scroll-target="wide-table-scroll"', table_html)
+        self.assertIn('data-scroll-by="-420"', table_html)
+        self.assertIn('data-scroll-by="420"', table_html)
+        self.assertIn('title="Scroll Wide table left"', table_html)
+        self.assertIn('title="Scroll Wide table right"', table_html)
+        self.assertIn("ti-chevron-left", table_html)
+        self.assertIn("ti-chevron-right", table_html)
+        self.assertNotIn(">Left</button>", table_html)
+        self.assertNotIn(">Right</button>", table_html)
+        self.assertIn(".table-scroll-shell {", layout_html)
+        self.assertIn(".table-scroll-toolbar {", layout_html)
+        self.assertIn(".icon-button {", layout_html)
+        self.assertIn(".icon-button .ti {", layout_html)
+        self.assertIn("document.addEventListener('click'", layout_html)
+        self.assertIn("target.scrollBy", layout_html)
+        self.assertIn("target.scrollLeft = before + amount", layout_html)
+
+    def test_mobile_chart_panels_use_compact_spacing(self):
+        html = server._layout("Fixture", "/compare", "<p>Body</p>")
+
+        self.assertIn(".chart-grid { gap: 10px; margin-bottom: 14px; }", html)
+        self.assertIn(".chart-panel { padding: 14px; }", html)
+        self.assertIn(".chart-panel h2 { font-size: 18px; margin: 0 0 8px; }", html)
+        self.assertIn(".chart-panel .chart-empty { max-height: 44px; }", html)
+
     def test_model_runs_table_keeps_date_column_readable(self):
         html = server._layout("Fixture", "/runs", "<p>Body</p>")
 
         self.assertIn(".runs-table {", html)
-        self.assertIn("min-width: 1380px", html)
+        self.assertIn("table-layout: fixed", html)
+        self.assertIn("min-width: 1640px", html)
         self.assertIn(".runs-table th:nth-child(1)", html)
+        self.assertIn(".runs-table th:nth-child(12)", html)
+        self.assertIn(".runs-table th:nth-child(13)", html)
         self.assertIn("white-space: nowrap", html)
         self.assertIn("overflow-wrap: normal", html)
+
+    def test_wide_table_identity_columns_are_sticky(self):
+        html = server._layout("Fixture", "/compare", "<p>Body</p>")
+
+        self.assertIn(".runs-table th:nth-child(2)", html)
+        self.assertIn(".overview-table th:nth-child(1)", html)
+        self.assertIn(".compare-table th:nth-child(1)", html)
+        self.assertIn(".radar-table th:nth-child(1)", html)
+        self.assertIn(".project-table th:nth-child(1)", html)
+        self.assertIn("position: sticky", html)
+        self.assertIn("left: 0", html)
+        self.assertIn("box-shadow: 1px 0 0 var(--line)", html)
 
     def test_lab_dashboard_can_enable_run_test_button_for_local_models(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1515,6 +1604,49 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("Last refresh: not checked yet", html)
         self.assertIn('method="get" action="/inventory"', html)
         self.assertIn("No inventory refresh has run yet.", html)
+
+    def test_inventory_tables_use_horizontal_scroll_contracts(self):
+        result = {
+            "checked_at": "2026-06-05T12:00:00-07:00",
+            "checks": [
+                {
+                    "name": "LM Studio models",
+                    "command": "/Users/example/.lmstudio/bin/lms ls --json",
+                    "status": "ok",
+                    "exit_code": "0",
+                    "stdout": '{"models":[{"modelKey":"local-long-model"}]}',
+                    "stderr": "",
+                }
+            ],
+            "models": [
+                {
+                    "runtime": "LM Studio",
+                    "model_id": "publisher/local-long-model-id-for-inventory-layout",
+                    "display_name": "Local Long Model",
+                    "status": "loaded",
+                    "source_path": "publisher/local-long-model-id-for-inventory-layout",
+                    "local_path": (
+                        "/Users/example/.lmstudio/models/publisher/"
+                        "local-long-model-id-for-inventory-layout"
+                    ),
+                }
+            ],
+        }
+
+        html = server._inventory(inventory_result=result, action_token="fixture-token")
+
+        self.assertIn('class="inventory-models-table"', html)
+        self.assertIn('id="inventory-models-table-scroll"', html)
+        self.assertIn('data-scroll-target="inventory-models-table-scroll"', html)
+        self.assertIn(".inventory-models-table {", html)
+        self.assertIn("min-width: 1760px", html)
+        self.assertIn(".inventory-models-table th:nth-child(5)", html)
+        self.assertIn('class="inventory-checks-table"', html)
+        self.assertIn('id="inventory-checks-table-scroll"', html)
+        self.assertIn('data-scroll-target="inventory-checks-table-scroll"', html)
+        self.assertIn(".inventory-checks-table {", html)
+        self.assertIn("min-width: 1360px", html)
+        self.assertIn(".inventory-checks-table th:nth-child(5)", html)
 
     def test_inventory_filters_detected_models_by_runtime_and_registry_match(self):
         result = {
@@ -1884,6 +2016,8 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Dolphin3.0-Llama3.1-8B-GGUF", specialty_html)
             self.assertNotIn("Ready Local 7B", specialty_html)
             self.assertIn("Specialty Candidates (1 of 2)", dolphin_html)
+            self.assertIn('id="specialty-candidates-table-scroll"', dolphin_html)
+            self.assertIn('data-scroll-target="specialty-candidates-table-scroll"', dolphin_html)
             self.assertIn("Dolphin3.0-Llama3.1-8B-GGUF", dolphin_html)
             self.assertNotIn("Qwen3-8B-Abliterated-GGUF", dolphin_html)
             self.assertIn("Security gate", specialty_html)
@@ -1906,6 +2040,8 @@ class ModelDashboardQaTests(unittest.TestCase):
             )
 
             self.assertIn("Project Radar (1 of 2)", html)
+            self.assertIn('id="project-radar-table-scroll"', html)
+            self.assertIn('data-scroll-target="project-radar-table-scroll"', html)
             self.assertIn("Local Runtime", html)
             self.assertIn("P5", html)
             self.assertIn("Core local runtime for larger models.", html)

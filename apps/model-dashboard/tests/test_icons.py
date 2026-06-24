@@ -30,6 +30,10 @@ class IconTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIn("<svg", icons.icon(name))
 
+    def test_scroll_chevrons_render_inline_svg(self):
+        self.assertIn("ti-chevron-left", icons.icon("ti-chevron-left"))
+        self.assertIn("ti-chevron-right", icons.icon("ti-chevron-right"))
+
     def test_unknown_icon_uses_fallback(self):
         html = icons.icon("ti-does-not-exist")
 

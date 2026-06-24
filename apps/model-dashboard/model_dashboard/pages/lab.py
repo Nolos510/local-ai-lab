@@ -310,6 +310,7 @@ def _lab(
             ],
             artifact_rows,
             empty_message="No benchmark artifacts found.",
+            table_class="lab-artifacts-table",
         ),
     )
     return _layout("Lab Dashboard", "/lab", body)

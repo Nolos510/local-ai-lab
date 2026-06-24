@@ -219,6 +219,7 @@ def _capability(
             ["Candidate", "Readiness", "Runner", "Local model id", "Preflight notes", "Artifact"],
             ready_rows,
             empty_message="No ready_for_eval candidates are registered.",
+            table_class="capability-ready-table",
         ),
         status_table=_table(
             ["Status", "Count"],
@@ -244,6 +245,7 @@ def _capability(
                 "No saved quant advice found. Run uv run ai-lab quant advise "
                 "--candidate <id> --out-json data/model_registry/quant_advice/<id>.json."
             ),
+            table_class="capability-quant-table",
         ),
         tokens_panel=tokens_panel,
         ttft_panel=ttft_panel,

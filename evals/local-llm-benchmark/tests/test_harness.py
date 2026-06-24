@@ -1,5 +1,6 @@
 import csv
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -12,28 +13,47 @@ HARNESS_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = HARNESS_DIR.parents[1]
 HARNESS = HARNESS_DIR / "harness.py"
 APP_DIR = REPO_ROOT / "apps" / "model-dashboard"
+FAKE_VM_STAT = "\n".join(
+    [
+        "Mach Virtual Memory Statistics: (page size of 4096 bytes)",
+        "Pages active: 1048576.",
+        "Pages inactive: 1048576.",
+        "Pages speculative: 0.",
+        "Pages wired down: 524288.",
+        "Pages occupied by compressor: 0.",
+    ]
+)
 sys.path.insert(0, str(APP_DIR))
 
 from model_dashboard import csv_io, db  # noqa: E402
 
 
 class LocalBenchmarkHarnessTests(unittest.TestCase):
-    def run_harness(self, *args):
+    def harness_env(self, env=None):
+        merged = os.environ.copy()
+        merged["LOCAL_AI_LAB_FAKE_VM_STAT"] = FAKE_VM_STAT
+        if env:
+            merged.update(env)
+        return merged
+
+    def run_harness(self, *args, env=None):
         result = subprocess.run(
             [sys.executable, str(HARNESS), *args],
             text=True,
             capture_output=True,
             check=False,
+            env=self.harness_env(env),
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         return result
 
-    def run_harness_raw(self, *args):
+    def run_harness_raw(self, *args, env=None):
         return subprocess.run(
             [sys.executable, str(HARNESS), *args],
             text=True,
             capture_output=True,
             check=False,
+            env=self.harness_env(env),
         )
 
     def start_chat_server(self, mode):
@@ -41,6 +61,31 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             def do_POST(self):
                 request_body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
                 payload = json.loads(request_body.decode("utf-8"))
+                self.server.requests.append({"path": self.path, "payload": payload})
+                if mode == "ollama":
+                    content = payload.get("prompt", "")
+                    prompt_id = "unknown"
+                    for candidate in ("LLMCORE-v0.1-001", "LLMCORE-v0.1-012"):
+                        if candidate in content:
+                            prompt_id = candidate
+                    body = json.dumps(
+                        {
+                            "model": payload.get("model"),
+                            "response": f"mock ollama response for {prompt_id}",
+                            "done": True,
+                            "done_reason": "stop",
+                            "prompt_eval_count": 10,
+                            "eval_count": 5,
+                            "eval_duration": 500_000_000,
+                            "total_duration": 800_000_000,
+                        }
+                    ).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
                 messages = payload.get("messages", [])
                 content = messages[-1].get("content", "") if messages else ""
                 if mode == "judge":
@@ -86,6 +131,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             server = ThreadingHTTPServer(("127.0.0.1", 0), ChatHandler)
         except PermissionError as exc:
             self.skipTest(f"local bind unavailable in this environment: {exc}")
+        server.requests = []
         server.metric_fields = [
             "instruction_following",
             "truthfulness_uncertainty",
@@ -316,6 +362,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
             self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
             self.assertGreater(metadata["run"]["tokens_per_sec"], 0)
+            self.assertEqual(metadata["run"]["ram_usage_gb"], 10.0)
             self.assertIsNone(metadata["run"]["ttft_seconds"])
 
             self.run_harness(
@@ -331,6 +378,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertIn("ttft_seconds", run_rows[0])
             self.assertIn("total_latency_seconds", run_rows[0])
             self.assertNotEqual(run_rows[0]["total_latency_seconds"], "")
+            self.assertEqual(run_rows[0]["ram_usage_gb"], "10.0")
 
             failed = self.run_harness_raw(
                 "run-local",
@@ -342,6 +390,254 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             )
             self.assertEqual(failed.returncode, 2)
             self.assertIn("loopback", failed.stderr)
+
+    def test_run_ollama_captures_all_prompts_and_rejects_non_loopback_endpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_id = "20260623-fixture-ollama-runner"
+            self.run_harness(
+                "init-run",
+                "--benchmark-run-id",
+                run_id,
+                "--model-name",
+                "Fixture Ollama Model",
+                "--backend",
+                "Ollama",
+                "--output-root",
+                tmp,
+            )
+            run_dir = Path(tmp) / run_id
+            server = self.start_chat_server("ollama")
+            try:
+                endpoint = f"http://127.0.0.1:{server.server_port}"
+                self.run_harness(
+                    "run-ollama",
+                    "--run-dir",
+                    str(run_dir),
+                    "--endpoint",
+                    endpoint,
+                    "--model-id",
+                    "fixture-ollama:latest",
+                    "--max-tokens",
+                    "64",
+                    "--force",
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+
+            records = [
+                json.loads(line)
+                for line in (run_dir / "raw_responses.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertEqual(len(records), 12)
+            self.assertTrue(all(record["raw_response"] for record in records))
+            self.assertTrue(all(record["error"] is None for record in records))
+            self.assertEqual(records[0]["stop_reason"], "stop")
+            self.assertEqual(records[0]["input_tokens"], 10)
+            self.assertEqual(records[0]["output_tokens"], 5)
+            self.assertEqual(records[0]["tokens_per_sec"], 10.0)
+            metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+            self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
+            self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
+            self.assertGreater(metadata["run"]["tokens_per_sec"], 0)
+            self.assertEqual(metadata["run"]["ram_usage_gb"], 10.0)
+            self.assertIsNone(metadata["run"]["ttft_seconds"])
+            self.assertEqual(server.requests[0]["path"], "/api/generate")
+            self.assertEqual(server.requests[0]["payload"]["model"], "fixture-ollama:latest")
+            self.assertIs(server.requests[0]["payload"]["stream"], False)
+            self.assertEqual(server.requests[0]["payload"]["options"]["num_predict"], 64)
+
+            self.run_harness(
+                "export-dashboard",
+                "--run-dir",
+                str(run_dir),
+            )
+            with (run_dir / "dashboard-import" / "model_runs.csv").open(
+                newline="",
+                encoding="utf-8",
+            ) as handle:
+                run_rows = list(csv.DictReader(handle))
+            self.assertNotEqual(run_rows[0]["total_latency_seconds"], "")
+            self.assertNotEqual(run_rows[0]["tokens_per_sec"], "")
+
+            failed = self.run_harness_raw(
+                "run-ollama",
+                "--run-dir",
+                str(run_dir),
+                "--endpoint",
+                "http://192.168.1.10:11434",
+                "--model-id",
+                "fixture-ollama:latest",
+                "--force",
+            )
+            self.assertEqual(failed.returncode, 2)
+            self.assertIn("loopback", failed.stderr)
+
+    def test_run_mlx_lm_captures_all_prompts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_id = "20260623-mlx-lm-fixture"
+            fake_python = tmp_path / "python"
+            fake_python.write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env python3",
+                        "import sys",
+                        "assert sys.argv[1:4] == ['-m', 'mlx_lm', 'generate']",
+                        "model_id = sys.argv[sys.argv.index('--model') + 1]",
+                        "prompt = sys.argv[sys.argv.index('--prompt') + 1]",
+                        "max_tokens = sys.argv[sys.argv.index('--max-tokens') + 1]",
+                        "assert max_tokens == '64'",
+                        "prompt_id = 'unknown'",
+                        "for candidate in ('LLMCORE-v0.1-001', 'LLMCORE-v0.1-012'):",
+                        "    if candidate in prompt:",
+                        "        prompt_id = candidate",
+                        "print('mock mlx response for {} using {}'.format(prompt_id, model_id))",
+                        "print('\\x1b[32mgreen\\x1b[0m')",
+                        "print('Prompt: 10 tokens, 20.0 tokens-per-sec')",
+                        "print('Generation: 5 tokens, 12.5 tokens-per-sec')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            fake_python.chmod(0o755)
+            self.run_harness(
+                "init-run",
+                "--benchmark-run-id",
+                run_id,
+                "--model-name",
+                "Fixture MLX-LM Model",
+                "--backend",
+                "MLX-LM",
+                "--output-root",
+                tmp,
+            )
+            run_dir = tmp_path / run_id
+
+            self.run_harness(
+                "run-mlx-lm",
+                "--run-dir",
+                str(run_dir),
+                "--model-id",
+                "mlx-community/Fixture-4bit",
+                "--python-path",
+                str(fake_python),
+                "--max-tokens",
+                "64",
+                "--force",
+            )
+
+            records = [
+                json.loads(line)
+                for line in (run_dir / "raw_responses.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertEqual(len(records), 12)
+            self.assertEqual(records[0]["stop_reason"], "cli_exit_0")
+            self.assertEqual(records[0]["input_tokens"], 10)
+            self.assertEqual(records[0]["output_tokens"], 5)
+            self.assertEqual(records[0]["tokens_per_sec"], 12.5)
+            self.assertIn("mlx-community/Fixture-4bit", records[0]["raw_response"])
+            metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+            self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
+            self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
+            self.assertGreater(metadata["run"]["tokens_per_sec"], 0)
+            self.assertEqual(metadata["run"]["ram_usage_gb"], 10.0)
+            self.assertIsNone(metadata["run"]["ttft_seconds"])
+            log_text = (run_dir / "mlx-lm-capture.log").read_text(encoding="utf-8")
+            self.assertIn("\\x1b[32mgreen\\x1b[0m", log_text)
+            self.assertNotIn("\x1b[32mgreen", log_text)
+
+    def test_run_llama_cpp_captures_all_prompts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_id = "20260623-llama-cpp-fixture"
+            fake_llama = tmp_path / "llama-cli"
+            fake_llama.write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env python3",
+                        "import sys",
+                        "model_id = sys.argv[sys.argv.index('-m') + 1]",
+                        "prompt = sys.argv[sys.argv.index('-p') + 1]",
+                        "max_tokens = sys.argv[sys.argv.index('-n') + 1]",
+                        "assert max_tokens == '64'",
+                        "assert '--no-display-prompt' in sys.argv",
+                        "prompt_id = 'unknown'",
+                        "for candidate in ('LLMCORE-v0.1-001', 'LLMCORE-v0.1-012'):",
+                        "    if candidate in prompt:",
+                        "        prompt_id = candidate",
+                        "print('mock llama.cpp response for {} using {}'.format(",
+                        "    prompt_id, model_id",
+                        "))",
+                        "print('\\x1b[34mblue\\x1b[0m')",
+                        "prompt_stats = (",
+                        "    'llama_perf_context_print: prompt eval time = '",
+                        "    '100.00 ms / 10 tokens '",
+                        "    '(10.00 ms per token, 100.00 tokens per second)'",
+                        ")",
+                        "eval_stats = (",
+                        "    'llama_perf_context_print:        eval time = '",
+                        "    '400.00 ms / 5 runs   '",
+                        "    '(80.00 ms per token, 12.50 tokens per second)'",
+                        ")",
+                        "print(prompt_stats, file=sys.stderr)",
+                        "print(eval_stats, file=sys.stderr)",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            fake_llama.chmod(0o755)
+            self.run_harness(
+                "init-run",
+                "--benchmark-run-id",
+                run_id,
+                "--model-name",
+                "Fixture llama.cpp Model",
+                "--backend",
+                "llama.cpp",
+                "--output-root",
+                tmp,
+            )
+            run_dir = tmp_path / run_id
+
+            self.run_harness(
+                "run-llama-cpp",
+                "--run-dir",
+                str(run_dir),
+                "--model-id",
+                str(tmp_path / "fixture-model.gguf"),
+                "--llama-cli-path",
+                str(fake_llama),
+                "--max-tokens",
+                "64",
+                "--force",
+            )
+
+            records = [
+                json.loads(line)
+                for line in (run_dir / "raw_responses.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertEqual(len(records), 12)
+            self.assertEqual(records[0]["stop_reason"], "cli_exit_0")
+            self.assertEqual(records[0]["input_tokens"], 10)
+            self.assertEqual(records[0]["output_tokens"], 5)
+            self.assertEqual(records[0]["tokens_per_sec"], 12.5)
+            self.assertIn("fixture-model.gguf", records[0]["raw_response"])
+            metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+            self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
+            self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
+            self.assertGreater(metadata["run"]["tokens_per_sec"], 0)
+            self.assertEqual(metadata["run"]["ram_usage_gb"], 10.0)
+            self.assertIsNone(metadata["run"]["ttft_seconds"])
+            log_text = (run_dir / "llama-cpp-capture.log").read_text(encoding="utf-8")
+            self.assertIn("\\x1b[34mblue\\x1b[0m", log_text)
+            self.assertNotIn("\x1b[34mblue", log_text)
 
     def test_init_run_rejects_traversal_run_id(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -429,6 +725,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertIsNotNone(metadata["run"]["total_latency_seconds"])
             self.assertGreaterEqual(metadata["run"]["total_latency_seconds"], 0)
             self.assertGreater(metadata["run"]["tokens_per_sec"], 0)
+            self.assertEqual(metadata["run"]["ram_usage_gb"], 10.0)
             log_text = (run_dir / "lms-cli-capture.log").read_text(encoding="utf-8")
             self.assertIn("\\x1b[31mred\\x1b[0m", log_text)
             self.assertNotIn("\x1b[31mred", log_text)
@@ -454,6 +751,70 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
         self.assertEqual(stats["tokens_per_sec"], 72.34)
         self.assertEqual(stats["input_tokens"], 310)
         self.assertEqual(stats["output_tokens"], 475)
+
+    def test_mlx_lm_parser_handles_generate_stats_labels(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("harness", HARNESS)
+        harness = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(harness)
+
+        stats = harness._parse_mlx_lm_stats(
+            "\n".join(
+                [
+                    "Prompt: 310 tokens, 82.12 tokens-per-sec",
+                    "Generation: 475 tokens, 34.66 tokens-per-sec",
+                ]
+            )
+        )
+
+        self.assertEqual(stats["tokens_per_sec"], 34.66)
+        self.assertEqual(stats["input_tokens"], 310)
+        self.assertEqual(stats["output_tokens"], 475)
+
+    def test_llama_cpp_parser_handles_perf_context_labels(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("harness", HARNESS)
+        harness = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(harness)
+
+        stats = harness._parse_llama_cpp_stats(
+            "\n".join(
+                [
+                    (
+                        "llama_perf_context_print: prompt eval time = "
+                        "280.00 ms / 310 tokens "
+                        "(0.90 ms per token, 1107.14 tokens per second)"
+                    ),
+                    (
+                        "llama_perf_context_print:        eval time = "
+                        "13707.15 ms / 475 runs   "
+                        "(28.86 ms per token, 34.66 tokens per second)"
+                    ),
+                ]
+            )
+        )
+
+        self.assertEqual(stats["tokens_per_sec"], 34.66)
+        self.assertEqual(stats["input_tokens"], 310)
+        self.assertEqual(stats["output_tokens"], 475)
+
+    def test_vm_stat_parser_and_run_summary_use_peak_memory(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("harness", HARNESS)
+        harness = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(harness)
+
+        self.assertEqual(harness._parse_vm_stat_gb(FAKE_VM_STAT), 10.0)
+        metadata = {"run": {"ram_usage_gb": None}}
+        harness._apply_run_perf_summary(
+            metadata,
+            [{"ram_usage_gb": 4.0}, {"ram_usage_gb": 7.5}, {"ram_usage_gb": 5.0}],
+        )
+
+        self.assertEqual(metadata["run"]["ram_usage_gb"], 7.5)
 
     def test_suggest_scores_writes_draft_and_exports_draft_csv(self):
         with tempfile.TemporaryDirectory() as tmp:
