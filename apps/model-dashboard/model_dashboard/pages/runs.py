@@ -67,6 +67,7 @@ def _runs(conn, query=None):
             rows,
             empty_message="No real benchmark runs match these filters.",
             table_class="runs-table",
+            header_tip_keys=RESULT_TABLE_HEADER_TIPS,
         ),
     )
     return _layout("Model Runs", "/runs", body)

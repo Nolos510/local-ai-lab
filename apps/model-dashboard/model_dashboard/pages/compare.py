@@ -99,6 +99,7 @@ def _compare(conn, query=None):
             headers,
             rows,
             empty_message="No real confirmed or draft score rows match these filters.",
+            header_tip_keys=RESULT_TABLE_HEADER_TIPS,
         ),
     )
     return _layout("Compare Models", "/compare", body)

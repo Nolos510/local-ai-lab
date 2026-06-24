@@ -29,6 +29,38 @@ SUPPORTED_LOCAL_RUNNERS = {
     "openai-compatible": "OpenAI-compatible local endpoint",
 }
 SAFE_ARTIFACT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+METRIC_EXPLANATIONS = {
+    "total_score": "Summed quality score across the benchmark rubric's dimensions (instruction-following, reasoning, coding, agent-planning, etc.). Higher is better; it's a relative ranking signal, not a percentage. See the model detail page for the per-dimension breakdown.",
+    "throughput": "Output tokens generated per second during the run. Higher is faster. Depends on model size, quantization, runtime, and hardware — only compare within the same setup.",
+    "ram_footprint": "Peak memory the model used during the run. Lower leaves more headroom for larger models or parallel work. 'No data yet' means no run captured memory for this model.",
+    "models": "Count of real benchmarked model records imported into the dashboard. Demo fixture rows are hidden from real result views.",
+    "runs": "Count of real benchmark runs imported into the dashboard.",
+    "average_score": "Mean Total Score across the models you've benchmarked.",
+    "kept_installed": "Count of models marked to keep installed after you reviewed their results.",
+    "score": "Summed quality score across the benchmark rubric's dimensions (instruction-following, reasoning, coding, agent-planning, etc.). Higher is better; it's a relative ranking signal, not a percentage. See the model detail page for the per-dimension breakdown.",
+    "status": "Confirmed = a score you finalized after review. Draft = an auto-suggested score awaiting confirmation; drafts never overwrite confirmed scores.",
+    "decision": "Your keep / watchlist / retest / skip verdict after reviewing results.",
+}
+METRIC_LABEL_KEYS = {
+    "total score": "total_score",
+    "throughput": "throughput",
+    "tokens / sec": "throughput",
+    "tok/s": "throughput",
+    "ram footprint": "ram_footprint",
+    "models": "models",
+    "runs": "runs",
+    "average score": "average_score",
+    "kept installed": "kept_installed",
+    "score": "score",
+    "status": "status",
+    "decision": "decision",
+}
+RESULT_TABLE_HEADER_TIPS = {
+    "Score": "score",
+    "Status": "status",
+    "Decision": "decision",
+}
+
 
 def _text(value, fallback=""):
     return escape(fallback if value is None else str(value))
@@ -53,17 +85,42 @@ def _status_pill(value):
     return f'<span class="{class_name}">{_text(status.upper())}</span>'
 
 
+def _metric_key(label):
+    return METRIC_LABEL_KEYS.get(str(label or "").strip().lower())
+
+
+def _metric_info(label_or_key):
+    key = label_or_key if label_or_key in METRIC_EXPLANATIONS else _metric_key(label_or_key)
+    if not key:
+        return ""
+    tip = METRIC_EXPLANATIONS[key]
+    return (
+        '<span class="metric-tip" tabindex="0" data-tip="{tip}" title="{tip}" '
+        'aria-label="{label}">{icon}</span>'
+    ).format(
+        tip=_text(tip),
+        label=_text(f"Metric explanation: {tip}"),
+        icon=render_icon("ti-info-circle", cls="metric-info-icon"),
+    )
+
+
+def _metric_label(label, tip_key=None, auto=True):
+    key = tip_key or (_metric_key(label) if auto else None)
+    info = _metric_info(key) if key else ""
+    return f'<span class="metric-label">{_text(label)}{info}</span>'
+
+
 def _stat_card(label, value, icon_name):
     return (
         '<div class="stat">'
         f"{render_icon(icon_name)}"
-        f'<div><div class="label">{_text(label)}</div><div class="value">{_text(value)}</div></div>'
+        f'<div><div class="label">{_metric_label(label)}</div><div class="value">{_text(value)}</div></div>'
         "</div>"
     )
 
 
 def _chart_panel(title, chart):
-    return f'<div class="panel chart-panel"><h2>{_text(title)}</h2>{chart}</div>'
+    return f'<div class="panel chart-panel"><h2>{_metric_label(title)}</h2>{chart}</div>'
 
 
 def _model_chart_label(row):
@@ -100,10 +157,14 @@ def _performance_chart(rows, field, title, value_format, empty_message):
     )
 
 
-def _table(headers, rows, empty_message="No rows yet.", table_class=""):
+def _table(headers, rows, empty_message="No rows yet.", table_class="", header_tip_keys=None):
     if not rows:
         return f'<p class="empty">{escape(empty_message)}</p>'
-    header_html = "".join(f"<th>{escape(header)}</th>" for header in headers)
+    header_tip_keys = header_tip_keys or {}
+    header_html = "".join(
+        f"<th>{_metric_label(header, header_tip_keys.get(header), auto=False)}</th>"
+        for header in headers
+    )
     row_html = []
     for row in rows:
         row_html.append(
@@ -632,4 +693,4 @@ def _import_state_for_run(run, decisions_by_model):
         decision=decision_state,
     )
 
-__all__ = ('_text', '_number', '_pill', '_status_pill', '_stat_card', '_chart_panel', '_model_chart_label', '_average_metric_items', '_performance_items', '_performance_chart', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_benchmark_run_id_from_notes', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_report_command', '_artifact_import_guidance', '_artifact_import_control', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE')
+__all__ = ('_text', '_number', '_pill', '_status_pill', '_stat_card', '_chart_panel', '_model_chart_label', '_average_metric_items', '_performance_items', '_performance_chart', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_benchmark_run_id_from_notes', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_report_command', '_artifact_import_guidance', '_artifact_import_control', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE', 'METRIC_EXPLANATIONS', 'METRIC_LABEL_KEYS', 'RESULT_TABLE_HEADER_TIPS')

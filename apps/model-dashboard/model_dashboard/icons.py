@@ -107,6 +107,11 @@ ICONS: dict[str, tuple[str, ...]] = {
         _path("M13 18h-5a2 2 0 0 1 -2 -2v-8"),
         _path("M10 15l3 3l-3 3"),
     ),
+    "ti-info-circle": (
+        _path("M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"),
+        _path("M12 9h.01"),
+        _path("M11 12h1v4h1"),
+    ),
     "ti-layout-dashboard": (
         _path("M5 4h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1"),
         _path("M5 16h4a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-2a1 1 0 0 1 1 -1"),
