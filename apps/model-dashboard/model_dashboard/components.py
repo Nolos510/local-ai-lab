@@ -24,8 +24,12 @@ PROJECT_REGISTRY_PATH = REPO_ROOT / "data" / "project_registry" / "github_repos.
 EVAL_RESULTS_DIR = REPO_ROOT / "data" / "eval_results"
 HARNESS_PATH = REPO_ROOT / "evals" / "local-llm-benchmark" / "harness.py"
 DEFAULT_DASHBOARD_DB = REPO_ROOT / "data" / "dashboard" / "model_dashboard.sqlite"
+LOCAL_INVENTORY_REGISTRY_PATH = REPO_ROOT / "data" / "dashboard" / "local_inventory_candidates.csv"
 SUPPORTED_LOCAL_RUNNERS = {
+    "llama-cpp": "llama.cpp",
     "lmstudio-cli": "LM Studio CLI",
+    "mlx-lm": "MLX-LM",
+    "ollama": "Ollama",
     "openai-compatible": "OpenAI-compatible local endpoint",
 }
 SAFE_ARTIFACT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
@@ -242,13 +246,37 @@ def _real_data_notice(demo_count):
     """
 
 
-def _load_radar_candidates(path=CANDIDATE_REGISTRY_PATH):
+def _load_candidate_rows(path):
     registry_path = Path(path)
     if not registry_path.exists():
         return []
     with registry_path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         return [{key: (value or "").strip() for key, value in row.items() if key} for row in reader]
+
+
+def _load_radar_candidates(
+    path=CANDIDATE_REGISTRY_PATH,
+    local_inventory_path=None,
+):
+    rows = _load_candidate_rows(path)
+    by_id = {row.get("candidate_id", ""): index for index, row in enumerate(rows)}
+    if local_inventory_path is None:
+        try:
+            if Path(path).resolve() == CANDIDATE_REGISTRY_PATH.resolve():
+                local_inventory_path = LOCAL_INVENTORY_REGISTRY_PATH
+        except OSError:
+            local_inventory_path = None
+    if local_inventory_path:
+        for overlay in _load_candidate_rows(local_inventory_path):
+            candidate_id = overlay.get("candidate_id", "")
+            if candidate_id and candidate_id in by_id:
+                merged = dict(rows[by_id[candidate_id]])
+                merged.update({key: value for key, value in overlay.items() if value})
+                rows[by_id[candidate_id]] = merged
+            else:
+                rows.append(overlay)
+    return rows
 
 
 def _load_project_repos(path=PROJECT_REGISTRY_PATH):
@@ -359,7 +387,7 @@ def _candidate_runner_label(row):
 def _candidate_run_ready(row):
     runner = row.get("local_runner", "")
     model_id = row.get("local_model_id", "")
-    if runner == "lmstudio-cli":
+    if runner in ("llama-cpp", "lmstudio-cli", "mlx-lm", "ollama"):
         return bool(model_id)
     if runner == "openai-compatible":
         return bool(row.get("default_endpoint") and (model_id or row.get("model_name")))
@@ -715,4 +743,4 @@ def _import_state_for_run(run, decisions_by_model):
         decision=decision_state,
     )
 
-__all__ = ('_text', '_number', '_pill', '_status_pill', '_stat_card', '_chart_panel', '_model_chart_label', '_average_metric_items', '_performance_items', '_performance_chart', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_benchmark_run_id_from_notes', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_report_command', '_artifact_import_guidance', '_artifact_import_control', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE', 'METRIC_EXPLANATIONS', 'METRIC_LABEL_KEYS', 'RESULT_TABLE_HEADER_TIPS')
+__all__ = ('_text', '_number', '_pill', '_status_pill', '_stat_card', '_chart_panel', '_model_chart_label', '_average_metric_items', '_performance_items', '_performance_chart', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_benchmark_run_id_from_notes', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_import_guidance', '_artifact_import_control', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'LOCAL_INVENTORY_REGISTRY_PATH', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE', 'METRIC_EXPLANATIONS', 'METRIC_LABEL_KEYS', 'RESULT_TABLE_HEADER_TIPS')

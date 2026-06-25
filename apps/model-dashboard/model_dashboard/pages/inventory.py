@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import hashlib
+import csv
+import importlib.util
 import json
 import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -17,7 +20,37 @@ from ..layout import _layout
 LMSTUDIO_MODELS_ROOT = Path.home() / ".lmstudio" / "models"
 LMSTUDIO_BUNDLED_MODELS_ROOT = Path.home() / ".lmstudio" / ".internal" / "bundled-models"
 OLLAMA_MODELS_ROOT = Path.home() / ".ollama" / "models"
+HF_HUB_CACHE_ROOT = Path.home() / ".cache" / "huggingface" / "hub"
 LMSTUDIO_WEIGHT_SUFFIXES = (".gguf", ".safetensors", ".bin", ".mlx", ".npz")
+CANDIDATE_FIELDNAMES = (
+    "candidate_id",
+    "model_name",
+    "model_family",
+    "provider_or_org",
+    "status",
+    "format_or_runtime",
+    "source_packet_path",
+    "report_path",
+    "benchmark_run_id",
+    "model_page_url",
+    "github_url",
+    "lm_studio_url",
+    "ollama_url",
+    "runtime_availability",
+    "local_runner",
+    "local_model_id",
+    "default_endpoint",
+    "why_interesting",
+    "risk_notes",
+    "proposed_eval",
+    "security_review_status",
+    "download_approval",
+    "license_review_status",
+    "provenance_status",
+    "security_notes",
+    "isolation_notes",
+    "security_review_path",
+)
 
 def _inventory_model_key(model):
     payload = "|".join(
@@ -257,13 +290,189 @@ def _parse_lmstudio_inventory(ls_stdout, ps_stdout="", root=LMSTUDIO_MODELS_ROOT
                 "status": status,
                 "source_path": source_path,
                 "local_path": local_path,
+                "model_type": row.get("type") or row.get("modelType") or "",
                 "removal_blocked_reason": removal_blocked_reason,
             }
         )
     return models
 
 
-def _scan_lmstudio_filesystem_models(root=LMSTUDIO_MODELS_ROOT, indexed_paths=()):
+def _read_candidate_rows(path):
+    registry_path = Path(path)
+    if not registry_path.exists():
+        return list(CANDIDATE_FIELDNAMES), []
+    with registry_path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        fieldnames = list(reader.fieldnames or CANDIDATE_FIELDNAMES)
+        rows = [{key: (value or "").strip() for key, value in row.items() if key} for row in reader]
+    return fieldnames, rows
+
+
+def _candidate_matches_inventory_without_exact_id(row, model):
+    if row.get("local_model_id"):
+        return False
+    values = {
+        _inventory_exact_model_id(model).strip().lower(),
+        str(model.get("model_id") or "").strip().lower(),
+        str(model.get("display_name") or "").strip().lower(),
+    }
+    if row.get("model_name", "").strip().lower() in values:
+        return True
+    source_path = str(model.get("source_path") or "").strip().lower()
+    if not source_path:
+        return False
+    return (
+        row.get("runtime_availability", "").strip().lower() == source_path
+        or row.get("model_page_url", "").strip().lower().rstrip("/").endswith(source_path)
+    )
+
+
+def _inventory_model_auto_registerable(model):
+    if not model.get("model_id"):
+        return False
+    runtime = model.get("runtime")
+    if runtime == "LM Studio":
+        if str(model.get("model_type") or "").lower() == "embedding":
+            return False
+        return not model.get("removal_blocked_reason")
+    return runtime in ("Ollama", "MLX-LM", "llama.cpp")
+
+
+def _inventory_local_runner(model):
+    if model.get("runner_hint"):
+        return model["runner_hint"]
+    if model.get("runtime") == "LM Studio" and model.get("status") in ("indexed", "loaded"):
+        return "lmstudio-cli"
+    if model.get("runtime") == "Ollama" and model.get("status") == "installed":
+        return "ollama"
+    if model.get("runtime") == "MLX-LM" and model.get("status") == "cached":
+        return "mlx-lm"
+    if model.get("runtime") == "llama.cpp" and model.get("status") == "installed":
+        return "llama-cpp"
+    return ""
+
+
+def _inventory_exact_model_id(model):
+    return str(model.get("exact_model_id") or model.get("model_id") or "")
+
+
+def _inventory_candidate_id(model):
+    identity = "{}|{}".format(model.get("runtime", ""), _inventory_exact_model_id(model))
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:8]
+    runtime = _slug(model.get("runtime", "local"))
+    return "local-{}-{}-{}".format(runtime, _slug(model.get("model_id")), digest)
+
+
+def _local_inventory_candidate_row(model, fieldnames, matched_row=None):
+    row = {field: "" for field in fieldnames}
+    if matched_row:
+        row.update({field: matched_row.get(field, "") for field in fieldnames})
+
+    runner = _inventory_local_runner(model)
+    generated = matched_row is None
+    if not row.get("candidate_id"):
+        row["candidate_id"] = _inventory_candidate_id(model)
+    if not row.get("model_name"):
+        row["model_name"] = model.get("display_name") or model.get("model_id") or ""
+    if not row.get("provider_or_org"):
+        row["provider_or_org"] = f"local {model.get('runtime', 'runtime')} inventory"
+    row["format_or_runtime"] = model.get("format_or_runtime") or model.get("runtime", "local")
+    if runner or generated or row.get("status") in ("", "watchlist", "needs_more_info"):
+        row["status"] = "ready_for_eval" if runner else "needs_more_info"
+    row["runtime_availability"] = (
+        "Auto-detected by {} inventory refresh as {}; exact local model id recorded. "
+        "No download, score, or decision implied."
+    ).format(model.get("runtime", "local runtime"), model.get("status") or "detected")
+    row["local_runner"] = runner
+    row["local_model_id"] = _inventory_exact_model_id(model)
+    row["why_interesting"] = (
+        row.get("why_interesting")
+        or "Detected in local runtime inventory with an exact runtime model id."
+    )
+    row["risk_notes"] = (
+        row.get("risk_notes")
+        or "Auto-generated from local inventory. License and upstream provenance still need review before a keep/share decision."
+    )
+    runner_label = _candidate_runner_label(row)
+    row["proposed_eval"] = (
+        f"Run evals/local-llm-benchmark/SPEC.md through {runner_label} after explicit local-run approval."
+        if runner
+        else "Install or enable the matching local runner before running the benchmark."
+    )
+    row["security_review_status"] = "local_inventory_reviewed"
+    row["download_approval"] = "not_needed_local"
+    row["license_review_status"] = row.get("license_review_status") or "needs_review"
+    row["provenance_status"] = "local_inventory"
+    row["security_notes"] = (
+        "Detected as already installed in local runtime inventory; no new download was approved or performed. "
+        "Verify upstream source, license, and checksum before reinstalling or updating."
+    )
+    row["isolation_notes"] = (
+        "Run only through the detected local runner or a loopback local endpoint; keep raw responses and evidence local."
+    )
+    return row
+
+
+def _sync_local_inventory_candidates(
+    inventory_result,
+    registry_path=CANDIDATE_REGISTRY_PATH,
+    local_inventory_path=LOCAL_INVENTORY_REGISTRY_PATH,
+):
+    fieldnames, durable_rows = _read_candidate_rows(registry_path)
+    exact_ids = {
+        row.get("local_model_id", "").strip().lower()
+        for row in durable_rows
+        if row.get("local_model_id")
+    }
+    generated_rows = []
+    skipped = 0
+    updated_existing = 0
+    for model in (inventory_result or {}).get("models", []):
+        if not _inventory_model_auto_registerable(model):
+            skipped += 1
+            continue
+        model_id = _inventory_exact_model_id(model).strip().lower()
+        if model_id in exact_ids:
+            continue
+        soft_matches = [
+            row for row in durable_rows if _candidate_matches_inventory_without_exact_id(row, model)
+        ]
+        if len(soft_matches) > 1:
+            skipped += 1
+            continue
+        matched = soft_matches[0] if soft_matches else None
+        if matched:
+            updated_existing += 1
+        generated_rows.append(_local_inventory_candidate_row(model, fieldnames, matched))
+
+    overlay_path = Path(local_inventory_path)
+    overlay_path.parent.mkdir(parents=True, exist_ok=True)
+    with overlay_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(generated_rows)
+    return {
+        "path": str(overlay_path),
+        "registered": len(generated_rows),
+        "updated_existing": updated_existing,
+        "skipped": skipped,
+    }
+
+
+def _primary_lmstudio_weight_file(model_dir):
+    for item in sorted(Path(model_dir).rglob("*"), key=lambda path: str(path).lower()):
+        if item.name.startswith(".") or not item.is_file():
+            continue
+        if item.suffix.lower() in LMSTUDIO_WEIGHT_SUFFIXES:
+            return item
+    return None
+
+
+def _scan_lmstudio_filesystem_models(
+    root=LMSTUDIO_MODELS_ROOT,
+    indexed_paths=(),
+    llama_cpp_available=False,
+):
     root = Path(root)
     if not root.exists():
         return []
@@ -275,31 +484,106 @@ def _scan_lmstudio_filesystem_models(root=LMSTUDIO_MODELS_ROOT, indexed_paths=()
         for model_dir in sorted(publisher_dir.iterdir(), key=lambda item: item.name.lower()):
             if not model_dir.is_dir() or model_dir.name.startswith("."):
                 continue
-            if not _has_lmstudio_weight_file(model_dir):
+            weight_file = _primary_lmstudio_weight_file(model_dir)
+            if not weight_file:
                 continue
             relative_path = f"{publisher_dir.name}/{model_dir.name}"
             if relative_path.lower() in indexed:
                 continue
-            models.append(
-                {
-                    "runtime": "LM Studio",
-                    "model_id": relative_path,
-                    "display_name": model_dir.name,
-                    "status": "filesystem_only",
-                    "source_path": relative_path,
-                    "local_path": str(model_dir),
-                }
-            )
+            model = {
+                "runtime": "LM Studio",
+                "model_id": relative_path,
+                "display_name": model_dir.name,
+                "status": "filesystem_only",
+                "source_path": relative_path,
+                "local_path": str(model_dir),
+            }
+            if llama_cpp_available and weight_file.suffix.lower() == ".gguf":
+                model["runner_hint"] = "llama-cpp"
+                model["exact_model_id"] = str(weight_file)
+                model["format_or_runtime"] = "GGUF through llama.cpp"
+            models.append(model)
     return models
 
 
 def _has_lmstudio_weight_file(model_dir):
-    for item in Path(model_dir).rglob("*"):
-        if item.name.startswith(".") or not item.is_file():
-            continue
-        if item.suffix.lower() in LMSTUDIO_WEIGHT_SUFFIXES:
+    return _primary_lmstudio_weight_file(model_dir) is not None
+
+
+def _hf_cache_repo_id(cache_dir):
+    name = Path(cache_dir).name
+    if not name.startswith("models--"):
+        return ""
+    encoded = name.removeprefix("models--")
+    owner, separator, repo = encoded.partition("--")
+    if not separator or not owner or not repo:
+        return ""
+    return f"{owner}/{repo}"
+
+
+def _looks_like_mlx_lm_repo(repo_id):
+    lower = str(repo_id or "").lower()
+    return lower.startswith("mlx-community/") or "-mlx" in lower or "/mlx" in lower
+
+
+def _snapshot_has_mlx_weights(snapshot_dir):
+    snapshot = Path(snapshot_dir)
+    if not (snapshot / "config.json").exists():
+        return False
+    for item in snapshot.iterdir():
+        if item.is_file() and item.suffix.lower() in (".safetensors", ".npz"):
             return True
     return False
+
+
+def _scan_mlx_lm_cached_models(root=HF_HUB_CACHE_ROOT):
+    root = Path(root).expanduser()
+    if not root.exists():
+        return []
+    models = []
+    for cache_dir in sorted(root.glob("models--*--*"), key=lambda path: path.name.lower()):
+        repo_id = _hf_cache_repo_id(cache_dir)
+        if not repo_id or not _looks_like_mlx_lm_repo(repo_id):
+            continue
+        snapshots_dir = cache_dir / "snapshots"
+        if not snapshots_dir.exists():
+            continue
+        snapshots = [
+            item
+            for item in snapshots_dir.iterdir()
+            if item.is_dir() and _snapshot_has_mlx_weights(item)
+        ]
+        if not snapshots:
+            continue
+        snapshot = max(snapshots, key=lambda item: item.stat().st_mtime)
+        models.append(
+            {
+                "runtime": "MLX-LM",
+                "model_id": str(snapshot),
+                "display_name": repo_id,
+                "status": "cached",
+                "source_path": repo_id,
+                "local_path": str(snapshot),
+                "model_type": "llm",
+                "format_or_runtime": "MLX-LM local cache",
+            }
+        )
+    return models
+
+
+def _python_module_available(module_name):
+    return importlib.util.find_spec(module_name) is not None
+
+
+def _runtime_check(name, command, available, detail):
+    return {
+        "name": name,
+        "command": command,
+        "status": "ok" if available else "unavailable",
+        "exit_code": "",
+        "stdout": detail if available else "",
+        "stderr": "" if available else detail,
+    }
 
 
 def _parse_ollama_inventory(stdout):
@@ -319,6 +603,8 @@ def _parse_ollama_inventory(stdout):
                     "status": "installed",
                     "source_path": "",
                     "local_path": _ollama_manifest_path(model_id),
+                    "model_type": "llm",
+                    "format_or_runtime": "Ollama",
                 }
             )
     return models
@@ -327,6 +613,8 @@ def _parse_ollama_inventory(stdout):
 def _refresh_inventory(timeout=5):
     checks = []
     models = []
+    llama_cli_path = shutil.which("llama-cli")
+    mlx_lm_available = _python_module_available("mlx_lm")
     lms_path = _lmstudio_cli_path()
     if lms_path:
         lm_ls = _command_result("LM Studio models", [lms_path, "ls", "--json"], timeout)
@@ -338,7 +626,8 @@ def _refresh_inventory(timeout=5):
             models.extend(lmstudio_models)
         models.extend(
             _scan_lmstudio_filesystem_models(
-                indexed_paths=[model.get("source_path") for model in lmstudio_models]
+                indexed_paths=[model.get("source_path") for model in lmstudio_models],
+                llama_cpp_available=bool(llama_cli_path),
             )
         )
     else:
@@ -370,6 +659,26 @@ def _refresh_inventory(timeout=5):
                 "stderr": "Ollama CLI not found on PATH.",
             }
         )
+    checks.append(
+        _runtime_check(
+            "MLX-LM module",
+            f"{sys.executable} -m mlx_lm generate",
+            mlx_lm_available,
+            "mlx_lm importable in the dashboard Python environment."
+            if mlx_lm_available
+            else "mlx_lm is not importable in the dashboard Python environment.",
+        )
+    )
+    if mlx_lm_available:
+        models.extend(_scan_mlx_lm_cached_models())
+    checks.append(
+        _runtime_check(
+            "llama.cpp CLI",
+            "llama-cli",
+            bool(llama_cli_path),
+            llama_cli_path or "llama-cli not found on PATH.",
+        )
+    )
     return {
         "checked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "models": models,
@@ -378,13 +687,16 @@ def _refresh_inventory(timeout=5):
 
 
 def _match_inventory_model(model, candidates):
-    model_id = model["model_id"].lower()
+    model_ids = {
+        str(model.get("model_id", "")).lower(),
+        _inventory_exact_model_id(model).lower(),
+    }
     source_path = model.get("source_path", "").lower()
     matches = [
         row
         for row in candidates
-        if row.get("local_model_id", "").lower() == model_id
-        or row.get("model_name", "").lower() == model_id
+        if row.get("local_model_id", "").lower() in model_ids
+        or row.get("model_name", "").lower() in model_ids
         or (
             source_path
             and (
@@ -404,6 +716,8 @@ def _inventory_run_allowed(model, candidate):
     if not candidate or not _candidate_run_ready(candidate):
         return False
     if model.get("runtime") == "LM Studio":
+        if candidate.get("local_runner") == "llama-cpp":
+            return bool(candidate.get("local_model_id"))
         return model.get("status") in ("indexed", "loaded")
     return model.get("status") != "filesystem_only"
 
@@ -426,6 +740,7 @@ def _matches_inventory_search(entry, search):
         [
             model.get("runtime", ""),
             model.get("model_id", ""),
+            model.get("exact_model_id", ""),
             model.get("display_name", ""),
             model.get("status", ""),
             model.get("source_path", ""),
@@ -538,6 +853,21 @@ def _inventory_paths_cell(model):
     """
 
 
+def _inventory_registration_note(result):
+    registration = (result or {}).get("registration")
+    if not registration:
+        return ""
+    path = _relative_path(registration.get("path", ""))
+    return """
+      <p class="empty">Auto-registered exact local IDs: {registered} local candidate rows ({updated} existing candidate overlays, {skipped} skipped). Local overlay: <code>{path}</code></p>
+    """.format(
+        registered=_text(registration.get("registered", 0)),
+        updated=_text(registration.get("updated_existing", 0)),
+        skipped=_text(registration.get("skipped", 0)),
+        path=_text(path),
+    )
+
+
 def _inventory(
     query=None,
     inventory_result=None,
@@ -545,8 +875,10 @@ def _inventory(
     enable_run_tests=False,
     enable_delete_actions=False,
     enable_refresh=True,
+    registry_path=CANDIDATE_REGISTRY_PATH,
+    local_inventory_path=None,
 ):
-    candidates = _load_radar_candidates()
+    candidates = _load_radar_candidates(registry_path, local_inventory_path)
     result = inventory_result
     filters = _inventory_filter_values(query or {})
     check_rows = []
@@ -612,6 +944,7 @@ def _inventory(
       </form>
       {disabled_note}
       <p class="empty">Last refresh: {checked_at}</p>
+      {registration_note}
     </section>
     <section>
       <h2>Detected Models{filtered_count}</h2>
@@ -631,6 +964,7 @@ def _inventory(
             else '<p class="empty">Inventory refresh is available only on a localhost or loopback dashboard bind.</p>'
         ),
         checked_at=_text(result["checked_at"] if result else "not checked yet"),
+        registration_note=_inventory_registration_note(result),
         filtered_count=(
             f" ({len(_filter_inventory_entries(entries, filters))} of {len(entries)})"
             if any(filters.values())

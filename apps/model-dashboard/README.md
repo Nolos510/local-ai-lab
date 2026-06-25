@@ -132,6 +132,18 @@ benchmark, score, import, or call cloud/model APIs. It only shows runtime,
 model id, installed/loaded status when available, registry match status, and a
 run-test action when an exact local runner and model id are configured.
 
+On refresh, detected local runtime rows are written to the generated local
+overlay `data/dashboard/local_inventory_candidates.csv`. This ignored runtime
+file lets the dashboard immediately register exact local model IDs and show run
+buttons without writing private local inventory into the tracked radar candidate
+registry. The overlay currently covers indexed/loaded LM Studio CLI rows,
+Ollama models from `ollama list`, MLX-LM models already present in the local
+Hugging Face cache, and GGUF files found in LM Studio model folders when
+`llama-cli` is available. Embedding and bundled internal LM Studio rows are
+skipped. Filesystem-only LM Studio rows remain non-runnable unless they can be
+run directly through llama.cpp. Auto-registration does not create scores,
+decisions, downloads, or installs.
+
 LM Studio inventory distinguishes:
 
 - `loaded`: returned by `lms ps --json`.
@@ -150,9 +162,11 @@ python3 apps/model-dashboard/run_dashboard.py serve --enable-run-tests
 
 Run-test buttons create a benchmark artifact and capture raw responses only.
 They do not download models, create scores, import CSVs, or make keep/watch
-decisions. For LM Studio CLI candidates, the button uses
-`run-lmstudio-cli`, which avoids the OpenAI-compatible server path when the
-server responds with `401 Unauthorized`. The LM Studio CLI runner uses
+decisions. Native run buttons dispatch to the matching local harness runner:
+`run-lmstudio-cli`, `run-ollama`, `run-mlx-lm`, `run-llama-cpp`, or `run-local`
+for OpenAI-compatible loopback endpoints. For LM Studio CLI candidates, the
+button uses `run-lmstudio-cli`, which avoids the OpenAI-compatible server path
+when the server responds with `401 Unauthorized`. The LM Studio CLI runner uses
 `--yes` and `--dont-fetch-catalog` so dashboard-triggered runs do not pause for
 interactive prompts or catalog fetches.
 

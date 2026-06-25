@@ -110,6 +110,64 @@ class DashboardHttpHandlerTests(unittest.TestCase):
 
             self.assertEqual(raised.exception.code, 403)
 
+    def test_inventory_refresh_auto_registers_detected_lmstudio_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            result = {
+                "checked_at": "2026-06-05T12:00:00-07:00",
+                "checks": [],
+                "models": [
+                    {
+                        "runtime": "LM Studio",
+                        "model_id": "mistral-dolphin-mix-cine-open-ne-nsfw",
+                        "display_name": "Mistral Dolphin Mix Cine Open Ne NSFW",
+                        "status": "loaded",
+                        "source_path": "mraderacher/Mistral-Dolphin-GGUF/model.gguf",
+                        "local_path": (
+                            "/Users/example/.lmstudio/models/mraderacher/"
+                            "Mistral-Dolphin-GGUF"
+                        ),
+                        "model_type": "llm",
+                    },
+                    {
+                        "runtime": "Ollama",
+                        "model_id": "qwen3:30b",
+                        "display_name": "qwen3:30b",
+                        "status": "installed",
+                        "local_path": "/Users/example/.ollama/models/manifests/qwen3/30b",
+                        "model_type": "llm",
+                        "format_or_runtime": "Ollama",
+                    }
+                ],
+            }
+            overlay_path = tmp_path / "local_inventory_candidates.csv"
+
+            with (
+                mock.patch.object(server, "_refresh_inventory", return_value=result),
+                mock.patch.object(server, "CANDIDATE_REGISTRY_PATH", tmp_path / "missing.csv"),
+                mock.patch.object(server, "LOCAL_INVENTORY_REGISTRY_PATH", overlay_path),
+            ):
+                base_url = self.start_server(
+                    db_path,
+                    action_token="test-token",
+                    enable_run_tests=True,
+                )
+                with self.post(
+                    f"{base_url}/actions/refresh-inventory",
+                    {"token": "test-token"},
+                ) as response:
+                    body = response.read().decode("utf-8")
+
+            self.assertEqual(response.status, 200)
+            self.assertTrue(overlay_path.exists())
+            self.assertIn("Auto-registered exact local IDs: 2", body)
+            self.assertIn("Mistral Dolphin Mix Cine Open Ne NSFW", body)
+            self.assertIn("Run Test", body)
+            self.assertIn("mistral-dolphin-mix-cine-open-ne-nsfw", body)
+            self.assertIn("qwen3:30b", body)
+
     def test_delete_model_action_is_refused_when_disabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "dashboard.sqlite"

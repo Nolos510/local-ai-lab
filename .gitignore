@@ -21,6 +21,7 @@ open_webui_data/
 # Dashboard local runtime state
 data/dashboard/*.sqlite
 data/dashboard/*.sqlite-*
+data/dashboard/local_inventory_candidates.csv
 data/dashboard/exports/
 
 # Empty radar automation runs are runtime noise, not source history.

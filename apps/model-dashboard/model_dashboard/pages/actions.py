@@ -48,6 +48,40 @@ def _build_candidate_commands(row, run_id, eval_results_dir):
             row.get("local_model_id", ""),
             "--force",
         ]
+    elif runner == "ollama":
+        capture_command = [
+            sys.executable,
+            str(HARNESS_PATH),
+            "run-ollama",
+            "--run-dir",
+            str(run_dir),
+            "--model-id",
+            row.get("local_model_id", ""),
+            "--force",
+        ]
+        _append_arg(capture_command, "--endpoint", row.get("default_endpoint"))
+    elif runner == "mlx-lm":
+        capture_command = [
+            sys.executable,
+            str(HARNESS_PATH),
+            "run-mlx-lm",
+            "--run-dir",
+            str(run_dir),
+            "--model-id",
+            row.get("local_model_id", ""),
+            "--force",
+        ]
+    elif runner == "llama-cpp":
+        capture_command = [
+            sys.executable,
+            str(HARNESS_PATH),
+            "run-llama-cpp",
+            "--run-dir",
+            str(run_dir),
+            "--model-id",
+            row.get("local_model_id", ""),
+            "--force",
+        ]
     elif runner == "openai-compatible":
         capture_command = [
             sys.executable,

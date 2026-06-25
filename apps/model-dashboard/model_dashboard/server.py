@@ -12,6 +12,7 @@ from .components import (
     CANDIDATE_REGISTRY_PATH,
     DEFAULT_DASHBOARD_DB,
     EVAL_RESULTS_DIR,
+    LOCAL_INVENTORY_REGISTRY_PATH,
     PROJECT_REGISTRY_PATH,
     REPO_ROOT,
     _is_loopback_host,
@@ -56,6 +57,8 @@ from .pages.inventory import (
     _remove_model_control,
     _removal_target_from_key,
     _scan_lmstudio_filesystem_models,
+    _scan_mlx_lm_cached_models,
+    _sync_local_inventory_candidates,
 )
 from .pages.inventory import _delete_model_action as _inventory_delete_model_action
 from .pages.lab import _lab
@@ -173,12 +176,21 @@ def make_handler(
                             self.send_response(403)
                         else:
                             inventory_cache["result"] = _refresh_inventory(inventory_timeout)
+                            inventory_cache["result"]["registration"] = (
+                                _sync_local_inventory_candidates(
+                                    inventory_cache["result"],
+                                    CANDIDATE_REGISTRY_PATH,
+                                    LOCAL_INVENTORY_REGISTRY_PATH,
+                                )
+                            )
                             html = _inventory(
                                 inventory_result=inventory_cache["result"],
                                 action_token=action_token,
                                 enable_run_tests=enable_run_tests,
                                 enable_delete_actions=enable_delete_actions,
                                 enable_refresh=enable_inventory_refresh,
+                                registry_path=CANDIDATE_REGISTRY_PATH,
+                                local_inventory_path=LOCAL_INVENTORY_REGISTRY_PATH,
                             )
                             self.send_response(200)
                     elif parsed.path == "/actions/import-artifact":
@@ -275,6 +287,8 @@ def make_handler(
                     enable_run_tests=enable_run_tests,
                     enable_delete_actions=enable_delete_actions,
                     enable_refresh=enable_inventory_refresh,
+                    registry_path=CANDIDATE_REGISTRY_PATH,
+                    local_inventory_path=LOCAL_INVENTORY_REGISTRY_PATH,
                 )
             if path == "/radar":
                 return _radar(conn, query)

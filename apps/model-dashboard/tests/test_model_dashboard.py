@@ -1675,6 +1675,36 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("ready-local-7b", capture_command)
             self.assertNotIn("download", " ".join(capture_command))
 
+    def test_run_button_command_builder_supports_native_runner_variants(self):
+        variants = [
+            ("ollama", "run-ollama", "qwen3:30b"),
+            ("mlx-lm", "run-mlx-lm", "/tmp/mlx-model"),
+            ("llama-cpp", "run-llama-cpp", "/tmp/model.gguf"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            for runner, expected_command, model_id in variants:
+                row = {
+                    "candidate_id": f"candidate-{runner}",
+                    "model_name": f"Model {runner}",
+                    "model_family": "Local",
+                    "provider_or_org": "local",
+                    "format_or_runtime": runner,
+                    "local_runner": runner,
+                    "local_model_id": model_id,
+                }
+
+                init_command, capture_command = server._build_candidate_commands(
+                    row,
+                    f"20260605-{runner}-test",
+                    Path(tmp),
+                )
+
+                self.assertIn("init-run", init_command)
+                self.assertIn(expected_command, capture_command)
+                self.assertIn("--model-id", capture_command)
+                self.assertIn(model_id, capture_command)
+                self.assertNotIn("download", " ".join(capture_command))
+
     def test_run_test_actions_require_loopback_host(self):
         self.assertTrue(server._is_loopback_host("localhost"))
         self.assertTrue(server._is_loopback_host("127.0.0.1"))
@@ -1764,6 +1794,182 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("Run Test", html)
         self.assertIn("Detected Models (1 of 2)", html)
         self.assertNotIn("unregistered:latest", html)
+
+    def test_inventory_auto_registers_detected_lmstudio_ids_in_local_overlay(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "candidates.csv"
+            overlay_path = tmp_path / "local_inventory_candidates.csv"
+            write_candidate_registry(registry_path)
+            detected_model = {
+                "runtime": "LM Studio",
+                "model_id": "mistral-dolphin-mix-cine-open-ne-nsfw",
+                "display_name": "Mistral Dolphin Mix Cine Open Ne NSFW",
+                "status": "loaded",
+                "source_path": (
+                    "mraderacher/Mistral-dolphin-mix-cine-open-Ne-NSFW-GGUF/"
+                    "Mistral-dolphin-mix-cine-open-Ne-NSFW.Q4_K_S.gguf"
+                ),
+                "local_path": (
+                    "/Users/example/.lmstudio/models/mraderacher/"
+                    "Mistral-dolphin-mix-cine-open-Ne-NSFW-GGUF"
+                ),
+                "model_type": "llm",
+            }
+            result = {
+                "checked_at": "2026-06-05T12:00:00-07:00",
+                "checks": [],
+                "models": [
+                    {
+                        "runtime": "LM Studio",
+                        "model_id": "ready-local-7b",
+                        "display_name": "Ready Local 7B",
+                        "status": "loaded",
+                        "model_type": "llm",
+                    },
+                    detected_model,
+                    {
+                        "runtime": "LM Studio",
+                        "model_id": "nomic-embed-text-v1.5",
+                        "display_name": "Nomic Embed Text v1.5",
+                        "status": "indexed",
+                        "model_type": "embedding",
+                    },
+                    {
+                        "runtime": "LM Studio",
+                        "model_id": "bundled-local",
+                        "display_name": "Bundled Local",
+                        "status": "indexed",
+                        "model_type": "llm",
+                        "removal_blocked_reason": "Bundled LM Studio internal model.",
+                    },
+                ],
+            }
+
+            summary = server._sync_local_inventory_candidates(
+                result,
+                registry_path,
+                overlay_path,
+            )
+
+            self.assertEqual(summary["registered"], 1)
+            self.assertEqual(summary["skipped"], 2)
+            with overlay_path.open(newline="", encoding="utf-8") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual(len(rows), 1)
+            row = rows[0]
+            self.assertTrue(row["candidate_id"].startswith("local-lm-studio-"))
+            self.assertEqual(row["status"], "ready_for_eval")
+            self.assertEqual(row["local_runner"], "lmstudio-cli")
+            self.assertEqual(row["local_model_id"], detected_model["model_id"])
+            self.assertEqual(row["download_approval"], "not_needed_local")
+            self.assertNotIn("/Users/example", overlay_path.read_text(encoding="utf-8"))
+
+            candidates = components._load_radar_candidates(
+                registry_path,
+                local_inventory_path=overlay_path,
+            )
+            match_state, candidate = server._match_inventory_model(detected_model, candidates)
+
+            self.assertEqual(match_state, "registered")
+            self.assertEqual(candidate["local_model_id"], detected_model["model_id"])
+            self.assertTrue(server._inventory_run_allowed(detected_model, candidate))
+
+    def test_inventory_auto_registration_can_overlay_existing_candidate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "candidates.csv"
+            overlay_path = tmp_path / "local_inventory_candidates.csv"
+            write_candidate_registry(registry_path)
+            detected_model = {
+                "runtime": "LM Studio",
+                "model_id": "watch-local-13b-exact",
+                "display_name": "Watch Local 13B",
+                "status": "loaded",
+                "model_type": "llm",
+            }
+
+            summary = server._sync_local_inventory_candidates(
+                {
+                    "checked_at": "2026-06-05T12:00:00-07:00",
+                    "checks": [],
+                    "models": [detected_model],
+                },
+                registry_path,
+                overlay_path,
+            )
+            candidates = components._load_radar_candidates(
+                registry_path,
+                local_inventory_path=overlay_path,
+            )
+            row = next(
+                item for item in candidates if item["candidate_id"] == "20260603-watch-local"
+            )
+
+            self.assertEqual(summary["registered"], 1)
+            self.assertEqual(summary["updated_existing"], 1)
+            self.assertEqual(row["status"], "ready_for_eval")
+            self.assertEqual(row["local_runner"], "lmstudio-cli")
+            self.assertEqual(row["local_model_id"], "watch-local-13b-exact")
+
+    def test_inventory_auto_registers_ollama_mlx_and_llama_cpp_runners(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "missing-candidates.csv"
+            overlay_path = tmp_path / "local_inventory_candidates.csv"
+            mlx_snapshot = (
+                tmp_path
+                / "hf"
+                / "models--mlx-community--Example-Model-4bit"
+                / "snapshots"
+                / "abc123"
+            )
+            mlx_snapshot.mkdir(parents=True)
+            (mlx_snapshot / "config.json").write_text("{}", encoding="utf-8")
+            (mlx_snapshot / "model.safetensors").write_text("weights", encoding="utf-8")
+            lmstudio_root = tmp_path / "lmstudio"
+            gguf_dir = lmstudio_root / "publisher" / "GGUF-Model"
+            gguf_dir.mkdir(parents=True)
+            gguf_file = gguf_dir / "model.Q4_K_M.gguf"
+            gguf_file.write_text("weights", encoding="utf-8")
+            ollama_model = server._parse_ollama_inventory(
+                "NAME       ID        SIZE      MODIFIED\n"
+                "qwen3:30b  abc123    18 GB     2 days ago\n"
+            )[0]
+            mlx_model = server._scan_mlx_lm_cached_models(tmp_path / "hf")[0]
+            llama_model = server._scan_lmstudio_filesystem_models(
+                lmstudio_root,
+                llama_cpp_available=True,
+            )[0]
+            result = {
+                "checked_at": "2026-06-05T12:00:00-07:00",
+                "checks": [],
+                "models": [ollama_model, mlx_model, llama_model],
+            }
+
+            summary = server._sync_local_inventory_candidates(
+                result,
+                registry_path,
+                overlay_path,
+            )
+            with overlay_path.open(newline="", encoding="utf-8") as handle:
+                rows = list(csv.DictReader(handle))
+            by_runner = {row["local_runner"]: row for row in rows}
+
+            self.assertEqual(summary["registered"], 3)
+            self.assertEqual(set(by_runner), {"ollama", "mlx-lm", "llama-cpp"})
+            self.assertEqual(by_runner["ollama"]["local_model_id"], "qwen3:30b")
+            self.assertEqual(by_runner["mlx-lm"]["local_model_id"], str(mlx_snapshot))
+            self.assertEqual(by_runner["llama-cpp"]["local_model_id"], str(gguf_file))
+
+            candidates = components._load_radar_candidates(
+                registry_path,
+                local_inventory_path=overlay_path,
+            )
+            for model in result["models"]:
+                match_state, candidate = server._match_inventory_model(model, candidates)
+                self.assertEqual(match_state, "registered")
+                self.assertTrue(server._inventory_run_allowed(model, candidate))
 
     def test_inventory_filesystem_only_rows_do_not_show_run_button(self):
         result = {
