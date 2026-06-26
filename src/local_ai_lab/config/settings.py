@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     vector_store_provider: str = "qdrant"
     retrieval_mode: str = "dense"
     reranker_provider: str = "identity"
+    reranker_model_path: str = ""
 
     llm_provider: str = "ollama"
     ollama_base_url: str = "http://localhost:11434"

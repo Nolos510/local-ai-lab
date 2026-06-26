@@ -1,0 +1,50 @@
+{
+  "corpus_id": "repo-docs-v0.1",
+  "description": "Curated non-private AI Lab OS repo excerpts for source-aware retrieval scoring.",
+  "queries": [
+    {
+      "query_id": "REPO-RAG-v0.1-001",
+      "query": "What rules prevent hidden cloud calls and model downloads?",
+      "relevant": [
+        {
+          "source_name": "local-first-rules.md",
+          "chunk_index": 0
+        }
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.1-002",
+      "query": "Which vector database backs the v0 retrieval path?",
+      "relevant": [
+        {
+          "source_name": "local-first-rules.md",
+          "chunk_index": 0
+        },
+        {
+          "source_name": "rag-retrieval.md",
+          "chunk_index": 0
+        }
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.1-003",
+      "query": "What is the candidate to dashboard decision loop?",
+      "relevant": [
+        {
+          "source_name": "dashboard-loop.md",
+          "chunk_index": 0
+        }
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.1-004",
+      "query": "What should default citations avoid exposing?",
+      "relevant": [
+        {
+          "source_name": "rag-retrieval.md",
+          "chunk_index": 0
+        }
+      ]
+    }
+  ]
+}

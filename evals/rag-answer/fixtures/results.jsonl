@@ -1,0 +1,2 @@
+{"query_id": "RAGANS-v0.1-001", "answer": "Default citations expose source_name and chunk_index while keeping retrieved content out of the normal answer payload.", "citations": ["rag-retrieval.md#chunk_0"]}
+{"query_id": "RAGANS-v0.1-002", "answer": "Radar candidate records remain separate from confirmed model scores.", "citations": ["dashboard-loop.md#chunk_0"]}

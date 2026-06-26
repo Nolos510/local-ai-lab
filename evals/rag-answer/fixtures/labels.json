@@ -1,0 +1,19 @@
+{
+  "eval_id": "rag-answer-v0.1-fixture",
+  "queries": [
+    {
+      "query_id": "RAGANS-v0.1-001",
+      "query": "What does the default citation expose?",
+      "required_citations": ["rag-retrieval.md#chunk_0"],
+      "required_terms": ["source_name", "chunk_index"],
+      "forbidden_terms": ["private path", "raw chunk text"]
+    },
+    {
+      "query_id": "RAGANS-v0.1-002",
+      "query": "What must remain separate from eval scores?",
+      "required_citations": ["dashboard-loop.md#chunk_0"],
+      "required_terms": ["candidate", "scores"],
+      "forbidden_terms": ["automatic score"]
+    }
+  ]
+}

@@ -23,12 +23,14 @@ markdown/text source
 - Ollama semantic embedding provider for local real retrieval.
 - Qdrant vector search.
 - Offline retrieval-eval scorer with a tiny labeled fixture set.
-- Reranker protocol with an identity default and optional `[rerank]` dependency
-  extra reserved for a future reviewed local cross-encoder backend.
+- Reranker protocol with an identity default and optional `[rerank]`
+  cross-encoder backend that requires an explicit local model path.
 - Opt-in hybrid retrieval that combines dense Qdrant candidates with a local
   BM25-style lexical signal and reciprocal-rank fusion.
 - Privacy-narrow default citations plus explicit local retrieval inspection for
   debugging.
+- Source-aware repo-docs retrieval scoring with BGE-M3 evidence.
+- Offline RAG answer/citation evaluation scaffold.
 
 ## No-Model Smoke Check
 
@@ -149,10 +151,17 @@ is `identity`, which preserves retrieval order:
 LOCAL_AI_LAB_RERANKER_PROVIDER=identity
 ```
 
-`pyproject.toml` exposes an optional `[rerank]` extra for a future reviewed local
-cross-encoder backend, but no real cross-encoder implementation is enabled in
-the default runtime. Installing or running a real reranker remains future work
-and should follow `docs/adr/0007-reranker-abstraction-and-optional-extra.md`.
+`pyproject.toml` exposes an optional `[rerank]` extra for a reviewed local
+cross-encoder backend:
+
+```bash
+LOCAL_AI_LAB_RERANKER_PROVIDER=cross_encoder
+LOCAL_AI_LAB_RERANKER_MODEL_PATH=/path/to/local/reranker
+```
+
+The model path must already exist locally. The backend lazy-imports the optional
+dependency only when selected and requests local files only. It does not
+download or resolve model IDs.
 
 ## Reindexing
 
@@ -200,8 +209,39 @@ python3 evals/rag-retrieval/scorer.py \
 ```
 
 The fixture is deliberately small. Treat it as an offline regression harness,
-not proof of real-corpus retrieval quality. Live BGE-M3 retrieval runs remain
-manual smoke checks until a local corpus export is approved.
+not proof of real-corpus retrieval quality.
+
+A committed repo-docs corpus also exists for source-aware real retrieval:
+
+```bash
+LOCAL_AI_LAB_EMBEDDING_PROVIDER=ollama \
+LOCAL_AI_LAB_OLLAMA_EMBEDDING_MODEL=bge-m3:latest \
+LOCAL_AI_LAB_QDRANT_COLLECTION=repo_docs_v0_1_bge_m3 \
+uv run python evals/rag-retrieval/collect.py \
+  --labels evals/rag-retrieval/corpora/repo-docs-v0.1/labels.json \
+  --corpus-path evals/rag-retrieval/corpora/repo-docs-v0.1/docs \
+  --out evals/rag-retrieval/corpora/repo-docs-v0.1/bge-m3-results.jsonl \
+  --top-k 5
+
+python3 evals/rag-retrieval/scorer.py \
+  --labels evals/rag-retrieval/corpora/repo-docs-v0.1/labels.json \
+  --results evals/rag-retrieval/corpora/repo-docs-v0.1/bge-m3-results.jsonl \
+  --k 5
+```
+
+Recorded result for the initial repo-docs BGE-M3 run:
+
+```text
+query_count=4
+recall@5=1.0
+MRR=1.0
+```
+
+## Answer/Citation Evaluation
+
+RAG answer evaluation lives under `evals/rag-answer/`. It scores saved answer
+rows offline for citation hit rate, required-term coverage, and forbidden-term
+violations. It does not call an LLM or retrieval service.
 
 ## TODO
 
@@ -211,5 +251,5 @@ manual smoke checks until a local corpus export is approved.
 - [x] Add reranker abstraction.
 - [x] Add citation rendering helpers.
 - [ ] Add dedicated reindex command.
-- [ ] Add reviewed real local cross-encoder reranker backend.
+- [x] Add reviewed real local cross-encoder reranker backend.
 - [ ] Add parser version tracking.

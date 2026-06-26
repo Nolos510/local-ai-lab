@@ -49,6 +49,7 @@ def test_scorer_counts_missing_result_rows_as_empty_retrieval() -> None:
             query_id="q1",
             query="Where is the local vector store?",
             relevant_chunk_ids=frozenset({"chunk-qdrant"}),
+            relevant_sources=frozenset(),
         )
     ]
 
@@ -74,3 +75,59 @@ def test_scorer_validates_duplicate_result_ids(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="duplicate query_id"):
         scorer.load_results_jsonl(results_path)
+
+
+def test_source_aware_fixture_scores_repo_docs_labels(tmp_path: Path) -> None:
+    scorer = _load_scorer()
+    labels_path = ROOT / "evals/rag-retrieval/corpora/repo-docs-v0.1/labels.json"
+    results_path = tmp_path / "results.jsonl"
+    results_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "query_id": "REPO-RAG-v0.1-001",
+                        "retrieved": [
+                            {"source_name": "local-first-rules.md", "chunk_index": 0}
+                        ],
+                    }
+                ),
+                json.dumps(
+                    {
+                        "query_id": "REPO-RAG-v0.1-002",
+                        "retrieved": [
+                            {"source_name": "rag-retrieval.md", "chunk_index": 0},
+                            {"source_name": "local-first-rules.md", "chunk_index": 0},
+                        ],
+                    }
+                ),
+                json.dumps(
+                    {
+                        "query_id": "REPO-RAG-v0.1-003",
+                        "retrieved": [
+                            {"source_name": "dashboard-loop.md", "chunk_index": 0}
+                        ],
+                    }
+                ),
+                json.dumps(
+                    {
+                        "query_id": "REPO-RAG-v0.1-004",
+                        "retrieved": [
+                            {"source_name": "rag-retrieval.md", "chunk_index": 0}
+                        ],
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    metrics = scorer.score_results(
+        scorer.load_labels(labels_path),
+        scorer.load_results_jsonl(results_path),
+        k=5,
+    )
+
+    assert metrics["query_count"] == 4
+    assert metrics["recall_at_k"] == pytest.approx(1.0)
+    assert metrics["mrr"] == pytest.approx(1.0)

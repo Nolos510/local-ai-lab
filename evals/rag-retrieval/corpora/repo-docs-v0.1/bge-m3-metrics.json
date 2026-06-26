@@ -1,0 +1,40 @@
+{
+  "k": 5,
+  "mrr": 1.0,
+  "per_query": [
+    {
+      "hit_count_at_k": 1,
+      "query_id": "REPO-RAG-v0.1-001",
+      "recall_at_k": 1.0,
+      "reciprocal_rank": 1.0,
+      "relevant_count": 1,
+      "retrieved_count_at_k": 3
+    },
+    {
+      "hit_count_at_k": 2,
+      "query_id": "REPO-RAG-v0.1-002",
+      "recall_at_k": 1.0,
+      "reciprocal_rank": 1.0,
+      "relevant_count": 2,
+      "retrieved_count_at_k": 3
+    },
+    {
+      "hit_count_at_k": 1,
+      "query_id": "REPO-RAG-v0.1-003",
+      "recall_at_k": 1.0,
+      "reciprocal_rank": 1.0,
+      "relevant_count": 1,
+      "retrieved_count_at_k": 3
+    },
+    {
+      "hit_count_at_k": 1,
+      "query_id": "REPO-RAG-v0.1-004",
+      "recall_at_k": 1.0,
+      "reciprocal_rank": 1.0,
+      "relevant_count": 1,
+      "retrieved_count_at_k": 3
+    }
+  ],
+  "query_count": 4,
+  "recall_at_k": 1.0
+}

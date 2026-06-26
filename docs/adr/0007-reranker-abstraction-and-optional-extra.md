@@ -36,15 +36,16 @@ AGENTS.md section 5 requires a dependency gate before adding dependencies:
 - Add `LOCAL_AI_LAB_RERANKER_PROVIDER`, defaulting to `identity`.
 - Wire the RAG service to apply the reranker after retrieval and before prompt
   assembly/citation rendering.
-- Add a `[project.optional-dependencies]` extra named `rerank` for the future
-  local cross-encoder backend. The extra is not default-installed.
+- Add a `[project.optional-dependencies]` extra named `rerank` for the local
+  cross-encoder backend. The extra is not default-installed.
+- Require `LOCAL_AI_LAB_RERANKER_MODEL_PATH` when `cross_encoder` is selected.
+  The path must point to an existing local artifact.
 - Keep the default code path free of `sentence-transformers`, `torch`, model
   downloads, cloud calls, API keys, and live model execution.
 
-The intended future import location for a reviewed cross-encoder backend is
-`local_ai_lab.rerankers.cross_encoder`. That backend must lazy-import optional
-dependencies only when selected and must be tested with fakes before any live
-local model check.
+The cross-encoder backend lives in `local_ai_lab.rerankers.cross_encoder`. It
+lazy-imports optional dependencies only when selected, requests local files only,
+and is tested with fakes before any live local model check.
 
 ## Consequences
 
@@ -70,5 +71,5 @@ uv run pytest -q
 uv run ruff check .
 ```
 
-Live reranking with a real cross-encoder is not part of R2 and must not be
-claimed without an explicit local run.
+Live reranking with a real cross-encoder model path must not be claimed without
+an explicit local run.

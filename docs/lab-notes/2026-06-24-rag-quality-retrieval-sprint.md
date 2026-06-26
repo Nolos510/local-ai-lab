@@ -18,6 +18,10 @@ Implemented:
 - Default `/ask` citations narrowed to `source_name` plus `chunk_index`.
 - Explicit local-debug retrieval inspection for chunk text, scores, and chunk
   IDs.
+- Source-aware repo-docs retrieval corpus with a BGE-M3 local retrieval run.
+- RAG answer/citation eval scaffold and offline scorer.
+- Optional local cross-encoder reranker backend gated behind `[rerank]` plus an
+  explicit local model path.
 
 ## Validation
 
@@ -42,6 +46,21 @@ python3 evals/rag-retrieval/scorer.py \
 
 Fixture result: `recall@2 = 0.5`, `MRR = 0.5`.
 
+The repo-docs BGE-M3 retrieval evidence was also recorded:
+
+```bash
+python3 evals/rag-retrieval/scorer.py \
+  --labels evals/rag-retrieval/corpora/repo-docs-v0.1/labels.json \
+  --results evals/rag-retrieval/corpora/repo-docs-v0.1/bge-m3-results.jsonl \
+  --k 5
+```
+
+Result: `query_count = 4`, `recall@5 = 1.0`, `MRR = 1.0`.
+
+Environment note: `docker compose up -d qdrant` reported that the fixed
+`local-ai-lab-qdrant` container name was already in use. The existing loopback
+Qdrant service was healthy and served the retrieval smoke.
+
 ## Safety Posture
 
 - No cloud APIs, telemetry, secrets, model downloads, or model execution were
@@ -50,13 +69,11 @@ Fixture result: `recall@2 = 0.5`, `MRR = 0.5`.
 - Default embedding provider remains `deterministic`.
 - Default retrieval mode remains `dense`.
 - Default reranker remains `identity`.
-- The optional `[rerank]` extra is not default-installed.
+- The optional `[rerank]` extra is not default-installed and cross-encoder
+  reranking requires an explicit local model path.
 - Raw chunk text, scores, and chunk IDs are visible only through explicit local
   inspection.
 
 ## Not Yet Done
 
-- No live Qdrant/BGE-M3 real-corpus retrieval score was run.
-- No real local cross-encoder reranker backend was implemented.
-- No RAG answer/citation evaluation harness was added.
 - Reindex remains a documented manual sequence rather than a dedicated command.

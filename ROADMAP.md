@@ -73,12 +73,12 @@
 - [x] Add reranker abstraction with an identity default.
 - [x] Add source-aware default citation rendering plus explicit local retrieval
   inspection.
-- [ ] Run the retrieval scorer on a real local corpus with BGE-M3 embeddings and
+- [x] Run the retrieval scorer on a real local corpus with BGE-M3 embeddings and
   record the measured recall/MRR evidence.
-- [ ] Add a reviewed real local cross-encoder reranker backend behind the
+- [x] Add a reviewed real local cross-encoder reranker backend behind the
   optional `[rerank]` extra.
-- [ ] Add RAG answer/citation evaluation set format and scoring scripts.
-- [ ] Track retrieval scores, model/provider choices, and command outputs.
+- [x] Add RAG answer/citation evaluation set format and scoring scripts.
+- [x] Track retrieval scores, model/provider choices, and command outputs.
 
 ## v3: Benchmarking Lab
 
