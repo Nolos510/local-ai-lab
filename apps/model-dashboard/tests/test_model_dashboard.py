@@ -3332,6 +3332,28 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("100k", html)
             self.assertNotIn("Agent Watch", html)
 
+    def test_projects_use_section_rhythm_and_wide_table_contracts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "github_repos.csv"
+            write_project_registry(registry_path)
+
+            html = server._projects(registry_path=registry_path)
+
+        self.assertIn('class="grid projects-stats-grid"', html)
+        self.assertIn('class="projects-radar-section"', html)
+        self.assertIn('class="cell-stack project-identity"', html)
+        self.assertIn('class="project-name"', html)
+        self.assertIn('class="project-table"', html)
+        self.assertIn(".projects-radar-section {", html)
+        self.assertIn(".projects-radar-section .filters {", html)
+        self.assertIn(".project-identity {", html)
+        self.assertIn(".project-table {", html)
+        self.assertIn("table-layout: fixed", html)
+        self.assertIn("min-width: 1500px", html)
+        self.assertIn(".project-table th:nth-child(1)", html)
+        self.assertIn("width: 240px", html)
+
     def test_projects_sort_by_priority_before_stars(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

@@ -492,6 +492,30 @@ def _layout(title, current_path, body):
     .specialty-candidates-section .filters {{
       margin-bottom: 0;
     }}
+    .projects-stats-grid {{
+      margin-bottom: 18px;
+    }}
+    .projects-radar-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }}
+    .projects-radar-section > h2 {{
+      margin: 0;
+    }}
+    .projects-radar-section .filters {{
+      margin-bottom: 0;
+    }}
+    .project-identity {{
+      gap: 6px;
+    }}
+    .project-name {{
+      font-weight: 500;
+    }}
+    .project-identity code {{
+      display: block;
+      max-width: 100%;
+    }}
     .field label {{
       display: block;
       color: var(--muted);
@@ -1481,19 +1505,36 @@ def _layout(title, current_path, body):
       width: 160px;
     }}
     .project-table {{
-      min-width: 980px;
+      table-layout: fixed;
+      min-width: 1500px;
     }}
     .project-table th:nth-child(1),
     .project-table td:nth-child(1) {{
-      width: 190px;
+      width: 240px;
     }}
     .project-table th:nth-child(2),
     .project-table td:nth-child(2) {{
+      width: 110px;
+    }}
+    .project-table th:nth-child(3),
+    .project-table td:nth-child(3) {{
       width: 150px;
     }}
     .project-table th:nth-child(4),
     .project-table td:nth-child(4) {{
       width: 220px;
+    }}
+    .project-table th:nth-child(5),
+    .project-table td:nth-child(5) {{
+      width: 360px;
+    }}
+    .project-table th:nth-child(6),
+    .project-table td:nth-child(6) {{
+      width: 210px;
+    }}
+    .project-table th:nth-child(7),
+    .project-table td:nth-child(7) {{
+      width: 210px;
     }}
     @media (max-width: 780px) {{
       .filters {{ grid-template-columns: 1fr; }}
