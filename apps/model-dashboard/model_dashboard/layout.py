@@ -426,6 +426,49 @@ def _layout(title, current_path, body):
     .filter-chip strong {{
       font-variant-numeric: tabular-nums;
     }}
+    .radar-stats-grid {{
+      margin-bottom: 18px;
+    }}
+    .radar-security-panel,
+    .radar-guide {{
+      display: grid;
+      gap: 8px;
+    }}
+    .radar-security-panel {{
+      margin-bottom: 18px;
+    }}
+    .radar-security-panel h2,
+    .radar-security-panel p,
+    .radar-guide h3,
+    .radar-guide p {{
+      margin: 0;
+    }}
+    .radar-candidates-section,
+    .radar-projects-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      margin-bottom: 22px;
+    }}
+    .radar-candidates-section > h2,
+    .radar-projects-section h2 {{
+      margin: 0;
+    }}
+    .radar-candidates-section .filter-chip-row,
+    .radar-candidates-section .filters,
+    .radar-guide {{
+      margin-bottom: 0;
+    }}
+    .radar-candidate-identity {{
+      gap: 6px;
+    }}
+    .radar-candidate-name {{
+      font-weight: 500;
+    }}
+    .radar-candidate-identity code {{
+      display: block;
+      max-width: 100%;
+    }}
     .field label {{
       display: block;
       color: var(--muted);
@@ -1344,11 +1387,12 @@ def _layout(title, current_path, body):
       font-weight: 500;
     }}
     .radar-table {{
-      min-width: 1520px;
+      table-layout: fixed;
+      min-width: 1680px;
     }}
     .radar-table th:nth-child(1),
     .radar-table td:nth-child(1) {{
-      width: 180px;
+      width: 240px;
     }}
     .radar-table th:nth-child(2),
     .radar-table td:nth-child(2) {{
@@ -1356,27 +1400,27 @@ def _layout(title, current_path, body):
     }}
     .radar-table th:nth-child(3),
     .radar-table td:nth-child(3) {{
-      width: 132px;
+      width: 150px;
     }}
     .radar-table th:nth-child(4),
     .radar-table td:nth-child(4) {{
-      width: 220px;
+      width: 240px;
     }}
     .radar-table th:nth-child(5),
     .radar-table td:nth-child(5) {{
-      width: 230px;
+      width: 260px;
     }}
     .radar-table th:nth-child(6),
     .radar-table td:nth-child(6) {{
-      width: 260px;
+      width: 280px;
     }}
     .radar-table th:nth-child(7),
     .radar-table td:nth-child(7) {{
-      width: 190px;
+      width: 220px;
     }}
     .radar-table th:nth-child(8),
     .radar-table td:nth-child(8) {{
-      width: 190px;
+      width: 178px;
     }}
     .project-table {{
       min-width: 980px;

@@ -53,7 +53,7 @@ def _candidate_rows(conn, candidates):
         )
         rows.append(
             [
-                '<div class="cell-stack"><div>{name}</div><code>{id}</code></div>'.format(
+                '<div class="cell-stack radar-candidate-identity"><div class="radar-candidate-name">{name}</div><code>{id}</code></div>'.format(
                     name=model_name,
                     id=_text(row.get("candidate_id")),
                 ),
@@ -149,7 +149,7 @@ def _project_section(projects):
         or "self-host" in row.get("local_fit", "").lower()
     )
     return """
-    <section>
+    <section class="radar-projects-section">
       <div class="section-heading-row">
         <div>
           <h2>Project Radar</h2>
@@ -214,11 +214,11 @@ def _radar(
     rows = _candidate_rows(conn, filtered_candidates)
 
     body = """
-    <section class="panel page-intro">
+    <section class="panel page-intro radar-intro">
       <p>Models worth evaluating &mdash; from your radar, specialty lanes, and GitHub projects. Approve a candidate to queue it for benchmarking.</p>
       <p class="empty">Discover records are local review metadata only. They do not download, install, run, or score a model.</p>
     </section>
-    <section class="grid">
+    <section class="grid radar-stats-grid">
       {candidates_stat}
       {ready_stat}
       {watchlist_stat}
@@ -227,13 +227,13 @@ def _radar(
       {projects_stat}
       {security_stat}
     </section>
-    <section class="panel" style="margin-bottom:16px">
+    <section class="panel radar-security-panel">
       <h2>Security Gate</h2>
       <p>Radar links are review metadata only. A candidate is not approved to download, install, update, or run until its source, license, artifact path, and local runtime isolation are reviewed.</p>
     </section>
-    <section>
+    <section class="radar-candidates-section">
       <h2>Radar Candidates{filtered_count}</h2>
-      <section class="panel compact-guide" style="margin-bottom:16px">
+      <section class="panel compact-guide radar-guide">
         <h3>What this view shows</h3>
         <p>This table is the local radar intake view: each row is a candidate-only record with source metadata, runtime availability, review notes, and the security/download gates that must clear before any local benchmark run.</p>
         <p class="empty">Use <strong>Status</strong> to find ready or watchlist candidates, <strong>Availability</strong> to confirm LM Studio/Ollama fit, and <strong>Security gate</strong> to see what still blocks download, install, or execution. Benchmark results appear on Home and Benchmark only after a local artifact is imported.</p>

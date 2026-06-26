@@ -933,6 +933,40 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Radar Candidates", html)
             self.assertIn("No candidates match these filters.", html)
 
+    def test_radar_uses_section_rhythm_and_wide_table_contracts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            project_registry_path = tmp_path / "github_repos.csv"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(registry_path)
+            write_project_registry(project_registry_path)
+
+            with db.connect(db_path) as conn:
+                html = server._radar(
+                    conn,
+                    registry_path=registry_path,
+                    project_registry_path=project_registry_path,
+                )
+
+        self.assertIn('class="grid radar-stats-grid"', html)
+        self.assertIn('class="panel radar-security-panel"', html)
+        self.assertIn('class="radar-candidates-section"', html)
+        self.assertIn('class="panel compact-guide radar-guide"', html)
+        self.assertIn('class="cell-stack radar-candidate-identity"', html)
+        self.assertIn('class="radar-candidate-name"', html)
+        self.assertIn('class="radar-projects-section"', html)
+        self.assertNotIn('class="panel" style="margin-bottom:16px"', html)
+        self.assertNotIn('class="panel compact-guide" style="margin-bottom:16px"', html)
+        self.assertIn(".radar-security-panel,", html)
+        self.assertIn(".radar-candidates-section,", html)
+        self.assertIn(".radar-candidate-identity {", html)
+        self.assertIn("table-layout: fixed", html)
+        self.assertIn("min-width: 1680px", html)
+        self.assertIn(".radar-table th:nth-child(1)", html)
+        self.assertIn("width: 240px", html)
+
     def test_discover_merges_radar_specialty_and_projects(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
