@@ -59,6 +59,7 @@ def _radar_filter_values(query):
         "family": _query_value(query, "family"),
         "runtime": _query_value(query, "runtime"),
         "security": _query_value(query, "security"),
+        "lane": _query_value(query, "lane"),
     }
 
 
@@ -98,6 +99,8 @@ def _matches_candidate_search(row, search):
 def _filter_candidates(candidates, filters):
     filtered = []
     for row in candidates:
+        if filters.get("lane") == "specialty" and not _is_specialty_candidate(row):
+            continue
         if filters["status"] and row.get("status") != filters["status"]:
             continue
         if filters["family"] and row.get("model_family") != filters["family"]:
@@ -249,8 +252,14 @@ def _radar_filters(candidates, filters):
         )
     )
     clear_link = '<a class="clear-link" href="/radar">Clear</a>' if any(filters.values()) else ""
+    lane_input = (
+        f'<input type="hidden" name="lane" value="{_text(filters.get("lane", ""))}">'
+        if filters.get("lane")
+        else ""
+    )
     return """
     <form class="filters filters-wide" method="get" action="/radar">
+      {lane_input}
       <div class="field field-wide">
         <label for="radar-q">Search</label>
         <input id="radar-q" name="q" type="search" value="{q}">
@@ -298,6 +307,7 @@ def _radar_filters(candidates, filters):
         runtime_options=runtime_options,
         all_security=_option("", "All security states", filters["security"]),
         security_options=security_options,
+        lane_input=lane_input,
         clear_link=clear_link,
     )
 

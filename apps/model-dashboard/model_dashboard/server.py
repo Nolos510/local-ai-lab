@@ -131,6 +131,7 @@ def make_handler(
     candidate_registry_path=None,
     local_inventory_registry_path=None,
     eval_results_dir=None,
+    project_registry_path=None,
 ):
     candidate_registry_path = (
         CANDIDATE_REGISTRY_PATH if candidate_registry_path is None else candidate_registry_path
@@ -141,6 +142,9 @@ def make_handler(
         else local_inventory_registry_path
     )
     eval_results_dir = EVAL_RESULTS_DIR if eval_results_dir is None else eval_results_dir
+    project_registry_path = (
+        PROJECT_REGISTRY_PATH if project_registry_path is None else project_registry_path
+    )
     inventory_cache = {"result": None}
 
     class DashboardHandler(BaseHTTPRequestHandler):
@@ -284,6 +288,9 @@ def make_handler(
                     enable_import_actions=enable_import_actions,
                     action_token=action_token,
                     database_path=database_path,
+                    registry_path=candidate_registry_path,
+                    eval_results_dir=eval_results_dir,
+                    project_registry_path=project_registry_path,
                 )
             if path == "/capability":
                 return _capability(conn)
@@ -319,11 +326,16 @@ def make_handler(
                     run_history=_inventory_run_history(conn),
                 )
             if path == "/radar":
-                return _radar(conn, query)
+                return _radar(
+                    conn,
+                    query,
+                    registry_path=candidate_registry_path,
+                    project_registry_path=project_registry_path,
+                )
             if path == "/specialty":
-                return _specialty(conn, query)
+                return _specialty(conn, query, registry_path=candidate_registry_path)
             if path == "/projects":
-                return _projects(query)
+                return _projects(query, registry_path=project_registry_path)
             if path == "/storage":
                 return _storage(conn, query)
             if path == "/reports":

@@ -169,6 +169,9 @@ def _layout(title, current_path, body):
       gap: 14px;
       margin-bottom: 22px;
     }}
+    .grid-compact {{
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    }}
     .stat, .panel {{
       background: var(--panel);
       border: 0.5px solid var(--line);
@@ -371,6 +374,53 @@ def _layout(title, current_path, body):
     }}
     .filters-wide {{
       grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(140px, 1fr)) auto;
+    }}
+    .page-intro {{
+      display: grid;
+      gap: 8px;
+      margin-bottom: 18px;
+    }}
+    .page-intro p {{
+      margin: 0;
+    }}
+    .section-note {{
+      margin: -4px 0 14px;
+      color: var(--muted);
+      max-width: 980px;
+      line-height: 1.5;
+    }}
+    .section-heading-row {{
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: flex-start;
+      margin-top: 24px;
+    }}
+    .filter-chip-row {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 0 0 14px;
+    }}
+    .filter-chip {{
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 12px;
+      background: var(--panel-soft);
+      color: var(--ink);
+      text-decoration: none;
+    }}
+    .filter-chip.active {{
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent-soft-ink);
+    }}
+    .filter-chip strong {{
+      font-variant-numeric: tabular-nums;
     }}
     .field label {{
       display: block;
@@ -1186,6 +1236,7 @@ def _layout(title, current_path, body):
       .filters {{ grid-template-columns: 1fr; }}
       .filter-actions {{ justify-content: flex-start; }}
       .split {{ grid-template-columns: 1fr; }}
+      .section-heading-row {{ display: grid; }}
       .stat-breakdown {{ grid-column: auto; }}
       .chart-grid {{ gap: 10px; margin-bottom: 14px; }}
       .chart-panel {{ padding: 14px; }}

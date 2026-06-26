@@ -836,6 +836,71 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Radar Candidates", html)
             self.assertIn("No candidates match these filters.", html)
 
+    def test_discover_merges_radar_specialty_and_projects(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            project_registry_path = tmp_path / "github_repos.csv"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(
+                registry_path,
+                extra_rows=[
+                    {
+                        "candidate_id": "20260605-dolphin3-llama31-8b-gguf",
+                        "model_name": "Dolphin3.0-Llama3.1-8B-GGUF",
+                        "model_family": "Dolphin",
+                        "provider_or_org": "Cognitive Computations",
+                        "status": "ready_for_eval",
+                        "format_or_runtime": "GGUF through LM Studio or llama.cpp",
+                        "source_packet_path": "automations/ai-lab-radar/inputs/dolphin.md",
+                        "report_path": "automations/ai-lab-radar/reports/dolphin.md",
+                        "benchmark_run_id": "",
+                        "why_interesting": "Local Dolphin baseline for assistant testing.",
+                        "risk_notes": "License and low-refusal behavior need review.",
+                        "proposed_eval": "Run local benchmark with safety notes.",
+                        "security_review_status": "needs_review",
+                        "download_approval": "not_approved",
+                        "license_review_status": "needs_review",
+                        "provenance_status": "source_metadata_only",
+                        "security_notes": "Synthetic Dolphin candidate needs security review.",
+                        "isolation_notes": "Use local runtime only after approval.",
+                        "security_review_path": (
+                            "automations/ai-lab-radar/security-reviews/dolphin3.md"
+                        ),
+                    },
+                ],
+            )
+            write_project_registry(project_registry_path)
+
+            with db.connect(db_path) as conn:
+                html = server._radar(
+                    conn,
+                    registry_path=registry_path,
+                    project_registry_path=project_registry_path,
+                )
+                specialty_html = server._radar(
+                    conn,
+                    {"lane": ["specialty"]},
+                    registry_path=registry_path,
+                    project_registry_path=project_registry_path,
+                )
+
+        self.assertIn("Models worth evaluating", html)
+        self.assertIn("Discover records are local review metadata only", html)
+        self.assertIn("This table shows candidate metadata", html)
+        self.assertIn('href="/radar?lane=specialty"', html)
+        self.assertIn("All candidates", html)
+        self.assertIn("Specialty", html)
+        self.assertIn("Project Radar", html)
+        self.assertIn("GitHub and tool opportunities are candidate-only", html)
+        self.assertIn("Open project filters", html)
+        self.assertIn("Local Runtime", html)
+        self.assertIn('id="discover-project-radar-table-scroll"', html)
+        self.assertIn("Radar Candidates (1 of 3)", specialty_html)
+        self.assertIn("Dolphin3.0-Llama3.1-8B-GGUF", specialty_html)
+        self.assertNotIn("Ready Local 7B", specialty_html)
+
     def test_artifact_detail_links_only_registry_entries(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

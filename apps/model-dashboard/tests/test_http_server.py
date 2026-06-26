@@ -107,6 +107,50 @@ class DashboardHttpHandlerTests(unittest.TestCase):
             self.assertIn("<em>artifact directories</em>", body)
             self.assertIn("Benchmark your first local model", body)
 
+    def test_discover_route_uses_configured_radar_and_project_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            candidate_registry = tmp_path / "candidates.csv"
+            project_registry = tmp_path / "github_repos.csv"
+            candidate_registry.write_text(
+                "candidate_id,model_name,model_family,provider_or_org,status,format_or_runtime,"
+                "source_packet_path,report_path,benchmark_run_id,why_interesting,risk_notes,"
+                "proposed_eval,security_review_status,download_approval,license_review_status,"
+                "provenance_status,security_notes,isolation_notes,security_review_path\n"
+                "custom-ready,Custom Ready,Custom,local,ready_for_eval,llama.cpp,"
+                "inputs/custom.md,reports/custom.md,,Why,Risk,Eval,local_inventory_reviewed,"
+                "not_needed_local,needs_review,local_inventory,Notes,Loopback only,\n",
+                encoding="utf-8",
+            )
+            project_registry.write_text(
+                "repo_id,repo_name,owner,repo_url,category,status,priority_score,"
+                "priority_rationale,stars_observed,license,source_packet_path,report_path,"
+                "why_interesting,business_tie_in,local_fit,risk_notes,recommended_next_step\n"
+                "custom-project,Custom Project,example,https://github.com/example/custom,"
+                "local inference,ready_for_review,5,Local fit,1k,MIT,inputs/projects.md,"
+                "reports/projects.md,Useful locally,Portfolio tie-in,Self-hosted path,"
+                "Review telemetry,Read source\n",
+                encoding="utf-8",
+            )
+            db.init_db(db_path, reset=True)
+            base_url = self.start_server(
+                db_path,
+                action_token="test-token",
+                candidate_registry_path=candidate_registry,
+                project_registry_path=project_registry,
+            )
+
+            with urlopen(f"{base_url}/radar", timeout=5) as response:
+                body = response.read().decode("utf-8")
+
+            self.assertEqual(response.status, 200)
+            self.assertIn("Discover records are local review metadata only", body)
+            self.assertIn("Custom Ready", body)
+            self.assertIn("Custom Project", body)
+            self.assertIn("Project Radar", body)
+            self.assertNotIn("Ready Local 7B", body)
+
     def test_demoted_get_routes_remain_reachable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "dashboard.sqlite"
