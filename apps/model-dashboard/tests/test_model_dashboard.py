@@ -252,6 +252,62 @@ def write_dashboard_import_fixture(artifact_dir, run_id="20260605-import-fixture
     return import_dir
 
 
+def write_raw_dashboard_import_fixture(artifact_dir, run_id="20260625-raw-fixture"):
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    (artifact_dir / "raw_responses.jsonl").write_text(
+        '{"prompt_id":"one","response":"local fixture"}\n',
+        encoding="utf-8",
+    )
+    import_dir = artifact_dir / "dashboard-import"
+    import_dir.mkdir(parents=True)
+    rows_by_table = {
+        "models": [
+            {
+                "id": "501",
+                "model_name": "Raw Import Fixture Model",
+                "model_family": "Raw",
+                "provider": "local",
+                "params_b": "8",
+                "license": "needs_review",
+                "source_url": "local-registry://raw-import-fixture",
+                "notes": "Raw artifact import fixture.",
+            }
+        ],
+        "model_runs": [
+            {
+                "id": "602",
+                "model_id": "501",
+                "date_tested": "2026-06-25",
+                "backend": "LM Studio CLI",
+                "format": "GGUF",
+                "quantization": "Q5_K_M",
+                "context_window": "4096",
+                "hardware": "test hardware",
+                "temperature": "0.2",
+                "top_p": "0.9",
+                "tokens_per_sec": "55",
+                "ttft_seconds": "",
+                "total_latency_seconds": "",
+                "ram_usage_gb": "48",
+                "stability_notes": "",
+                "run_notes": f"benchmark_run_id={run_id} | raw_artifact_import_test=yes",
+            }
+        ],
+        "eval_scores": [],
+        "decisions": [],
+    }
+    for table_name, rows in rows_by_table.items():
+        with (import_dir / f"{table_name}.csv").open(
+            "w",
+            newline="",
+            encoding="utf-8",
+        ) as handle:
+            writer = csv.DictWriter(handle, fieldnames=csv_io.TABLE_FIELDS[table_name])
+            writer.writeheader()
+            writer.writerows(rows)
+    return import_dir
+
+
 class ModelDashboardQaTests(unittest.TestCase):
     def test_fixture_import_loads_expected_rows(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -819,6 +875,61 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn('method="post" action="/actions/import-artifact"', enabled_html)
         self.assertIn('name="token" value="fixture-token"', enabled_html)
         self.assertIn('name="benchmark_run_id" value="20260605-import-fixture"', enabled_html)
+
+    def test_runs_page_renders_local_artifact_import_queue(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            eval_results = tmp_path / "eval_results"
+            run_id = "20260625-raw-fixture"
+            write_raw_dashboard_import_fixture(eval_results / run_id, run_id)
+            db.init_db(db_path, reset=True)
+
+            with db.connect(db_path) as conn:
+                html = server._runs(
+                    conn,
+                    database_path=db_path,
+                    eval_results_dir=eval_results,
+                    enable_import_actions=True,
+                    action_token="fixture-token",
+                )
+
+        self.assertIn("Local Artifact Import Queue", html)
+        self.assertIn("/artifacts/20260625-raw-fixture", html)
+        self.assertIn("Raw run artifact", html)
+        self.assertIn("Label needs reviewed scores and a decision", html)
+        self.assertIn('method="post" action="/actions/import-artifact"', html)
+        self.assertIn('name="benchmark_run_id" value="20260625-raw-fixture"', html)
+        self.assertIn('id="artifact-import-table-scroll"', html)
+        self.assertIn('data-scroll-target="artifact-import-table-scroll"', html)
+
+    def test_runs_page_artifact_import_queue_reports_scored_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            eval_results = tmp_path / "eval_results"
+            run_id = "20260625-scored-fixture"
+            artifact_dir = eval_results / run_id
+            artifact_dir.mkdir(parents=True)
+            write_dashboard_import_fixture(artifact_dir, run_id)
+            (artifact_dir / "scores.json").write_text("{}", encoding="utf-8")
+            (artifact_dir / "decision.json").write_text("{}", encoding="utf-8")
+            db.init_db(db_path, reset=True)
+
+            with db.connect(db_path) as conn:
+                html = server._runs(
+                    conn,
+                    database_path=db_path,
+                    eval_results_dir=eval_results,
+                    enable_import_actions=False,
+                    action_token="fixture-token",
+                )
+
+        self.assertIn(
+            "Scored artifact: import updates model, run, score, label, and decision.",
+            html,
+        )
+        self.assertIn("--enable-import-actions", html)
 
     def test_model_detail_renders_unsafe_source_url_as_text(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1538,13 +1649,46 @@ class ModelDashboardQaTests(unittest.TestCase):
     def test_collapsed_sidebar_keeps_labels_and_uses_css_tooltips(self):
         html = server._layout("Fixture", "/lab", "<p>Body</p>")
 
-        self.assertIn('data-label="Lab Dashboard"', html)
-        self.assertIn('title="Lab Dashboard"', html)
-        self.assertIn("<span>Lab Dashboard</span>", html)
+        self.assertEqual(
+            server.NAV_ITEMS,
+            (
+                ("/", "Home"),
+                ("/radar", "Discover"),
+                ("/inventory", "My Models"),
+                ("/runs", "Benchmark"),
+            ),
+        )
+        self.assertIn('data-label="Home"', html)
+        self.assertIn('title="Home"', html)
+        self.assertIn("<span>Home</span>", html)
+        self.assertIn('data-label="Export report"', html)
+        self.assertIn('href="/reports"', html)
+        self.assertNotIn("<span>Lab Dashboard</span>", html)
+        self.assertNotIn("<span>Capability</span>", html)
+        self.assertNotIn("<span>Compare Models</span>", html)
+        self.assertNotIn("<span>Storage / Install Status</span>", html)
         self.assertIn(".app.collapsed .sidebar .nav::after", html)
         self.assertIn("content: attr(data-label)", html)
         self.assertIn("clip: rect(0 0 0 0)", html)
         self.assertNotIn(".app.collapsed .sidebar .nav span { display: none", html)
+
+    def test_demoted_routes_highlight_parent_nav_section(self):
+        parent_expectations = {
+            "/lab": "Home",
+            "/capability": "Home",
+            "/specialty": "Discover",
+            "/projects": "Discover",
+            "/storage": "My Models",
+            "/compare": "Benchmark",
+        }
+        paths_by_label = {label: path for path, label in server.NAV_ITEMS}
+        for route, label in parent_expectations.items():
+            with self.subTest(route=route):
+                html = server._layout("Fixture", route, "<p>Body</p>")
+                self.assertIn(
+                    f'class="nav active" href="{paths_by_label[label]}"',
+                    html,
+                )
 
     def test_table_wrapper_keeps_horizontal_scroll_after_theme_styles(self):
         html = server._layout("Fixture", "/radar", "<p>Body</p>")

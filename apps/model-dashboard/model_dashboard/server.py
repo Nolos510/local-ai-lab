@@ -290,7 +290,14 @@ def make_handler(
             if path == "/":
                 return _overview(conn, query)
             if path == "/runs":
-                return _runs(conn, query)
+                return _runs(
+                    conn,
+                    query,
+                    database_path=database_path,
+                    eval_results_dir=eval_results_dir,
+                    enable_import_actions=enable_import_actions,
+                    action_token=action_token,
+                )
             if path == "/compare":
                 return _compare(conn, query)
             if path == "/inventory":

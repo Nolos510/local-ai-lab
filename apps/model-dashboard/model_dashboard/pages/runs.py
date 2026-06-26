@@ -13,7 +13,26 @@ from ..layout import _layout
 from ..reports import generate_markdown_report
 from ..scoring import METRIC_FIELDS
 
-def _runs(conn, query=None):
+
+def _artifact_score_state(row):
+    has_score = row["scores"] == "yes" or row["draft_scores"] == "yes"
+    if row["dashboard_import"] != "yes":
+        return "Export dashboard CSVs first."
+    if has_score and row["decision"] == "yes":
+        return "Scored artifact: import updates model, run, score, label, and decision."
+    if has_score:
+        return "Scored artifact: import updates score and label; decision still needs review."
+    return "Raw run artifact: import updates model, run, and performance fields. Label needs reviewed scores and a decision."
+
+
+def _runs(
+    conn,
+    query=None,
+    database_path=DEFAULT_DASHBOARD_DB,
+    eval_results_dir=EVAL_RESULTS_DIR,
+    enable_import_actions=False,
+    action_token="",
+):
     rows = []
     all_runs = db.list_runs(conn)
     runs = _real_rows(all_runs)
@@ -39,11 +58,43 @@ def _runs(conn, query=None):
                 _text(row["stability_notes"]),
             ]
         )
+    artifact_rows = []
+    dashboard_runs = _dashboard_runs_by_benchmark_id(conn)
+    decisions_by_model = _latest_decisions_by_model_id(conn)
+    for artifact in sorted(
+        _artifact_summaries(eval_results_dir),
+        key=lambda row: row["benchmark_run_id"],
+        reverse=True,
+    ):
+        run_id = artifact["benchmark_run_id"]
+        artifact_rows.append(
+            [
+                _artifact_link(run_id),
+                _text(artifact["raw_responses"]),
+                _text(artifact["scores"]),
+                _text(artifact["draft_scores"]),
+                _text(artifact["decision"]),
+                _text(artifact["dashboard_import"]),
+                _import_state_for_run(dashboard_runs.get(run_id), decisions_by_model),
+                _text(_artifact_score_state(artifact)),
+                _artifact_import_control(
+                    run_id,
+                    enable_import_actions=enable_import_actions,
+                    action_token=action_token,
+                    eval_results_dir=eval_results_dir,
+                ),
+            ]
+        )
     body = """
     {notice}
     {filters}
     <h2>Model Runs{filtered_count}</h2>
     {table}
+    <section class="section">
+      <h2>Local Artifact Import Queue</h2>
+      <p class="muted">Use this queue for benchmark artifacts already written under <code>data/eval_results</code>. Importing a raw run updates model/run/performance data; labels and stability reports appear only after reviewed score and decision files exist.</p>
+      {artifact_table}
+    </section>
     """.format(
         notice=_real_data_notice(len(_demo_rows(all_runs))),
         filters=_runs_filters(runs, filters),
@@ -72,7 +123,26 @@ def _runs(conn, query=None):
             scroll_label="Model runs table",
             header_tip_keys=RESULT_TABLE_HEADER_TIPS,
         ),
+        artifact_table=_table(
+            [
+                "Artifact",
+                "Raw responses",
+                "Scores",
+                "Draft scores",
+                "Decision",
+                "Dashboard CSVs",
+                "Dashboard state",
+                "What import changes",
+                "Action",
+            ],
+            artifact_rows,
+            empty_message="No local benchmark artifacts found under data/eval_results.",
+            table_class="artifact-import-table",
+            scroll_controls=True,
+            scroll_id="artifact-import-table-scroll",
+            scroll_label="Artifact import queue",
+        ),
     )
     return _layout("Model Runs", "/runs", body)
 
-__all__ = ('_runs',)
+__all__ = ('_artifact_score_state', '_runs',)

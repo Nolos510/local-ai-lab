@@ -63,7 +63,30 @@ class DashboardHttpHandlerTests(unittest.TestCase):
             self.assertEqual(response.headers["X-Frame-Options"], "DENY")
             self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
             self.assertIn("Local Model Performance Dashboard", body)
-            self.assertIn("Lab Dashboard", body)
+            self.assertIn("Home", body)
+            self.assertIn("Export report", body)
+
+    def test_demoted_get_routes_remain_reachable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            base_url = self.start_server(db_path, action_token="test-token")
+
+            for path in (
+                "/lab",
+                "/capability",
+                "/specialty",
+                "/projects",
+                "/storage",
+                "/compare",
+                "/reports",
+            ):
+                with self.subTest(path=path):
+                    with urlopen(f"{base_url}{path}", timeout=5) as response:
+                        body = response.read().decode("utf-8")
+
+                    self.assertEqual(response.status, 200)
+                    self.assertNotIn("Page not found", body)
 
     def test_unknown_post_route_returns_404(self):
         with tempfile.TemporaryDirectory() as tmp:

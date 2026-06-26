@@ -9,40 +9,50 @@ from html import escape
 from .icons import icon as render_icon
 
 NAV_ITEMS = (
-    ("/lab", "Lab Dashboard"),
-    ("/capability", "Capability"),
-    ("/", "Overview"),
-    ("/runs", "Model Runs"),
-    ("/compare", "Compare Models"),
-    ("/inventory", "Installed Models"),
-    ("/radar", "Radar Candidates"),
-    ("/specialty", "Specialty Models"),
-    ("/projects", "Project Radar"),
-    ("/storage", "Storage / Install Status"),
-    ("/reports", "Reports"),
+    ("/", "Home"),
+    ("/radar", "Discover"),
+    ("/inventory", "My Models"),
+    ("/runs", "Benchmark"),
 )
 
 NAV_ICONS = {
-    "/lab": "ti-layout-dashboard",
-    "/capability": "ti-server",
-    "/": "ti-chart-bar",
-    "/runs": "ti-player-play",
-    "/compare": "ti-git-compare",
-    "/inventory": "ti-device-desktop-analytics",
+    "/": "ti-layout-dashboard",
     "/radar": "ti-radar",
-    "/specialty": "ti-sparkles",
-    "/projects": "ti-brand-github",
-    "/storage": "ti-database",
+    "/inventory": "ti-device-desktop-analytics",
+    "/runs": "ti-player-play",
     "/reports": "ti-file-analytics",
+}
+
+NAV_ACTIONS = (
+    ("/reports", "Export report"),
+)
+
+NAV_PARENT_PATHS = {
+    "/lab": "/",
+    "/capability": "/",
+    "/specialty": "/radar",
+    "/projects": "/radar",
+    "/compare": "/runs",
+    "/storage": "/inventory",
 }
 
 def _layout(title, current_path, body):
     nav = []
+    active_path = NAV_PARENT_PATHS.get(current_path, current_path)
     for path, label in NAV_ITEMS:
-        active = " active" if current_path == path else ""
+        active = " active" if active_path == path else ""
         icon_name = NAV_ICONS.get(path, "ti-circle")
         nav.append(
             f'<a class="nav{active}" href="{path}" data-label="{escape(label)}" title="{escape(label)}">'
+            f"{render_icon(icon_name)}"
+            f"<span>{escape(label)}</span></a>"
+        )
+    actions = []
+    for path, label in NAV_ACTIONS:
+        active = " active" if current_path == path else ""
+        icon_name = NAV_ICONS.get(path, "ti-file-analytics")
+        actions.append(
+            f'<a class="nav nav-action{active}" href="{path}" data-label="{escape(label)}" title="{escape(label)}">'
             f"{render_icon(icon_name)}"
             f"<span>{escape(label)}</span></a>"
         )
@@ -589,6 +599,40 @@ def _layout(title, current_path, body):
     .lab-artifacts-table th:nth-child(9),
     .lab-artifacts-table td:nth-child(9) {{
       width: 460px;
+    }}
+    .artifact-import-table {{
+      table-layout: fixed;
+      min-width: 1580px;
+    }}
+    .artifact-import-table th:nth-child(1),
+    .artifact-import-table td:nth-child(1) {{
+      width: 280px;
+    }}
+    .artifact-import-table th:nth-child(2),
+    .artifact-import-table td:nth-child(2),
+    .artifact-import-table th:nth-child(3),
+    .artifact-import-table td:nth-child(3),
+    .artifact-import-table th:nth-child(4),
+    .artifact-import-table td:nth-child(4),
+    .artifact-import-table th:nth-child(5),
+    .artifact-import-table td:nth-child(5),
+    .artifact-import-table th:nth-child(6),
+    .artifact-import-table td:nth-child(6) {{
+      width: 112px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .artifact-import-table th:nth-child(7),
+    .artifact-import-table td:nth-child(7) {{
+      width: 180px;
+    }}
+    .artifact-import-table th:nth-child(8),
+    .artifact-import-table td:nth-child(8) {{
+      width: 420px;
+    }}
+    .artifact-import-table th:nth-child(9),
+    .artifact-import-table td:nth-child(9) {{
+      width: 140px;
     }}
     .capability-ready-table {{
       table-layout: fixed;
@@ -1361,6 +1405,14 @@ def _layout(title, current_path, body):
     .collapse-btn:hover {{ color: var(--accent-2); border-color: rgba(139, 123, 255, 0.45); }}
     .collapse-btn .ti {{ width: 18px; height: 18px; stroke: currentColor; transition: transform 200ms ease; }}
     .sidebar nav {{ flex-direction: column; flex-wrap: nowrap; gap: 4px; }}
+    .nav-actions {{
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }}
     .sidebar .nav {{ width: 100%; justify-content: flex-start; padding: 9px 12px; white-space: nowrap; overflow: hidden; position: relative; }}
     .app main {{ flex: 1 1 auto; min-width: 0; max-width: none; margin: 0; padding: 28px 32px 40px; }}
     .app.collapsed .sidebar {{ width: 72px; flex-basis: 72px; padding: 18px 10px; }}
@@ -1420,6 +1472,7 @@ def _layout(title, current_path, body):
         <button class="collapse-btn" type="button" aria-label="Toggle sidebar"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 7l-5 5 5 5M18 7l-5 5 5 5"/></svg></button>
       </div>
       <nav>{nav}</nav>
+      <div class="nav-actions">{actions}</div>
     </aside>
     <main>{body}</main>
   </div>
@@ -1469,6 +1522,6 @@ def _layout(title, current_path, body):
   }})();
   </script>
 </body>
-</html>""".format(title=escape(title), nav="".join(nav), body=body)
+</html>""".format(title=escape(title), nav="".join(nav), actions="".join(actions), body=body)
 
-__all__ = ("NAV_ITEMS", "NAV_ICONS", "_layout")
+__all__ = ("NAV_ACTIONS", "NAV_ITEMS", "NAV_ICONS", "NAV_PARENT_PATHS", "_layout")
