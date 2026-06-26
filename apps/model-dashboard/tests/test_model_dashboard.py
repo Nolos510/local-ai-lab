@@ -1576,6 +1576,48 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Qwen Filter Model", storage_html)
             self.assertNotIn("Research Filter Model", storage_html)
 
+    def test_storage_uses_section_rhythm_and_wide_table_contracts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with db.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO models (id, model_name, model_family, provider)
+                    VALUES (1, 'Storage Rhythm Model', 'Storage', 'local')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO decisions (
+                        id, model_id, decision, keep_installed, best_use_case,
+                        weakness, retest_condition
+                    )
+                    VALUES (
+                        1, 1, 'keep', 1, 'Long-running local coding work',
+                        'Needs periodic retest', 'After model update'
+                    )
+                    """
+                )
+
+                html = server._storage(conn)
+
+        self.assertIn('class="panel storage-intro-panel"', html)
+        self.assertNotIn('style="margin-bottom:16px"', html)
+        self.assertIn('class="storage-decisions-section"', html)
+        self.assertIn('class="cell-stack storage-model-identity"', html)
+        self.assertIn('class="storage-model-name"', html)
+        self.assertIn('class="storage-decisions-table"', html)
+        self.assertIn('id="storage-decisions-table-scroll"', html)
+        self.assertIn('data-scroll-target="storage-decisions-table-scroll"', html)
+        self.assertIn(".storage-intro-panel {", html)
+        self.assertIn(".storage-decisions-section {", html)
+        self.assertIn(".storage-decisions-section .filters {", html)
+        self.assertIn(".storage-model-identity {", html)
+        self.assertIn(".storage-decisions-table {", html)
+        self.assertIn("table-layout: fixed", html)
+        self.assertIn("min-width: 1180px", html)
+
     def test_compare_page_renders_perf_empty_state_for_null_values(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "dashboard.sqlite"

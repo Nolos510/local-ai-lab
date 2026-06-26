@@ -17,11 +17,13 @@ from ..scoring import METRIC_FIELDS
 def _storage_decision_rows(decisions):
     rows = []
     for row in decisions:
+        model = '<div class="cell-stack storage-model-identity"><div class="storage-model-name"><a href="/models/{id}">{name}</a></div></div>'.format(
+            id=row["model_id"],
+            name=_text(row["model_name"]),
+        )
         rows.append(
             [
-                '<a href="/models/{id}">{name}</a>'.format(
-                    id=row["model_id"], name=_text(row["model_name"])
-                ),
+                model,
                 _text(row["decision"]),
                 "yes" if row["keep_installed"] else "no",
                 _text(row["best_use_case"]),
@@ -57,14 +59,16 @@ def _storage(conn, query=None):
     filtered_decisions = _filter_storage_decisions(decisions, filters)
     body = """
     {notice}
-    <section class="panel" style="margin-bottom:16px">
+    <section class="panel storage-intro-panel">
       <h2>Storage / Install Status</h2>
       <p>This is a benchmark decision log. It is not an installed-model inventory scanner.</p>
       <p>Use <a href="/inventory">My Models</a> to check local LM Studio and Ollama inventory.</p>
     </section>
-    {filters}
-    <h2>Decision Log{filtered_count}</h2>
-    {table}
+    <section class="storage-decisions-section">
+      {filters}
+      <h2>Decision Log{filtered_count}</h2>
+      {table}
+    </section>
     """.format(
         notice=_real_data_notice(len(_demo_rows(all_decisions))),
         filters=_storage_filters(decisions, filters),

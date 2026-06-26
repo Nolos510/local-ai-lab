@@ -1258,6 +1258,26 @@ def _layout(title, current_path, body):
     .inventory-checks-table td:nth-child(5) {{
       width: 620px;
     }}
+    .storage-intro-panel {{
+      margin-bottom: 18px;
+    }}
+    .storage-decisions-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }}
+    .storage-decisions-section > h2 {{
+      margin: 0;
+    }}
+    .storage-decisions-section .filters {{
+      margin-bottom: 0;
+    }}
+    .storage-model-identity {{
+      gap: 6px;
+    }}
+    .storage-model-name {{
+      font-weight: 500;
+    }}
     .storage-decisions-table {{
       table-layout: fixed;
       min-width: 1180px;
