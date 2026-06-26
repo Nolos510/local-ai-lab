@@ -80,15 +80,17 @@ flowchart LR
   `data/eval_results/20260605-qwen3-coder-30b-a3b-lmstudio-cli-r1/`
 - Existing scored Qwen retest artifact:
   `data/eval_results/20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit-r2/`
+- Official second benchmark evidence:
+  `docs/lab-notes/2026-06-25-dolphin-mistral-v1-benchmark.md`
 - Current dashboard validation:
   - `python3 -m unittest discover -s apps/model-dashboard/tests`
-    - 75 tests pass.
+    - 122 tests pass.
   - `python3 -m unittest discover -s evals/local-llm-benchmark/tests`
-    - 8 tests pass.
+    - 15 tests pass.
   - `python3 scripts/model_dashboard_smoke.py`
     - Dashboard smoke passes.
   - `uv run pytest -q`
-    - 149 tests pass.
+    - 239 tests pass, 58 subtests pass.
   - `uv run ruff check .`
     - All checks pass.
 
@@ -151,8 +153,9 @@ client-supplied filesystem paths.
 
 ## Current Limits
 
-- A second unique confirmed model benchmark is still needed for stronger
-  cross-model comparison.
+- Cross-model comparison now has Qwen and Dolphin confirmed imports, but more
+  model families are still needed before treating rankings as broadly
+  representative.
 - Performance charts are first-class dashboard views, but live values depend on
   imported benchmark artifacts containing `tokens_per_sec`, `ttft_seconds`, and
   `total_latency_seconds`.
@@ -165,5 +168,5 @@ client-supplied filesystem paths.
 3. Runtime comparison: benchmark LM Studio, Ollama, MLX/MLX-LM, and llama.cpp
    when exact local model ids are approved.
 4. RAG quality: add retrieval eval fixtures and citation-quality checks.
-5. Portfolio publishing: capture screenshots, tag a release, and keep resume
+5. Portfolio publishing: refresh screenshots after the v1 tag and keep resume
    bullets tied to committed evidence.

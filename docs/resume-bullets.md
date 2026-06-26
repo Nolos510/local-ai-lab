@@ -30,14 +30,18 @@ claims aligned with the current repository state.
 - Added a disabled-by-default, recoverable model removal path that sends LM
   Studio folders to macOS Trash, calls `ollama rm` for Ollama, and rejects
   out-of-root filesystem targets.
-- Maintained a validation gate covering 75 dashboard unit tests, 8 benchmark
-  harness tests, 149 repo tests, dashboard smoke, and repo-wide Ruff lint.
+- Maintained a validation gate covering 122 dashboard unit tests, 15 benchmark
+  harness tests, 239 repo tests plus 58 subtests, dashboard smoke, and
+  repo-wide Ruff lint.
 
 ## AI / Evaluation Engineering
 
 - Built a local benchmark artifact workflow that preserves raw responses,
   evidence notes, score templates, confirmed scores, decisions, and dashboard
   CSV imports for reproducible model evaluation.
+- Completed confirmed local benchmark imports for Qwen3 Coder and
+  Dolphin-Mistral 24B, including preserved raw-response evidence, performance
+  metadata, score status, and keep/watchlist decision records.
 - Separated radar candidates, installed runtime inventory, demo fixtures,
   benchmark artifacts, imported runs, and confirmed model decisions to prevent
   false rankings.
@@ -83,5 +87,6 @@ claims aligned with the current repository state.
 - Why radar candidates must not automatically become scores or decisions.
 - How local-first constraints shaped the CLI, dashboard, benchmark, and security
   review architecture.
-- What remains before v1.0.0: second unique benchmark, live perf data from an
-  approved imported run, and release tagging.
+- What v1.0.0 proves: a local-first product loop from approved candidate to
+  benchmark artifact, confirmed score, dashboard import, model comparison, and
+  release evidence.

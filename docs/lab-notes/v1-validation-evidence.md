@@ -1,129 +1,169 @@
 # v1 Validation Evidence
 
-Date: 2026-06-05
+Date: 2026-06-25
 
 ## Branch State
 
-Working branch was switched from `master` to local `main` tracking
-`origin/main`. At the start of this pass, `origin/main` and `origin/master`
-were both at:
+`main` is the local working branch. The dashboard IA work from
+`codex/dashboard-ia` was fast-forwarded into `main` through commit `7d90256`.
+
+The final v1 release push and tag are completed only after the full validation
+gate is green and `origin` is checked for an existing `v1.0.0` tag.
+
+## Candidate Approval State
+
+The v1 second benchmark candidate is:
 
 ```text
-1a3f54e Merge main into master
+20260605-dolphin-mistral-24b-venice-edition
 ```
 
-## Candidate Runtime Check
+Approved local runtime scope:
 
-Target requested by the user:
+- runner: `lmstudio-cli`
+- exact local model id: `dolphin-mistral-24b-venice-edition`
+- benchmark run id:
+  `20260625-dolphin-mistral-24b-venice-edition-dashboard-test-r2`
+- download approval: `not_needed_local`
+- security state: `local_inventory_reviewed`
+
+This approval covers benchmark execution for the exact already-installed local
+LM Studio id only. It does not approve download, reinstall, update, alternate
+artifact selection, or model-card code execution.
+
+## Benchmark Evidence
+
+Official second benchmark source:
 
 ```text
-Qwen3-30B-A3B-Instruct
+data/eval_results/20260625-dolphin-mistral-24b-venice-edition-dashboard-test-r2/
 ```
 
-Local LM Studio observations:
+That raw benchmark directory remains local/ignored. The committed release
+evidence is sanitized and records counts, hashes, scores, decision, and import
+row counts without committing raw responses.
 
-- `lms ls --json` exposed only the loaded LLM
-  `qwen3-coder-30b-a3b-instruct-mlx`.
-- `lms ps --json` reported display name `Qwen3 Coder 30B A3B Instruct`.
-- The local filesystem contained
-  `~/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit`.
-- No exact local inventory entry for `Qwen3-30B-A3B-Instruct` was visible
-  through the CLI checks.
-- `http://127.0.0.1:1234/v1/models` was reachable after local network
-  approval, but returned `401 Unauthorized`.
+Raw-response validation:
 
-Conclusion: the vanilla Qwen3 30B benchmark was not run in this pass. Creating
-a scored artifact would have risked benchmarking the previously tested Coder
-model under the wrong name.
+```text
+records: 12
+errors: 0
+runner: LM Studio CLI
+model id: dolphin-mistral-24b-venice-edition
+```
 
-## Registry Changes
+SHA256 evidence:
 
-- Added `20260605-qwen3-30b-a3b-instruct-lmstudio` as a separate vanilla Qwen3
-  candidate.
-- Moved `20260605-qwen3-30b-a3b-abliterated` to `watchlist` until a matching
-  local artifact or endpoint exists.
-- Corrected the existing Qwen3 Coder candidate link to the scored `r2`
-  benchmark artifact.
+```text
+metadata.json: 17310e30032595d7adeec1567dc37a3be42078c152b880efc1920a0f2d7e4edd
+raw_responses.jsonl: 15dcffc34560552103aef25d441f7603f9730e940887e52be02d6763c113f616
+evidence.md: 07aab3bf37b2717e7d455595392b758c06b1d318cde11bfd9cdefbbf0d3296a3
+scores.json: a0240147b1de0e7f9802427d4e5cc788107c621d0881f93cac161bb96a6c170d
+decision.json: 2b82468361f7820409eb2a902fa603666dca968e199d18b3d3d86224b14ee974
+dashboard-import/models.csv: b1331423adf74fd57cde6dcb4e1f6b75cb89c41f431574ca7f1857dc097a7fec
+dashboard-import/model_runs.csv: 9b036f245f054b5865e3e210f0029a9d41d65a2ce99a70bf4db3cd76fc043a2c
+dashboard-import/eval_scores.csv: 72bcc45222d9490f59f78a6faa00d373c7c1f8fc1801a35b0297218e12bb9039
+dashboard-import/decisions.csv: 53cfb782f2d31494bc902bb5fa42558fac069efcad5031bdd230eedc3fe88f73
+```
 
-## Dashboard Link Evidence
+Confirmed score summary:
 
-Dashboard loop links were added without schema changes:
+```text
+total_score: 65.45
+final_label: WATCHLIST
+score_status: confirmed
+decision: watchlist
+keep_installed: 0
+tokens_per_sec: 28.14
+total_latency_seconds: 121.85
+ram_usage_gb: 253.18
+```
 
-- Imported run notes are parsed for `benchmark_run_id=...`.
-- `/runs` shows an artifact link for imported runs.
-- `/models/<id>` shows artifact links in run history.
-- `/artifacts/<run_id>` shows candidate context plus imported model and
-  decision state when available.
-- `/lab` shows artifact import/decision state in the artifact table.
+The earlier Dolphin run
+`20260625-dolphin-mistral-24b-venice-edition-dashboard-test` is retained only as
+repeatability context. v1 does not average runs or invent aggregate official
+scores.
 
-## Commands To Reproduce Runtime Check
+## Draft Scoring
+
+Local-judge draft scoring was skipped for the live Dolphin run. The separate
+loopback LM Studio endpoint returned `401 Unauthorized`, and no separate judge
+token was provided.
+
+The assisted-scoring feature remains implemented and test-covered, but this
+release does not fake a `draft-scores.json`.
+
+## Dashboard Import Evidence
+
+Confirmed Dolphin r2 CSVs imported into both the local dashboard DB and a temp
+validation DB.
+
+Temp import command:
 
 ```bash
-lms ls --json
-lms ps --json
-python3 - <<'PY'
-from urllib.request import urlopen
-print(urlopen("http://127.0.0.1:1234/v1/models", timeout=5).read().decode())
-PY
+python3 apps/model-dashboard/run_dashboard.py import-csv \
+  --db /private/tmp/dolphin-v1-dashboard.sqlite \
+  --models data/eval_results/20260625-dolphin-mistral-24b-venice-edition-dashboard-test-r2/dashboard-import/models.csv \
+  --runs data/eval_results/20260625-dolphin-mistral-24b-venice-edition-dashboard-test-r2/dashboard-import/model_runs.csv \
+  --scores data/eval_results/20260625-dolphin-mistral-24b-venice-edition-dashboard-test-r2/dashboard-import/eval_scores.csv \
+  --decisions data/eval_results/20260625-dolphin-mistral-24b-venice-edition-dashboard-test-r2/dashboard-import/decisions.csv
 ```
 
-The HTTP check may require local network approval and may fail with `401
-Unauthorized` until the local LM Studio server auth path is configured for the
-benchmark runner.
+Import result:
 
-## Pending Benchmark Command
+```text
+Imported rows: {'models': 1, 'model_runs': 1, 'eval_scores': 1, 'decisions': 1}
+```
 
-Run only after the exact model id is visible:
+Temp report path:
+
+```text
+/private/tmp/dolphin-v1-dashboard-report.md
+```
+
+Dashboard route verification against the local dashboard DB succeeded:
+
+```text
+/ -> Dolphin-Mistral-24B-Venice-Edition
+/radar -> 20260605-dolphin-mistral-24b-venice-edition
+/specialty -> Dolphin-Mistral-24B-Venice-Edition
+/runs -> 20260625-dolphin-mistral-24b-venice-edition-dashboard-test-r2
+/compare -> Dolphin-Mistral-24B-Venice-Edition
+/lab -> 20260625-dolphin-mistral-24b-venice-edition-dashboard-test-r2
+/artifacts/20260625-dolphin-mistral-24b-venice-edition-dashboard-test-r2 -> watchlist
+/models/10 -> Dolphin-Mistral-24B-Venice-Edition
+```
+
+## Final Gate Results
+
+Final release validation commands:
 
 ```bash
-python3 evals/local-llm-benchmark/harness.py init-run \
-  --benchmark-run-id 20260605-qwen3-30b-a3b-instruct-lmstudio-r1 \
-  --model-name "Qwen3-30B-A3B-Instruct" \
-  --backend "LM Studio" \
-  --format "Local OpenAI-compatible" \
-  --quantization "not reported" \
-  --hardware "Mac Studio Apple M3 Ultra, 32-core CPU, 256 GB RAM, macOS 26.3.1" \
-  --temperature 0.2 \
-  --top-p 0.9
+python3 -m unittest discover -s apps/model-dashboard/tests
+python3 -m unittest discover -s evals/local-llm-benchmark/tests
+python3 scripts/model_dashboard_smoke.py
+uv run pytest -q
+uv run ruff check .
 ```
 
-## Validation Results
-
-Dashboard and harness validation passed after the dashboard loop-link changes:
+Result:
 
 ```text
 python3 -m unittest discover -s apps/model-dashboard/tests
-22 tests passed.
+122 tests passed.
 
 python3 -m unittest discover -s evals/local-llm-benchmark/tests
-4 tests passed, 2 skipped.
+15 tests passed.
 
 python3 scripts/model_dashboard_smoke.py
 Dashboard smoke passed.
 
-uv run pytest
-59 tests passed.
+uv run pytest -q
+239 tests passed, 58 subtests passed, 1 Starlette/httpx deprecation warning.
 
 uv run ruff check .
 All checks passed.
 ```
 
-The current complete scored benchmark loop remains the Qwen3 Coder `r2`
-artifact. Its dashboard CSVs imported into a temp database:
-
-```text
-python3 apps/model-dashboard/run_dashboard.py import-csv \
-  --db /private/tmp/qwen-r2-v1-dashboard.sqlite \
-  --models data/eval_results/20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit-r2/dashboard-import/models.csv \
-  --runs data/eval_results/20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit-r2/dashboard-import/model_runs.csv \
-  --scores data/eval_results/20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit-r2/dashboard-import/eval_scores.csv \
-  --decisions data/eval_results/20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit-r2/dashboard-import/decisions.csv
-
-Imported rows: {'models': 1, 'model_runs': 1, 'eval_scores': 1, 'decisions': 1}
-```
-
-The temp report was generated at:
-
-```text
-/private/tmp/qwen-r2-v1-dashboard-report.md
-```
+This gate was run after the Dolphin registry/security evidence updates and
+before pushing `main` plus the release tag.

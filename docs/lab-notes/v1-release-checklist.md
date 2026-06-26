@@ -1,6 +1,7 @@
 # v1 Release Checklist
 
 Date opened: 2026-06-05
+Last updated: 2026-06-25
 
 ## Goal
 
@@ -15,7 +16,10 @@ candidate -> benchmark artifact -> raw responses -> scores -> dashboard import -
 - [x] `main` is the local working branch.
 - [x] `origin/main` and `origin/master` were aligned before v1 work began.
 - [x] v1 commits through `4cccb2a` are pushed to `origin/main`.
-- [ ] Optional: tag the validated v1 release.
+- [x] Dashboard IA work was landed on `main` through `7d90256`.
+- [x] Final Dolphin release commit is the `origin/main` push target.
+- [x] `v1.0.0` release tag target is the final validated Dolphin release
+  commit.
 
 ## Candidate Approval
 
@@ -29,28 +33,35 @@ candidate -> benchmark artifact -> raw responses -> scores -> dashboard import -
   `qwen3-coder-30b-a3b-instruct-mlx`.
 - [x] Confirm vanilla `Qwen3-30B-A3B-Instruct` is not installed or visible in
   `lms ls --json` / `lms ps --json`; keep it unscored.
-- [ ] Keep Dolphin-Mistral 24B queued until a concrete local artifact and exact
-  runtime id are visible.
+- [x] Approve Dolphin-Mistral 24B for benchmark execution against the exact
+  already-local LM Studio CLI id `dolphin-mistral-24b-venice-edition`.
+- [x] Keep Dolphin-Mistral 24B unapproved for reinstall, update, alternate
+  artifact selection, or download.
 
 ## Benchmark Capture
 
 - [x] Preserve Qwen3 Coder CLI retest `raw_responses.jsonl`.
 - [x] Preserve Qwen3 Coder CLI retest `evidence.md`.
 - [x] Do not create scores from runtime inventory or radar claims.
-- [ ] Run a second unique model benchmark only after the target model is
+- [x] Run a second unique model benchmark only after the target model is
   installed/indexed/loaded and has exact local runner metadata.
-- [x] Queue second benchmark target instead of creating a fake artifact when
-  LM Studio/Ollama inventory checks did not return an exact runnable model.
+- [x] Use `20260625-dolphin-mistral-24b-venice-edition-dashboard-test-r2` as
+  the official second benchmark source.
+- [x] Preserve earlier Dolphin run only as repeatability context; do not average
+  official scores until an aggregation feature exists.
 
 ## Draft And Confirmed Scoring
 
-- [ ] Create `draft-scores.json` only from a separate local judge model, if one
-  is available.
+- [x] Create `draft-scores.json` only from a separate local judge model, if one
+  is available. Live Dolphin draft scoring was skipped because the loopback LM
+  Studio endpoint returned `401 Unauthorized` and no separate judge token was
+  provided.
 - [x] Human-review Qwen3 Coder CLI run against raw responses.
 - [x] Write confirmed Qwen3 Coder CLI `scores.json`.
 - [x] Write Qwen3 Coder CLI `decision.json`.
 - [x] Export confirmed Qwen3 Coder CLI dashboard CSVs.
-- [ ] Repeat confirmed scoring for one second unique model.
+- [x] Repeat confirmed scoring for one second unique model:
+  `Dolphin-Mistral-24B-Venice-Edition`.
 
 ## Dashboard Loop
 
@@ -60,6 +71,8 @@ candidate -> benchmark artifact -> raw responses -> scores -> dashboard import -
 - [x] `/runs` links imported runs back to benchmark artifacts.
 - [x] `/models/<id>` links run history back to benchmark artifacts.
 - [x] `/lab` shows candidate, artifact, import, and decision state.
+- [x] Dolphin r2 imports resolve through `/radar`, `/specialty`, `/runs`,
+  `/compare`, `/models/<id>`, `/artifacts/<run_id>`, and `/lab`.
 
 ## Portfolio Package
 
@@ -76,6 +89,8 @@ candidate -> benchmark artifact -> raw responses -> scores -> dashboard import -
 - [x] No secrets were committed.
 - [x] No tracked SQLite runtime database was added.
 - [x] Candidate records remain separate from eval scores.
+- [x] Raw Dolphin response artifacts remain local/ignored and are represented in
+  Git only by sanitized validation evidence.
 
 ## Validation Gate
 
