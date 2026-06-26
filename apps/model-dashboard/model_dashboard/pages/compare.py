@@ -101,7 +101,7 @@ def _compare_section(
       {dimension_chart}
     </section>
     {table}
-    <section style="margin-top:16px">
+    <section class="compare-section">
       <h2>Performance Signals</h2>
       <p class="empty">Latency values come from approved local benchmark artifacts when imported; lower latency is better, higher tokens/sec is better.</p>
       <div class="chart-grid" aria-label="Compare performance charts">

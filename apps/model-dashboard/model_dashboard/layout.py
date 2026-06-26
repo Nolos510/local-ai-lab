@@ -629,6 +629,15 @@ def _layout(title, current_path, body):
     .capability-section h2 {{
       margin-bottom: 0;
     }}
+    .compare-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      margin-top: 18px;
+    }}
+    .compare-section h2 {{
+      margin-bottom: 0;
+    }}
     .home-hero {{
       display: grid;
       gap: 16px;
