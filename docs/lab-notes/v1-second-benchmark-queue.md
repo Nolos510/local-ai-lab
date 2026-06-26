@@ -1,25 +1,33 @@
 # v1 Second Benchmark Queue
 
 Date: 2026-06-05
+Closed: 2026-06-25
 
 ## Summary
 
-The second real benchmark is queued, not run. The project currently has one real
-confirmed scored benchmark:
+The second real benchmark queue is closed for v1. The project started this note
+with one real confirmed scored benchmark:
 
 ```text
 data/eval_results/20260605-qwen3-coder-30b-a3b-lmstudio-cli-r1/
 ```
 
-The next preferred large-model target remains:
+The second official v1 benchmark is now represented by sanitized evidence for:
 
 ```text
-20260605-dolphin-mistral-24b-venice-edition
+20260625-dolphin-mistral-24b-venice-edition-dashboard-test-r2
 ```
 
-## Why It Was Not Run Yet
+See:
 
-Fresh local inventory checks did not provide an exact second benchmark target:
+```text
+docs/lab-notes/2026-06-25-dolphin-mistral-v1-benchmark.md
+```
+
+## Original Blocker
+
+The first local inventory checks did not provide an exact second benchmark
+target:
 
 - `~/.lmstudio/bin/lms ls --json` timed out while starting or connecting to the
   local LM Studio daemon.
@@ -30,11 +38,18 @@ Fresh local inventory checks did not provide an exact second benchmark target:
 Because the dashboard now treats installed inventory, radar candidates, and
 scored benchmarks as separate states, no fake benchmark artifact was created.
 
-## Current Queue Decision
+## Closed Queue Decision
 
-- Keep Dolphin-Mistral 24B queued behind security/runtime approval.
-- Do not score Dolphin-Mistral 24B until a concrete local artifact, exact local
-  runtime ID, and security review are available.
+- Dolphin-Mistral 24B was approved only for the exact already-local LM Studio
+  CLI id `dolphin-mistral-24b-venice-edition`.
+- The official r2 run has 12 raw response records, 0 runtime errors, confirmed
+  score `65.45`, and decision `watchlist`.
+- Raw responses remain local/ignored; committed evidence is sanitized.
+- Do not average the earlier Dolphin run into an official score until an
+  explicit aggregation feature exists.
+
+## Next Queue Policy
+
 - If another exact installed/indexed model becomes visible first, it can become
   benchmark #2 after the same security and registry checks.
 
@@ -46,7 +61,7 @@ scored benchmarks as separate states, no fake benchmark artifact was created.
 ollama list
 ```
 
-If an exact model ID appears, update `data/model_registry/candidates.csv` with:
+For the next queued candidate, update `data/model_registry/candidates.csv` with:
 
 ```text
 local_runner
@@ -58,4 +73,4 @@ security_review_path
 
 Then run the benchmark harness, preserve raw responses, write confirmed scores
 and decision artifacts, export dashboard CSVs, import into a temp dashboard DB,
-and commit the second benchmark separately.
+and commit sanitized evidence separately.

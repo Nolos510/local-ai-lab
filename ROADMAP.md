@@ -38,19 +38,19 @@
 
 ## v1: Local AI Lab Product Loop
 
-- [ ] Approve one radar candidate from source packet to registry.
-- [ ] Run one additional real scored local benchmark; next queued large-model
-  target is Dolphin-Mistral 24B after security review and exact local runtime
-  id confirmation.
-- [ ] Capture all prompt responses with source evidence.
-- [ ] Add local-judge draft score suggestions without overwriting confirmed
-  scores.
-- [ ] Import confirmed benchmark CSVs into the dashboard.
+- [x] Approve one radar candidate from source packet to registry.
+- [x] Run one additional real scored local benchmark: Dolphin-Mistral 24B with
+  exact local LM Studio CLI id `dolphin-mistral-24b-venice-edition`.
+- [x] Capture all prompt responses with source evidence.
+- [x] Add local-judge draft score suggestions without overwriting confirmed
+  scores; live draft scoring remains optional when a separate local judge
+  endpoint is available.
+- [x] Import confirmed benchmark CSVs into the dashboard.
 - [x] Compare imported benchmark runs in the dashboard with inline SVG charts
   for score dimensions and imported performance metadata.
-- [ ] Link candidate -> source packet/report -> benchmark artifact -> dashboard
+- [x] Link candidate -> source packet/report -> benchmark artifact -> dashboard
   result.
-- [ ] Keep candidate-only records visually separate from eval scores.
+- [x] Keep candidate-only records visually separate from eval scores.
 - [x] Add a unified `ai-lab` CLI for status, radar, benchmark prep, import,
   report, and dashboard launch.
 - [x] Add `ai-lab hardware snapshot` for sanitized local hardware/runtime
@@ -91,7 +91,7 @@
 - [ ] Expand the model registry for large 24B, 30B, 70B-class, and specialty
   abliterated/Dolphin candidates that fit the 256 GB RAM environment.
 - [ ] Add an evaluation harness for RAG answers and citations.
-- [ ] Add a second unique model benchmark after security and exact local
+- [x] Add a second unique model benchmark after security and exact local
   runtime-id approval.
 
 ## v4: MLX-LM Fine-Tuning Experiments

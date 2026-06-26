@@ -172,6 +172,9 @@ automations/ai-lab-radar/inputs
 - the release is explicitly defined as a single-model baseline with Qwen3 Coder
   as the initial benchmark evidence.
 
+The Dolphin-Mistral 24B r2 import satisfies the second-benchmark condition for
+the v1 release gate.
+
 ## Architecture Governance
 
 - `AGENTS.md` is the operating agreement for all agents.
