@@ -98,12 +98,13 @@
 
 ## v4: MLX-LM Fine-Tuning Experiments
 
-- [ ] Add dataset manifest conventions.
-- [ ] Add LoRA/adapter experiment templates.
-- [ ] Track dataset hash, base model, adapter config, prompt version, and eval
+- [x] Add dataset manifest conventions.
+- [x] Add LoRA/adapter experiment templates.
+- [x] Track dataset hash, base model, adapter path, prompt version, and eval
   results.
-- [ ] Document adapter export and serving options.
-- [ ] Keep fine-tuning experiments separate from the v0 RAG harness.
+- [ ] Document adapter export and serving options after an approved local
+  experiment exists.
+- [x] Keep fine-tuning experiments separate from the v0 RAG harness.
 
 ## Later
 
