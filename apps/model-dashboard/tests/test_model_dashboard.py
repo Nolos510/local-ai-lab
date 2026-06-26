@@ -2181,6 +2181,13 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn('action="/actions/refresh-inventory"', html)
         self.assertIn("Last refresh: not checked yet", html)
         self.assertIn('method="get" action="/inventory"', html)
+        self.assertIn('class="panel inventory-refresh-panel"', html)
+        self.assertIn('class="inventory-section"', html)
+        self.assertIn('class="inventory-section inventory-decisions-section"', html)
+        self.assertIn(".inventory-refresh-panel {", html)
+        self.assertIn(".inventory-section {", html)
+        self.assertNotIn('<section class="panel" style="margin-bottom:16px">', html)
+        self.assertNotIn('<section style="margin-top:16px">', html)
         self.assertIn("No inventory refresh has run yet.", html)
         self.assertIn("No keep/watch decisions have been imported yet.", html)
 
@@ -2279,6 +2286,12 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("min-width: 1950px", html)
         self.assertIn(".inventory-models-table th:nth-child(5)", html)
         self.assertIn(".inventory-models-table th:nth-child(8)", html)
+        self.assertIn(
+            ".inventory-models-table th:nth-child(2),\n"
+            "    .inventory-models-table td:nth-child(2) {\n"
+            "      position: sticky;",
+            html,
+        )
         self.assertIn('class="inventory-checks-table"', html)
         self.assertIn('id="inventory-checks-table-scroll"', html)
         self.assertIn('data-scroll-target="inventory-checks-table-scroll"', html)

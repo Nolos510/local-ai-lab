@@ -638,6 +638,26 @@ def _layout(title, current_path, body):
     .compare-section h2 {{
       margin-bottom: 0;
     }}
+    .inventory-refresh-panel {{
+      display: grid;
+      gap: 12px;
+      margin-bottom: 18px;
+    }}
+    .inventory-refresh-panel h2 {{
+      margin-bottom: 0;
+    }}
+    .inventory-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      margin-top: 18px;
+    }}
+    .inventory-section h2 {{
+      margin-bottom: 0;
+    }}
+    .inventory-section > .section-heading-row {{
+      margin-top: 0;
+    }}
     .home-hero {{
       display: grid;
       gap: 16px;
@@ -1067,6 +1087,18 @@ def _layout(title, current_path, body):
     .inventory-models-table th:nth-child(2),
     .inventory-models-table td:nth-child(2) {{
       width: 300px;
+    }}
+    .inventory-models-table th:nth-child(2),
+    .inventory-models-table td:nth-child(2) {{
+      position: sticky;
+      left: 0;
+      z-index: 3;
+      background: var(--control);
+      box-shadow: 1px 0 0 var(--line), 10px 0 18px rgba(0, 0, 0, 0.18);
+    }}
+    .inventory-models-table th:nth-child(2) {{
+      z-index: 4;
+      background: #181a29;
     }}
     .inventory-models-table th:nth-child(3),
     .inventory-models-table td:nth-child(3) {{

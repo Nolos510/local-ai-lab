@@ -995,7 +995,7 @@ def _decision_stats(decisions):
 def _inventory_decision_section(decisions):
     stats = _decision_stats(decisions)
     return """
-    <section style="margin-top:16px">
+    <section class="inventory-section inventory-decisions-section">
       <div class="section-heading-row">
         <div>
           <h2>Keep / Watch Decisions</h2>
@@ -1100,7 +1100,7 @@ def _inventory(
       <p>What's installed locally. Run a benchmark, then keep, watchlist, retest, or skip each model.</p>
       <p class="empty">My Models reads local LM Studio and Ollama inventory on demand and keeps decisions tied to imported local benchmark evidence.</p>
     </section>
-    <section class="panel" style="margin-bottom:16px">
+    <section class="panel inventory-refresh-panel">
       <h2>Installed Models</h2>
       <p>This page checks local runtime inventory on demand. It does not download, install, benchmark, score, or import models.</p>
       <p>LM Studio rows distinguish <code>loaded</code>, <code>indexed</code>, and <code>filesystem_only</code>. Filesystem-only folders are visible on disk but are not runnable from the dashboard until LM Studio indexes or loads them.</p>
@@ -1113,13 +1113,13 @@ def _inventory(
       <p class="empty">Last refresh: {checked_at}</p>
       {registration_note}
     </section>
-    <section>
+    <section class="inventory-section">
       <h2>Detected Models{filtered_count}</h2>
       {filters}
       {models}
     </section>
     {decisions_section}
-    <section style="margin-top:16px">
+    <section class="inventory-section">
       <h2>Runtime Checks</h2>
       {checks}
     </section>
