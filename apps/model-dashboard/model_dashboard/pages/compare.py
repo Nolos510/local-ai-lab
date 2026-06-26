@@ -13,7 +13,15 @@ from ..layout import _layout
 from ..reports import generate_markdown_report
 from ..scoring import METRIC_FIELDS
 
-def _compare(conn, query=None):
+
+def _compare_section(
+    conn,
+    query=None,
+    *,
+    include_notice=True,
+    include_filters=True,
+    include_deep_link=False,
+):
     headers = ["Model", "Score", "Status", "Label"] + [
         field.replace("_", " ").title() for field in METRIC_FIELDS
     ]
@@ -66,10 +74,28 @@ def _compare(conn, query=None):
         ]
         cells.extend(_number(row[field], 0) for field in METRIC_FIELDS)
         rows.append(cells)
-    body = """
+    heading = """
+    <div class="section-heading-row">
+      <div>
+        <h2>Compare Models{filtered_count}</h2>
+        <p class="section-note">Compare imported local benchmark scores side by side. Higher total score and throughput are better; lower latency is better when latency fields exist.</p>
+      </div>
+      {deep_link}
+    </div>
+    """.format(
+        filtered_count=(
+            f" ({len(filtered_scores)} of {len(scores)})" if any(filters.values()) else ""
+        ),
+        deep_link=(
+            '<a class="action-link secondary" href="/compare">Open compare filters</a>'
+            if include_deep_link
+            else ""
+        ),
+    )
+    return """
     {notice}
     {filters}
-    <h2>Compare Models{filtered_count}</h2>
+    {heading}
     <section class="chart-grid" aria-label="Compare charts">
       {score_chart}
       {dimension_chart}
@@ -85,11 +111,9 @@ def _compare(conn, query=None):
       </div>
     </section>
     """.format(
-        notice=_real_data_notice(len(_demo_rows(all_scores))),
-        filters=_compare_filters(scores, filters),
-        filtered_count=(
-            f" ({len(filtered_scores)} of {len(scores)})" if any(filters.values()) else ""
-        ),
+        notice=_real_data_notice(len(_demo_rows(all_scores))) if include_notice else "",
+        filters=_compare_filters(scores, filters) if include_filters else "",
+        heading=heading,
         score_chart=_chart_panel("Total Score", score_chart),
         dimension_chart=_chart_panel("Dimension Averages", dimension_chart),
         tokens_chart=_chart_panel("Tokens / Sec", tokens_chart),
@@ -106,6 +130,10 @@ def _compare(conn, query=None):
             header_tip_keys=RESULT_TABLE_HEADER_TIPS,
         ),
     )
+
+
+def _compare(conn, query=None):
+    body = _compare_section(conn, query)
     return _layout("Compare Models", "/compare", body)
 
-__all__ = ('_compare',)
+__all__ = ('_compare', '_compare_section')
