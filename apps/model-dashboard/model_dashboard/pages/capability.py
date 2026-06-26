@@ -35,18 +35,21 @@ def _capability(
     tokens_chart = charts.horizontal_bars(
         tokens_items,
         value_format="{:.1f} tok/s",
+        label_width=420,
         title="Capability tokens per second",
         empty_message="No tokens/sec values imported yet",
     )
     ttft_chart = charts.horizontal_bars(
         ttft_items,
         value_format="{:.2f}s",
+        label_width=420,
         title="Capability TTFT seconds",
         empty_message="No TTFT values imported yet",
     )
     latency_chart = charts.horizontal_bars(
         latency_items,
         value_format="{:.2f}s",
+        label_width=420,
         title="Capability total latency seconds",
         empty_message="No total latency values imported yet",
     )

@@ -36,7 +36,7 @@ SAFE_ARTIFACT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 METRIC_EXPLANATIONS = {
     "total_score": "Summed quality score across the benchmark rubric's dimensions (instruction-following, reasoning, coding, agent-planning, etc.). Higher is better; it's a relative ranking signal, not a percentage. See the model detail page for the per-dimension breakdown.",
     "throughput": "Output tokens generated per second during the run. Higher is faster. Depends on model size, quantization, runtime, and hardware — only compare within the same setup.",
-    "ram_footprint": "Peak memory the model used during the run. Lower leaves more headroom for larger models or parallel work. 'No data yet' means no run captured memory for this model.",
+    "ram_footprint": "Whole-system RAM high-water observed during the run. For LM Studio and endpoint runners this can include other loaded models, macOS cache, and runtime overhead; it is not per-model RSS. 'No data yet' means no run captured memory.",
     "models": "Count of real benchmarked model records imported into the dashboard. Demo fixture rows are hidden from real result views.",
     "runs": "Count of real benchmark runs imported into the dashboard.",
     "average_score": "Mean Total Score across the models you've benchmarked.",
@@ -51,6 +51,8 @@ METRIC_LABEL_KEYS = {
     "tokens / sec": "throughput",
     "tok/s": "throughput",
     "ram footprint": "ram_footprint",
+    "system ram high-water": "ram_footprint",
+    "system ram gb": "ram_footprint",
     "models": "models",
     "runs": "runs",
     "average score": "average_score",
@@ -60,6 +62,7 @@ METRIC_LABEL_KEYS = {
     "decision": "decision",
 }
 RESULT_TABLE_HEADER_TIPS = {
+    "System RAM GB": "ram_footprint",
     "Score": "score",
     "Status": "status",
     "Decision": "decision",
@@ -124,7 +127,10 @@ def _stat_card(label, value, icon_name):
 
 
 def _chart_panel(title, chart):
-    return f'<div class="panel chart-panel"><h2>{_metric_label(title)}</h2>{chart}</div>'
+    return (
+        f'<div class="panel chart-panel"><h2>{_metric_label(title)}</h2>'
+        f'<div class="chart-scroll">{chart}</div></div>'
+    )
 
 
 def _model_chart_label(row):

@@ -139,10 +139,12 @@ buttons without writing private local inventory into the tracked radar candidate
 registry. The overlay currently covers indexed/loaded LM Studio CLI rows,
 Ollama models from `ollama list`, MLX-LM models already present in the local
 Hugging Face cache, and GGUF files found in LM Studio model folders when
-`llama-cli` is available. Embedding and bundled internal LM Studio rows are
-skipped. Filesystem-only LM Studio rows remain non-runnable unless they can be
-run directly through llama.cpp. Auto-registration does not create scores,
-decisions, downloads, or installs.
+`llama-cli` is available. LM Studio embedding rows are registered with their
+exact local model IDs but remain non-runnable from the local LLM benchmark
+because they need a separate embedding/retrieval eval lane. Other bundled
+internal LM Studio rows are skipped. Filesystem-only LM Studio rows remain
+non-runnable unless they can be run directly through llama.cpp. Auto-registration
+does not create scores, decisions, downloads, or installs.
 
 LM Studio inventory distinguishes:
 

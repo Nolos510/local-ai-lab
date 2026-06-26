@@ -13,6 +13,8 @@ PADDING_X = 16
 PADDING_Y = 16
 PLACEHOLDER_HEIGHT = 72
 BAR_GRADIENT_ID = "chart-bar-gradient"
+AVG_LABEL_CHAR_WIDTH = 8.8
+LABEL_PADDING = 24
 
 
 def _coerce_value(value: object) -> float | None:
@@ -34,6 +36,13 @@ def _format_value(value: float, value_format: str) -> str:
         return str(value)
 
 
+def _resolved_label_width(labels: list[str], minimum_width: int) -> int:
+    if not labels:
+        return minimum_width
+    natural_width = int(max(len(label) for label in labels) * AVG_LABEL_CHAR_WIDTH) + LABEL_PADDING
+    return max(minimum_width, natural_width)
+
+
 def placeholder(message: str = "No data yet") -> str:
     """Return a small, valid SVG placeholder."""
 
@@ -51,6 +60,7 @@ def horizontal_bars(
     *,
     value_format: str = "{:.1f}",
     max_value: float | None = None,
+    label_width: int = LABEL_WIDTH,
     title: str = "Chart",
     empty_message: str = "No data yet",
 ) -> str:
@@ -67,15 +77,17 @@ def horizontal_bars(
     if not values or scale_max <= 0:
         return placeholder(empty_message)
 
+    labels = [str(label) for label, _ in values]
+    resolved_label_width = _resolved_label_width(labels, label_width)
     row_height = BAR_HEIGHT + BAR_GAP
     height = PADDING_Y * 2 + len(values) * row_height - BAR_GAP
-    width = PADDING_X * 2 + LABEL_WIDTH + PLOT_WIDTH + VALUE_WIDTH
-    plot_x = PADDING_X + LABEL_WIDTH
+    width = PADDING_X * 2 + resolved_label_width + PLOT_WIDTH + VALUE_WIDTH
+    plot_x = PADDING_X + resolved_label_width
     value_x = plot_x + PLOT_WIDTH + 16
     parts = [
         (
             f'<svg class="chart chart-bars" viewBox="0 0 {width} {height}" '
-            f'role="img" aria-label="{escape(title)}">'
+            f'style="min-width:{width}px" role="img" aria-label="{escape(title)}">'
         ),
         "<defs>"
         f'<linearGradient id="{BAR_GRADIENT_ID}" x1="0%" y1="0%" x2="100%" y2="0%">'
@@ -87,9 +99,11 @@ def horizontal_bars(
 
     for index, (label, value) in enumerate(values):
         y = PADDING_Y + index * row_height
-        bar_width = round((value / scale_max) * PLOT_WIDTH, 2)
+        bar_width = round((min(value, scale_max) / scale_max) * PLOT_WIDTH, 2)
+        label_text = str(label)
         parts.append(
-            f'<text class="chart-label" x="{PADDING_X}" y="{y + 15}">{escape(str(label))}</text>'
+            f'<text class="chart-label" x="{PADDING_X}" y="{y + 15}">'
+            f"{escape(label_text)}</text>"
         )
         parts.append(
             f'<line class="chart-gridline" x1="{plot_x}" y1="{y + BAR_HEIGHT}" '

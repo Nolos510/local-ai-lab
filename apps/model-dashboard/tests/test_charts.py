@@ -33,6 +33,18 @@ class ChartTests(unittest.TestCase):
 
         self.assertEqual([300.0, 600.0], widths)
 
+    def test_explicit_max_value_scales_against_full_range(self):
+        html = charts.horizontal_bars([("Score", 72.5)], max_value=100)
+        widths = [float(match) for match in re.findall(r'<rect[^>]+ width="([^"]+)"', html)]
+
+        self.assertEqual([435.0], widths)
+
+    def test_values_above_explicit_max_are_clamped_to_plot_width(self):
+        html = charts.horizontal_bars([("Too high", 725)], max_value=100)
+        widths = [float(match) for match in re.findall(r'<rect[^>]+ width="([^"]+)"', html)]
+
+        self.assertEqual([600.0], widths)
+
     def test_zero_or_empty_data_returns_placeholder(self):
         empty = charts.horizontal_bars([])
         zero = charts.horizontal_bars([("Zero", 0)])
@@ -50,6 +62,21 @@ class ChartTests(unittest.TestCase):
 
         self.assertIn("Qwen &lt;Coder&gt; &amp; Friends", html)
         self.assertNotIn("Qwen <Coder>", html)
+
+    def test_long_labels_expand_chart_width_without_truncation(self):
+        label = "Dolphin-Mistral-24B-Venice-Edition (LM Studio CLI)"
+        html = charts.horizontal_bars([(label, 28.1)])
+
+        self.assertIn(f">{label}</text>", html)
+        self.assertNotIn("...", html)
+        self.assertIn('style="min-width:', html)
+
+    def test_custom_label_width_moves_plot_start(self):
+        html = charts.horizontal_bars([("Long local model label", 1)], label_width=420)
+
+        self.assertIn('viewBox="0 0 1162 54"', html)
+        self.assertIn('style="min-width:1162px"', html)
+        self.assertIn('x1="436"', html)
 
 
 if __name__ == "__main__":

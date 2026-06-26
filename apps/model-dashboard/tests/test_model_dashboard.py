@@ -563,6 +563,10 @@ class ModelDashboardQaTests(unittest.TestCase):
                 self.assertIn(f'title="{tip}"', html)
                 self.assertIn(f'aria-label="Metric explanation: {tip}"', html)
 
+        self.assertIn("System RAM High-Water", html)
+        self.assertIn("System RAM GB", html)
+        self.assertIn("not per-model RSS", html)
+
         score_tip = escape(components.METRIC_EXPLANATIONS["score"], quote=True)
         self.assertGreaterEqual(html.count(f'data-tip="{score_tip}"'), 2)
         self.assertIn('class="metric-tip"', html)
@@ -1171,6 +1175,8 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("No tokens/sec values imported yet", html)
             self.assertIn("No TTFT values imported yet", html)
             self.assertIn("No total latency values imported yet", html)
+            self.assertIn('width="420.0"', html)
+            self.assertNotIn('width="4200.0"', html)
 
     def test_compare_page_renders_perf_values_when_imported(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1601,6 +1607,16 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn(".chart-panel h2 { font-size: 18px; margin: 0 0 8px; }", html)
         self.assertIn(".chart-panel .chart-empty { max-height: 44px; }", html)
 
+    def test_chart_panels_wrap_svg_in_horizontal_scroll_region(self):
+        chart = '<svg class="chart chart-bars" style="min-width:1200px"></svg>'
+        panel_html = server._chart_panel("Throughput", chart)
+        layout_html = server._layout("Fixture", "/compare", panel_html)
+
+        self.assertIn('<div class="chart-scroll">', panel_html)
+        self.assertIn(chart, panel_html)
+        self.assertIn(".chart-preview, .chart-scroll {", layout_html)
+        self.assertIn(".chart-preview .chart, .chart-scroll .chart {", layout_html)
+
     def test_model_runs_table_keeps_date_column_readable(self):
         html = server._layout("Fixture", "/runs", "<p>Body</p>")
 
@@ -1753,8 +1769,9 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn('id="inventory-models-table-scroll"', html)
         self.assertIn('data-scroll-target="inventory-models-table-scroll"', html)
         self.assertIn(".inventory-models-table {", html)
-        self.assertIn("min-width: 1760px", html)
+        self.assertIn("min-width: 1950px", html)
         self.assertIn(".inventory-models-table th:nth-child(5)", html)
+        self.assertIn(".inventory-models-table th:nth-child(8)", html)
         self.assertIn('class="inventory-checks-table"', html)
         self.assertIn('id="inventory-checks-table-scroll"', html)
         self.assertIn('data-scroll-target="inventory-checks-table-scroll"', html)
@@ -1794,6 +1811,84 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("Run Test", html)
         self.assertIn("Detected Models (1 of 2)", html)
         self.assertNotIn("unregistered:latest", html)
+
+    def test_inventory_labels_prior_dashboard_runs_by_candidate_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            untested = {field: "" for field in CANDIDATE_FIELDS}
+            untested.update(
+                {
+                    "candidate_id": "candidate-untested-local",
+                    "model_name": "Untested Local",
+                    "provider_or_org": "local",
+                    "status": "ready_for_eval",
+                    "format_or_runtime": "LM Studio",
+                    "local_runner": "lmstudio-cli",
+                    "local_model_id": "untested-local",
+                    "download_approval": "not_needed_local",
+                    "security_review_status": "local_inventory_reviewed",
+                    "license_review_status": "needs_review",
+                    "provenance_status": "local_inventory",
+                }
+            )
+            write_candidate_registry(registry_path, extra_rows=[untested])
+            result = {
+                "checked_at": "2026-06-25T12:00:00-07:00",
+                "checks": [],
+                "models": [
+                    {
+                        "runtime": "LM Studio",
+                        "model_id": "ready-local-7b",
+                        "display_name": "Ready Local 7B",
+                        "status": "loaded",
+                    },
+                    {
+                        "runtime": "LM Studio",
+                        "model_id": "untested-local",
+                        "display_name": "Untested Local",
+                        "status": "loaded",
+                    },
+                ],
+            }
+
+            with db.connect(db_path) as conn:
+                db.create_schema(conn)
+                conn.execute(
+                    """
+                    INSERT INTO models (id, model_name, provider)
+                    VALUES (1, 'Ready Local 7B', 'local')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO model_runs (id, model_id, date_tested, backend, run_notes)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        1,
+                        1,
+                        "2026-06-25",
+                        "LM Studio CLI",
+                        "benchmark_run_id=ready-local-run | "
+                        "candidate_id=20260603-ready-local | dashboard_run_button=yes",
+                    ),
+                )
+                conn.commit()
+                html = server._inventory(
+                    inventory_result=result,
+                    action_token="fixture-token",
+                    enable_run_tests=True,
+                    registry_path=registry_path,
+                    run_history=server._inventory_run_history(conn),
+                )
+
+        self.assertIn("Tested", html)
+        self.assertIn("ready-local-run", html)
+        self.assertIn("Last: 2026-06-25", html)
+        self.assertIn("No dashboard run yet", html)
+        self.assertIn("candidate-untested-local", html)
 
     def test_inventory_auto_registers_detected_lmstudio_ids_in_local_overlay(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1852,18 +1947,27 @@ class ModelDashboardQaTests(unittest.TestCase):
                 overlay_path,
             )
 
-            self.assertEqual(summary["registered"], 1)
-            self.assertEqual(summary["skipped"], 2)
+            self.assertEqual(summary["registered"], 2)
+            self.assertEqual(summary["skipped"], 1)
             with overlay_path.open(newline="", encoding="utf-8") as handle:
                 rows = list(csv.DictReader(handle))
-            self.assertEqual(len(rows), 1)
-            row = rows[0]
+            self.assertEqual(len(rows), 2)
+            row = next(
+                item for item in rows if item["local_model_id"] == detected_model["model_id"]
+            )
             self.assertTrue(row["candidate_id"].startswith("local-lm-studio-"))
             self.assertEqual(row["status"], "ready_for_eval")
             self.assertEqual(row["local_runner"], "lmstudio-cli")
             self.assertEqual(row["local_model_id"], detected_model["model_id"])
             self.assertEqual(row["download_approval"], "not_needed_local")
             self.assertNotIn("/Users/example", overlay_path.read_text(encoding="utf-8"))
+            embedding_row = next(
+                item for item in rows if item["local_model_id"] == "nomic-embed-text-v1.5"
+            )
+            self.assertEqual(embedding_row["status"], "needs_more_info")
+            self.assertEqual(embedding_row["local_runner"], "")
+            self.assertEqual(embedding_row["format_or_runtime"], "LM Studio embedding")
+            self.assertIn("embedding retrieval eval", embedding_row["proposed_eval"])
 
             candidates = components._load_radar_candidates(
                 registry_path,
@@ -1874,6 +1978,160 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertEqual(match_state, "registered")
             self.assertEqual(candidate["local_model_id"], detected_model["model_id"])
             self.assertTrue(server._inventory_run_allowed(detected_model, candidate))
+
+    def test_inventory_exact_local_id_match_wins_over_soft_ambiguous_candidates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "candidates.csv"
+            overlay_path = tmp_path / "local_inventory_candidates.csv"
+            fieldnames = CANDIDATE_FIELDS
+            qwen_model_id = "qwen3.6-27b-obliterated"
+            qwen_source = (
+                "OBLITERATUS/Qwen3.6-27B-OBLITERATED/"
+                "qwen3.6-27b-obliteratus-Q4_K_M.gguf"
+            )
+            durable_rows = []
+            for candidate_id in ("soft-qwen-a", "soft-qwen-b"):
+                row = {field: "" for field in fieldnames}
+                row.update(
+                    {
+                        "candidate_id": candidate_id,
+                        "model_name": qwen_model_id,
+                        "provider_or_org": "local note",
+                        "status": "watchlist",
+                    }
+                )
+                durable_rows.append(row)
+            with registry_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(durable_rows)
+            overlay_row = {field: "" for field in fieldnames}
+            overlay_row.update(
+                {
+                    "candidate_id": "local-lm-studio-qwen3-6-27b-obliterated",
+                    "model_name": "Qwen3.6 27B Obliteratus",
+                    "provider_or_org": "local LM Studio inventory",
+                    "status": "ready_for_eval",
+                    "local_runner": "lmstudio-cli",
+                    "local_model_id": qwen_model_id,
+                }
+            )
+            with overlay_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerow(overlay_row)
+            candidates = components._load_radar_candidates(
+                registry_path,
+                local_inventory_path=overlay_path,
+            )
+
+            match_state, candidate = server._match_inventory_model(
+                {
+                    "runtime": "LM Studio",
+                    "model_id": qwen_model_id,
+                    "display_name": "Qwen3.6 27B Obliteratus",
+                    "status": "loaded",
+                    "source_path": qwen_source,
+                },
+                candidates,
+            )
+
+        self.assertEqual(match_state, "registered")
+        self.assertEqual(candidate["candidate_id"], "local-lm-studio-qwen3-6-27b-obliterated")
+        self.assertEqual(candidate["local_model_id"], qwen_model_id)
+
+    def test_inventory_auto_registers_when_soft_matches_are_ambiguous(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "candidates.csv"
+            overlay_path = tmp_path / "local_inventory_candidates.csv"
+            fieldnames = CANDIDATE_FIELDS
+            qwen_model_id = "qwen3.6-27b-obliterated"
+            durable_rows = []
+            for candidate_id in ("soft-qwen-a", "soft-qwen-b"):
+                row = {field: "" for field in fieldnames}
+                row.update(
+                    {
+                        "candidate_id": candidate_id,
+                        "model_name": qwen_model_id,
+                        "provider_or_org": "local note",
+                        "status": "watchlist",
+                    }
+                )
+                durable_rows.append(row)
+            with registry_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(durable_rows)
+
+            summary = server._sync_local_inventory_candidates(
+                {
+                    "checked_at": "2026-06-25T12:00:00-07:00",
+                    "checks": [],
+                    "models": [
+                        {
+                            "runtime": "LM Studio",
+                            "model_id": qwen_model_id,
+                            "display_name": "Qwen3.6 27B Obliteratus",
+                            "status": "loaded",
+                            "model_type": "llm",
+                        }
+                    ],
+                },
+                registry_path,
+                overlay_path,
+            )
+            with overlay_path.open(newline="", encoding="utf-8") as handle:
+                rows = list(csv.DictReader(handle))
+
+        self.assertEqual(summary["registered"], 1)
+        self.assertEqual(summary["updated_existing"], 0)
+        self.assertEqual(rows[0]["local_model_id"], qwen_model_id)
+        self.assertEqual(rows[0]["local_runner"], "lmstudio-cli")
+
+    def test_inventory_registers_embedding_rows_without_llm_run_button(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "missing-candidates.csv"
+            overlay_path = tmp_path / "local_inventory_candidates.csv"
+            embedding_model = {
+                "runtime": "LM Studio",
+                "model_id": "text-embedding-nomic-embed-text-v1.5",
+                "display_name": "Nomic Embed Text v1.5",
+                "status": "indexed",
+                "source_path": (
+                    "nomic-ai/nomic-embed-text-v1.5-GGUF/"
+                    "nomic-embed-text-v1.5.Q4_K_M.gguf"
+                ),
+                "local_path": (
+                    "/Users/example/.lmstudio/.internal/bundled-models/nomic-ai/"
+                    "nomic-embed-text-v1.5-GGUF/nomic-embed-text-v1.5.Q4_K_M.gguf"
+                ),
+                "model_type": "embedding",
+                "removal_blocked_reason": "Bundled LM Studio internal model.",
+            }
+            result = {
+                "checked_at": "2026-06-25T12:00:00-07:00",
+                "checks": [],
+                "models": [embedding_model],
+            }
+
+            server._sync_local_inventory_candidates(result, registry_path, overlay_path)
+            html = server._inventory(
+                inventory_result=result,
+                action_token="fixture-token",
+                enable_run_tests=True,
+                registry_path=registry_path,
+                local_inventory_path=overlay_path,
+            )
+
+        self.assertIn("Nomic Embed Text v1.5", html)
+        self.assertIn("local-lm-studio-text-embedding-nomic-embed-text-v1-5", html)
+        self.assertIn("not applicable", html)
+        self.assertIn("Embedding model; no LLM run expected", html)
+        self.assertIn("Embedding model; LLM benchmark not applicable", html)
+        self.assertNotIn('action="/actions/run-test"', html)
 
     def test_inventory_auto_registration_can_overlay_existing_candidate(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2199,6 +2457,32 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertEqual(models[0]["status"], "filesystem_only")
         self.assertEqual(models[0]["source_path"], "publisher/Filesystem-Only-Model")
         self.assertEqual(models[0]["local_path"], str(filesystem_only))
+
+    def test_inventory_filesystem_scan_dedupes_loaded_lmstudio_weight_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            loaded = root / "publisher" / "Loaded-Model"
+            absolute_loaded = root / "publisher" / "Absolute-Loaded-Model"
+            filesystem_only = root / "publisher" / "Filesystem-Only-Model"
+            loaded.mkdir(parents=True)
+            absolute_loaded.mkdir(parents=True)
+            filesystem_only.mkdir(parents=True)
+            (loaded / "model.Q4_K_M.gguf").write_text("weights", encoding="utf-8")
+            (absolute_loaded / "model.Q4_K_M.gguf").write_text("weights", encoding="utf-8")
+            (filesystem_only / "model.Q4_K_M.gguf").write_text("weights", encoding="utf-8")
+
+            models = server._scan_lmstudio_filesystem_models(
+                root,
+                indexed_paths=[
+                    "publisher/Loaded-Model/model.Q4_K_M.gguf",
+                    str(absolute_loaded / "model.Q4_K_M.gguf"),
+                ],
+            )
+
+        self.assertEqual(
+            [model["model_id"] for model in models],
+            ["publisher/Filesystem-Only-Model"],
+        )
 
     def test_inventory_parsers_handle_malformed_or_crash_output(self):
         self.assertEqual(server._parse_lmstudio_inventory("not json"), [])

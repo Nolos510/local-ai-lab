@@ -38,7 +38,7 @@ def _overview(conn, query=None):
     ram_chart = charts.horizontal_bars(
         [(_model_chart_label(row), row["ram_usage_gb"]) for row in filtered_summaries],
         value_format="{:.1f} GB",
-        title="Model RAM usage",
+        title="System RAM high-water",
     )
     rows = []
     for row in filtered_summaries:
@@ -84,7 +84,7 @@ def _overview(conn, query=None):
         kept_stat=_stat_card("Kept Installed", keep_count, "ti-checkup-list"),
         score_chart=_chart_panel("Total Score", score_chart),
         throughput_chart=_chart_panel("Throughput", throughput_chart),
-        ram_chart=_chart_panel("RAM Footprint", ram_chart),
+        ram_chart=_chart_panel("System RAM High-Water", ram_chart),
         filters=_overview_filters(summaries, filters),
         filtered_count=(
             f" ({len(filtered_summaries)} of {len(summaries)})" if any(filters.values()) else ""
@@ -96,7 +96,7 @@ def _overview(conn, query=None):
                 "Params B",
                 "Backend",
                 "Tok/s",
-                "RAM GB",
+                "System RAM GB",
                 "Score",
                 "Status",
                 "Label",

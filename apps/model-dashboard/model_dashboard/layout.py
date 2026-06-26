@@ -225,7 +225,7 @@ def _layout(title, current_path, body):
       min-width: 0;
       overflow-wrap: anywhere;
     }}
-    .chart-preview {{
+    .chart-preview, .chart-scroll {{
       min-height: 78px;
       overflow-x: auto;
       padding-bottom: 2px;
@@ -235,8 +235,11 @@ def _layout(title, current_path, body):
       width: 100%;
       height: auto;
     }}
-    .chart-preview .chart {{
+    .chart-preview .chart, .chart-scroll .chart {{
       min-width: 860px;
+    }}
+    .chart-panel-large .chart-preview .chart {{
+      min-width: 1162px;
     }}
     .chart-dialog {{
       width: min(980px, calc(100vw - 48px));
@@ -259,7 +262,7 @@ def _layout(title, current_path, body):
       overflow-x: auto;
     }}
     .chart-dialog .chart {{
-      min-width: 900px;
+      min-width: 1162px;
     }}
     .chart-bar {{
       fill: url(#chart-bar-gradient);
@@ -786,7 +789,7 @@ def _layout(title, current_path, body):
     }}
     .inventory-models-table {{
       table-layout: fixed;
-      min-width: 1760px;
+      min-width: 1950px;
     }}
     .inventory-models-table th:nth-child(1),
     .inventory-models-table td:nth-child(1) {{
@@ -818,6 +821,10 @@ def _layout(title, current_path, body):
     }}
     .inventory-models-table th:nth-child(7),
     .inventory-models-table td:nth-child(7) {{
+      width: 190px;
+    }}
+    .inventory-models-table th:nth-child(8),
+    .inventory-models-table td:nth-child(8) {{
       width: 240px;
     }}
     .inventory-checks-table {{

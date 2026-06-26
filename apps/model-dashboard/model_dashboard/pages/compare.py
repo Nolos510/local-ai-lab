@@ -25,13 +25,13 @@ def _compare(conn, query=None):
     score_chart = charts.horizontal_bars(
         [(_model_chart_label(row), row["total_score"]) for row in filtered_scores],
         value_format="{:.2f}",
-        max_value=10,
+        max_value=100,
         title="Compare total scores",
     )
     dimension_chart = charts.horizontal_bars(
         _average_metric_items(filtered_scores),
         value_format="{:.1f}",
-        max_value=10,
+        max_value=100,
         title="Average score dimensions",
     )
     tokens_chart = _performance_chart(

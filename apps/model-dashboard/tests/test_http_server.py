@@ -28,6 +28,12 @@ def write_table(path, table_name, rows):
 
 class DashboardHttpHandlerTests(unittest.TestCase):
     def start_server(self, db_path, **handler_kwargs):
+        if "local_inventory_registry_path" not in handler_kwargs:
+            overlay_dir = tempfile.TemporaryDirectory()
+            self.addCleanup(overlay_dir.cleanup)
+            handler_kwargs["local_inventory_registry_path"] = (
+                Path(overlay_dir.name) / "local_inventory_candidates.csv"
+            )
         handler = server.make_handler(db_path, **handler_kwargs)
         try:
             httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
@@ -144,15 +150,13 @@ class DashboardHttpHandlerTests(unittest.TestCase):
             }
             overlay_path = tmp_path / "local_inventory_candidates.csv"
 
-            with (
-                mock.patch.object(server, "_refresh_inventory", return_value=result),
-                mock.patch.object(server, "CANDIDATE_REGISTRY_PATH", tmp_path / "missing.csv"),
-                mock.patch.object(server, "LOCAL_INVENTORY_REGISTRY_PATH", overlay_path),
-            ):
+            with mock.patch.object(server, "_refresh_inventory", return_value=result):
                 base_url = self.start_server(
                     db_path,
                     action_token="test-token",
                     enable_run_tests=True,
+                    candidate_registry_path=tmp_path / "missing.csv",
+                    local_inventory_registry_path=overlay_path,
                 )
                 with self.post(
                     f"{base_url}/actions/refresh-inventory",

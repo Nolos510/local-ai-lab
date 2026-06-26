@@ -9,10 +9,11 @@ import importlib.util
 import json
 import shutil
 import sys
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 
-from .. import removal
+from .. import db, removal
 from ..components import *
 from ..filters import *
 from ..layout import _layout
@@ -110,10 +111,78 @@ def _inventory_action_cell(
         actions.append(_run_test_control(candidate, enable_run_tests, action_token))
     elif model.get("status") == "filesystem_only":
         actions.append('<span class="empty">Filesystem-only; index/load in LM Studio first</span>')
+    elif str(model.get("model_type") or "").lower() == "embedding":
+        actions.append('<span class="empty">Embedding model; LLM benchmark not applicable</span>')
+    elif candidate:
+        actions.append('<span class="empty">Registered; no runnable local benchmark runner</span>')
     else:
         actions.append('<span class="empty">Register exact local model id first</span>')
     actions.append(_remove_model_control(model, enable_delete_actions, action_token))
     return '<div class="cell-stack">{}</div>'.format("".join(actions))
+
+
+def _run_note_value(notes, key):
+    prefix = f"{key}="
+    for part in str(notes or "").split("|"):
+        part = part.strip()
+        if part.startswith(prefix):
+            return part.split("=", 1)[1].strip()
+    return ""
+
+
+def _inventory_run_history(conn):
+    history = {}
+    if conn is None:
+        return history
+    for row in _real_rows(db.list_runs(conn)):
+        candidate_id = _run_note_value(row["run_notes"], "candidate_id")
+        if not candidate_id or candidate_id in history:
+            continue
+        history[candidate_id] = {
+            "date_tested": row["date_tested"] or "",
+            "benchmark_run_id": _run_note_value(row["run_notes"], "benchmark_run_id"),
+            "score_status": row["score_status"] or "",
+            "final_label": row["final_label"] or "",
+        }
+    return history
+
+
+def _inventory_test_status_cell(model, candidate, run_history=None):
+    if not candidate:
+        return '<span class="empty">Register first</span>'
+    if str(model.get("model_type") or "").lower() == "embedding":
+        return """
+        <div class="cell-stack">
+          <span class="pill">not applicable</span>
+          <span class="empty">Embedding model; no LLM run expected</span>
+        </div>
+        """
+    if not _candidate_run_ready(candidate):
+        return """
+        <div class="cell-stack">
+          <span class="pill">not runnable</span>
+          <span class="empty">No local benchmark runner</span>
+        </div>
+        """
+    run = (run_history or {}).get(candidate.get("candidate_id", ""))
+    if not run:
+        return """
+        <div class="cell-stack">
+          <span class="pill">not tested</span>
+          <span class="empty">No dashboard run yet</span>
+        </div>
+        """
+
+    details = []
+    if run.get("date_tested"):
+        details.append(f'<span class="empty">Last: {_text(run["date_tested"])}</span>')
+    if run.get("benchmark_run_id"):
+        details.append(_artifact_link(run["benchmark_run_id"]))
+    if run.get("score_status"):
+        details.append(f'<span class="empty">Score: {_text(run["score_status"])}</span>')
+    return '<div class="cell-stack"><span class="pill">tested</span>{}</div>'.format(
+        "".join(details)
+    )
 
 
 def _lmstudio_cli_path():
@@ -333,7 +402,7 @@ def _inventory_model_auto_registerable(model):
     runtime = model.get("runtime")
     if runtime == "LM Studio":
         if str(model.get("model_type") or "").lower() == "embedding":
-            return False
+            return True
         return not model.get("removal_blocked_reason")
     return runtime in ("Ollama", "MLX-LM", "llama.cpp")
 
@@ -341,6 +410,8 @@ def _inventory_model_auto_registerable(model):
 def _inventory_local_runner(model):
     if model.get("runner_hint"):
         return model["runner_hint"]
+    if str(model.get("model_type") or "").lower() == "embedding":
+        return ""
     if model.get("runtime") == "LM Studio" and model.get("status") in ("indexed", "loaded"):
         return "lmstudio-cli"
     if model.get("runtime") == "Ollama" and model.get("status") == "installed":
@@ -376,7 +447,12 @@ def _local_inventory_candidate_row(model, fieldnames, matched_row=None):
         row["model_name"] = model.get("display_name") or model.get("model_id") or ""
     if not row.get("provider_or_org"):
         row["provider_or_org"] = f"local {model.get('runtime', 'runtime')} inventory"
-    row["format_or_runtime"] = model.get("format_or_runtime") or model.get("runtime", "local")
+    model_type = str(model.get("model_type") or "").lower()
+    row["format_or_runtime"] = (
+        model.get("format_or_runtime")
+        or ("LM Studio embedding" if model_type == "embedding" else "")
+        or model.get("runtime", "local")
+    )
     if runner or generated or row.get("status") in ("", "watchlist", "needs_more_info"):
         row["status"] = "ready_for_eval" if runner else "needs_more_info"
     row["runtime_availability"] = (
@@ -395,7 +471,9 @@ def _local_inventory_candidate_row(model, fieldnames, matched_row=None):
     )
     runner_label = _candidate_runner_label(row)
     row["proposed_eval"] = (
-        f"Run evals/local-llm-benchmark/SPEC.md through {runner_label} after explicit local-run approval."
+        "Do not run the local LLM benchmark; use an embedding retrieval eval lane when available."
+        if model_type == "embedding"
+        else f"Run evals/local-llm-benchmark/SPEC.md through {runner_label} after explicit local-run approval."
         if runner
         else "Install or enable the matching local runner before running the benchmark."
     )
@@ -437,10 +515,7 @@ def _sync_local_inventory_candidates(
         soft_matches = [
             row for row in durable_rows if _candidate_matches_inventory_without_exact_id(row, model)
         ]
-        if len(soft_matches) > 1:
-            skipped += 1
-            continue
-        matched = soft_matches[0] if soft_matches else None
+        matched = soft_matches[0] if len(soft_matches) == 1 else None
         if matched:
             updated_existing += 1
         generated_rows.append(_local_inventory_candidate_row(model, fieldnames, matched))
@@ -468,6 +543,32 @@ def _primary_lmstudio_weight_file(model_dir):
     return None
 
 
+def _normalized_lmstudio_indexed_paths(indexed_paths, root=LMSTUDIO_MODELS_ROOT):
+    root = Path(root).expanduser()
+    values = set()
+    for raw_path in indexed_paths:
+        raw = str(raw_path or "").strip()
+        if not raw:
+            continue
+        candidates = [raw]
+        expanded = Path(raw).expanduser()
+        if expanded.is_absolute():
+            with suppress(ValueError):
+                candidates.append(expanded.relative_to(root).as_posix())
+
+        for candidate in candidates:
+            clean = candidate.replace("\\", "/").strip("/")
+            if not clean:
+                continue
+            values.add(clean.lower())
+            parts = [part for part in clean.split("/") if part]
+            parent_parts = parts[:-1]
+            while len(parent_parts) >= 2:
+                values.add("/".join(parent_parts).lower())
+                parent_parts = parent_parts[:-1]
+    return values
+
+
 def _scan_lmstudio_filesystem_models(
     root=LMSTUDIO_MODELS_ROOT,
     indexed_paths=(),
@@ -476,7 +577,7 @@ def _scan_lmstudio_filesystem_models(
     root = Path(root)
     if not root.exists():
         return []
-    indexed = {str(path).strip().lower() for path in indexed_paths if path}
+    indexed = _normalized_lmstudio_indexed_paths(indexed_paths, root)
     models = []
     for publisher_dir in sorted(root.iterdir(), key=lambda item: item.name.lower()):
         if not publisher_dir.is_dir() or publisher_dir.name.startswith("."):
@@ -688,15 +789,23 @@ def _refresh_inventory(timeout=5):
 
 def _match_inventory_model(model, candidates):
     model_ids = {
-        str(model.get("model_id", "")).lower(),
-        _inventory_exact_model_id(model).lower(),
+        value.strip().lower()
+        for value in (str(model.get("model_id", "")), _inventory_exact_model_id(model))
+        if value
     }
+    exact_matches = [
+        row for row in candidates if row.get("local_model_id", "").strip().lower() in model_ids
+    ]
+    if len(exact_matches) == 1:
+        return "registered", exact_matches[0]
+    if len(exact_matches) > 1:
+        return "ambiguous", None
+
     source_path = model.get("source_path", "").lower()
     matches = [
         row
         for row in candidates
-        if row.get("local_model_id", "").lower() in model_ids
-        or row.get("model_name", "").lower() in model_ids
+        if row.get("model_name", "").lower() in model_ids
         or (
             source_path
             and (
@@ -877,6 +986,7 @@ def _inventory(
     enable_refresh=True,
     registry_path=CANDIDATE_REGISTRY_PATH,
     local_inventory_path=None,
+    run_history=None,
 ):
     candidates = _load_radar_candidates(registry_path, local_inventory_path)
     result = inventory_result
@@ -922,6 +1032,7 @@ def _inventory(
                     _pill(model["status"]),
                     _inventory_paths_cell(model),
                     candidate_cell,
+                    _inventory_test_status_cell(model, candidate, run_history),
                     _inventory_action_cell(
                         model,
                         candidate,
@@ -979,6 +1090,7 @@ def _inventory(
                 "Status",
                 "Paths",
                 "Registry match",
+                "Tested",
                 "Action",
             ],
             model_rows,

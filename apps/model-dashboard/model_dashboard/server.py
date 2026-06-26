@@ -49,6 +49,7 @@ from .pages.inventory import (
     _inventory_model_removable,
     _inventory_paths_cell,
     _inventory_run_allowed,
+    _inventory_run_history,
     _lmstudio_cli_path,
     _match_inventory_model,
     _parse_lmstudio_inventory,
@@ -127,7 +128,19 @@ def make_handler(
     run_test_timeout=3600,
     inventory_timeout=5,
     enable_inventory_refresh=True,
+    candidate_registry_path=None,
+    local_inventory_registry_path=None,
+    eval_results_dir=None,
 ):
+    candidate_registry_path = (
+        CANDIDATE_REGISTRY_PATH if candidate_registry_path is None else candidate_registry_path
+    )
+    local_inventory_registry_path = (
+        LOCAL_INVENTORY_REGISTRY_PATH
+        if local_inventory_registry_path is None
+        else local_inventory_registry_path
+    )
+    eval_results_dir = EVAL_RESULTS_DIR if eval_results_dir is None else eval_results_dir
     inventory_cache = {"result": None}
 
     class DashboardHandler(BaseHTTPRequestHandler):
@@ -179,8 +192,8 @@ def make_handler(
                             inventory_cache["result"]["registration"] = (
                                 _sync_local_inventory_candidates(
                                     inventory_cache["result"],
-                                    CANDIDATE_REGISTRY_PATH,
-                                    LOCAL_INVENTORY_REGISTRY_PATH,
+                                    candidate_registry_path,
+                                    local_inventory_registry_path,
                                 )
                             )
                             html = _inventory(
@@ -189,8 +202,9 @@ def make_handler(
                                 enable_run_tests=enable_run_tests,
                                 enable_delete_actions=enable_delete_actions,
                                 enable_refresh=enable_inventory_refresh,
-                                registry_path=CANDIDATE_REGISTRY_PATH,
-                                local_inventory_path=LOCAL_INVENTORY_REGISTRY_PATH,
+                                registry_path=candidate_registry_path,
+                                local_inventory_path=local_inventory_registry_path,
+                                run_history=self._inventory_run_history(),
                             )
                             self.send_response(200)
                     elif parsed.path == "/actions/import-artifact":
@@ -206,7 +220,7 @@ def make_handler(
                             result = _import_artifact(
                                 benchmark_run_id,
                                 database_path,
-                                EVAL_RESULTS_DIR,
+                                eval_results_dir,
                             )
                             html = _import_action_page(result)
                             self.send_response(200)
@@ -243,8 +257,8 @@ def make_handler(
                         candidate_id = _query_value(form, "candidate_id")
                         result = _start_candidate_test(
                             candidate_id,
-                            CANDIDATE_REGISTRY_PATH,
-                            EVAL_RESULTS_DIR,
+                            candidate_registry_path,
+                            eval_results_dir,
                             run_test_timeout,
                             database_path,
                         )
@@ -287,8 +301,9 @@ def make_handler(
                     enable_run_tests=enable_run_tests,
                     enable_delete_actions=enable_delete_actions,
                     enable_refresh=enable_inventory_refresh,
-                    registry_path=CANDIDATE_REGISTRY_PATH,
-                    local_inventory_path=LOCAL_INVENTORY_REGISTRY_PATH,
+                    registry_path=candidate_registry_path,
+                    local_inventory_path=local_inventory_registry_path,
+                    run_history=_inventory_run_history(conn),
                 )
             if path == "/radar":
                 return _radar(conn, query)
@@ -315,6 +330,11 @@ def make_handler(
                 model_id = int(path.rsplit("/", 1)[-1])
                 return _model_detail(conn, model_id)
             return _layout("Not Found", "", "<h2>Page not found</h2>")
+
+        def _inventory_run_history(self):
+            with db.connect(database_path) as conn:
+                db.create_schema(conn)
+                return _inventory_run_history(conn)
 
     return DashboardHandler
 
