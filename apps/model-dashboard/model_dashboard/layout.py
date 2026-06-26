@@ -658,6 +658,21 @@ def _layout(title, current_path, body):
     .inventory-section > .section-heading-row {{
       margin-top: 0;
     }}
+    .runs-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      margin-top: 18px;
+    }}
+    .page-intro + .runs-section {{
+      margin-top: 0;
+    }}
+    .runs-section h2 {{
+      margin-bottom: 0;
+    }}
+    .runs-section > .section-heading-row {{
+      margin-top: 0;
+    }}
     .home-hero {{
       display: grid;
       gap: 16px;

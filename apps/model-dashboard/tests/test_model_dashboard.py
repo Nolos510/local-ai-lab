@@ -1161,6 +1161,13 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("Benchmark runs and side-by-side comparisons.", html)
         self.assertIn("does not download, install, run, or score a model by itself", html)
         self.assertIn("Model Runs are imported local benchmark run records.", html)
+        self.assertIn('class="runs-section"', html)
+        self.assertIn('class="runs-section runs-compare-section"', html)
+        self.assertIn('class="runs-section runs-artifact-section"', html)
+        self.assertIn(".runs-section {", html)
+        self.assertIn(".page-intro + .runs-section {", html)
+        self.assertNotIn('<section class="section">', html)
+        self.assertNotIn('class="muted"', html)
         self.assertIn("Compare Models", html)
         self.assertIn("Open compare filters", html)
         self.assertIn("/artifacts/20260625-raw-fixture", html)
@@ -2073,6 +2080,8 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn(".runs-table th:nth-child(13)", html)
         self.assertIn("white-space: nowrap", html)
         self.assertIn("overflow-wrap: normal", html)
+        self.assertIn(".runs-section {", html)
+        self.assertIn(".runs-section > .section-heading-row {", html)
 
     def test_wide_table_identity_columns_are_sticky(self):
         html = server._layout("Fixture", "/compare", "<p>Body</p>")

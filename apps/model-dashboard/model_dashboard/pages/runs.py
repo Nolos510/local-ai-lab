@@ -92,16 +92,18 @@ def _runs(
       <p>Benchmark runs and side-by-side comparisons. Higher score and throughput are better; lower latency is better when latency fields exist.</p>
       <p class="empty">Benchmark reads local dashboard imports and artifact folders only. It does not download, install, run, or score a model by itself.</p>
     </section>
-    {filters}
-    <h2>Model Runs{filtered_count}</h2>
-    <p class="section-note">Model Runs are imported local benchmark run records. A row may have raw performance fields before reviewed scores or keep/watch decisions exist.</p>
-    {table}
-    <section class="section">
+    <section class="runs-section">
+      <h2>Model Runs{filtered_count}</h2>
+      <p class="section-note">Model Runs are imported local benchmark run records. A row may have raw performance fields before reviewed scores or keep/watch decisions exist.</p>
+      {filters}
+      {table}
+    </section>
+    <section class="runs-section runs-compare-section">
       {compare_section}
     </section>
-    <section class="section">
+    <section class="runs-section runs-artifact-section">
       <h2>Local Artifact Import Queue</h2>
-      <p class="muted">Use this queue for benchmark artifacts already written under <code>data/eval_results</code>. Importing a raw run updates model/run/performance data; labels and stability reports appear only after reviewed score and decision files exist.</p>
+      <p class="section-note">Use this queue for benchmark artifacts already written under <code>data/eval_results</code>. Importing a raw run updates model/run/performance data; labels and stability reports appear only after reviewed score and decision files exist.</p>
       {artifact_table}
     </section>
     """.format(
