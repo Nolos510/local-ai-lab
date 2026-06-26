@@ -547,6 +547,7 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("Do This Next", html)
         self.assertIn("Import benchmark artifacts", html)
         self.assertIn("Top Results", html)
+        self.assertIn('class="panel home-card home-results"', html)
         self.assertIn("Home Result Model", html)
         self.assertIn("This Machine", html)
         self.assertIn("Apple M3 Ultra", html)
@@ -738,6 +739,16 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn(".overview-table {", html)
         self.assertIn("min-width: 1240px", html)
         self.assertIn(".overview-table th:nth-child(1)", html)
+        self.assertIn("html {\n      overflow-x: hidden", html)
+        self.assertIn("font-weight: 400;\n      overflow-x: hidden", html)
+        self.assertIn(".home-columns > .panel {", html)
+        self.assertIn("overflow-x: hidden", html)
+        self.assertIn(".home-results .table-wrap {", html)
+        self.assertIn("contain: paint", html)
+        self.assertIn(".workflow-step:hover,", html)
+        self.assertIn(".workflow-step:focus-visible {", html)
+        self.assertIn(".action-link:hover,", html)
+        self.assertIn(".action-link:focus-visible {", html)
 
     def test_overview_metric_explanations_render_without_external_assets(self):
         with tempfile.TemporaryDirectory() as tmp:

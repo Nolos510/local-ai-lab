@@ -96,6 +96,9 @@ def _layout(title, current_path, body):
       --glow: 0 0 0 1px rgba(139, 123, 255, 0.30), 0 10px 34px rgba(139, 123, 255, 0.22);
     }}
     * {{ box-sizing: border-box; }}
+    html {{
+      overflow-x: hidden;
+    }}
     body {{
       margin: 0;
       background: var(--bg);
@@ -104,6 +107,7 @@ def _layout(title, current_path, body):
       font-size: 15px;
       line-height: 1.5;
       font-weight: 400;
+      overflow-x: hidden;
     }}
     strong {{ font-weight: 500; }}
     header {{
@@ -629,10 +633,23 @@ def _layout(title, current_path, body):
       color: var(--accent-ink);
       font-weight: 600;
       text-decoration: none;
+      transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease;
     }}
     .action-link.secondary {{
       border-color: var(--line);
       background: var(--panel-soft);
+      color: var(--ink);
+    }}
+    .action-link:hover,
+    .action-link:focus-visible {{
+      transform: translateY(-1px);
+      text-decoration: none;
+      box-shadow: var(--glow);
+    }}
+    .action-link.secondary:hover,
+    .action-link.secondary:focus-visible {{
+      border-color: rgba(139, 123, 255, 0.45);
+      background: var(--accent-soft);
       color: var(--ink);
     }}
     .workflow-strip {{
@@ -651,6 +668,14 @@ def _layout(title, current_path, body):
       background: var(--panel);
       text-decoration: none;
       box-shadow: var(--shadow);
+      transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    }}
+    .workflow-step:hover,
+    .workflow-step:focus-visible {{
+      transform: translateY(-1px);
+      border-color: rgba(139, 123, 255, 0.45);
+      background: var(--panel-soft);
+      box-shadow: var(--glow);
     }}
     .workflow-step span {{
       color: var(--muted);
@@ -683,6 +708,17 @@ def _layout(title, current_path, body):
       grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
       gap: 16px;
       align-items: start;
+    }}
+    .home-columns > .panel {{
+      min-width: 0;
+    }}
+    .home-results {{
+      display: grid;
+      gap: 12px;
+      overflow-x: hidden;
+    }}
+    .home-results .table-wrap {{
+      contain: paint;
     }}
     .machine-facts {{
       display: grid;

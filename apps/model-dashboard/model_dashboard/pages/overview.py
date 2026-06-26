@@ -223,7 +223,7 @@ def _overview(
       {kept_stat}
     </section>
     <section class="home-columns">
-      <section>
+      <section class="panel home-card home-results">
         <h2>Top Results</h2>
         {top_results}
       </section>
