@@ -605,6 +605,18 @@ def _layout(title, current_path, body):
       width: 150px;
       font-weight: 500;
     }}
+    .lab-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      margin-top: 18px;
+    }}
+    .grid + .lab-section {{
+      margin-top: 22px;
+    }}
+    .lab-section h2 {{
+      margin-bottom: 0;
+    }}
     .home-hero {{
       display: grid;
       gap: 16px;

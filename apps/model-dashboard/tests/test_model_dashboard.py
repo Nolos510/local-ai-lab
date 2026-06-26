@@ -1639,6 +1639,17 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn(".lab-artifacts-table {", html)
             self.assertIn("min-width: 1560px", html)
             self.assertIn(".lab-artifacts-table th:nth-child(1)", html)
+            self.assertIn('class="lab-section"', html)
+            self.assertNotIn('<section style="margin-top:16px">', html)
+            self.assertIn(".lab-section {", html)
+            self.assertIn(".grid + .lab-section {", html)
+            self.assertIn('id="lab-product-loop-table-scroll"', html)
+            self.assertIn('data-scroll-target="lab-product-loop-table-scroll"', html)
+            self.assertIn('id="lab-ready-queue-table-scroll"', html)
+            self.assertIn('data-scroll-target="lab-ready-queue-table-scroll"', html)
+            self.assertIn('id="lab-artifacts-table-scroll"', html)
+            self.assertIn('data-scroll-target="lab-artifacts-table-scroll"', html)
+            self.assertIn('aria-label="Benchmark artifacts table horizontal scroll controls"', html)
 
     def test_capability_page_renders_empty_hardware_state(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3060,6 +3071,8 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Abliterated / Dolphin Lane", html)
             self.assertIn("Qwen3-8B-Abliterated-GGUF", html)
             self.assertIn("Dolphin3.0-Llama3.1-8B-GGUF", html)
+            self.assertIn('id="lab-specialty-table-scroll"', html)
+            self.assertIn('data-scroll-target="lab-specialty-table-scroll"', html)
             self.assertIn("Abliterated", html)
             self.assertIn("Dolphin", html)
             self.assertIn("Specialty Models", specialty_html)
@@ -3131,6 +3144,8 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("GitHub Project Radar", html)
             self.assertIn("Local Runtime", html)
             self.assertIn("Supports benchmark serving.", html)
+            self.assertIn('id="lab-project-table-scroll"', html)
+            self.assertIn('data-scroll-target="lab-project-table-scroll"', html)
             self.assertIn("/projects", html)
 
 
