@@ -441,6 +441,24 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("TinyCoder Local 1.1B", report)
             self.assertIn("Qwen2.5-Coder 14B Instruct", report)
 
+    def test_reports_page_uses_section_rhythm_and_report_output_contracts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            csv_io.import_fixture_set(db_path, FIXTURE_DIR)
+            with db.connect(db_path) as conn:
+                html = server._reports(conn, db_path)
+
+        self.assertIn('class="panel reports-intro-panel"', html)
+        self.assertNotIn('style="margin-bottom:16px"', html)
+        self.assertIn('class="reports-export-section"', html)
+        self.assertIn('class="report reports-output"', html)
+        self.assertIn("# Local Model Performance Report", html)
+        self.assertIn(".reports-intro-panel {", html)
+        self.assertIn(".reports-export-section {", html)
+        self.assertIn(".reports-export-section > h2 {", html)
+        self.assertIn(".reports-output {", html)
+        self.assertIn("max-width: 100%", html)
+
     def test_overview_hides_fixture_data_by_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "dashboard.sqlite"

@@ -681,6 +681,23 @@ def _layout(title, current_path, body):
       overflow-x: auto;
       white-space: pre-wrap;
     }}
+    .reports-intro-panel {{
+      margin-bottom: 18px;
+    }}
+    .reports-export-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }}
+    .reports-export-section > h2 {{
+      margin: 0;
+    }}
+    .reports-output {{
+      box-sizing: border-box;
+      margin: 0;
+      max-width: 100%;
+      line-height: 1.55;
+    }}
     .command {{
       margin: 0;
       background: var(--code-bg);
