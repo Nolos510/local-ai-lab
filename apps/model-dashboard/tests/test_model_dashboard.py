@@ -2613,6 +2613,94 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertEqual(candidate["candidate_id"], "local-lm-studio-qwen3-6-27b-obliterated")
         self.assertEqual(candidate["local_model_id"], qwen_model_id)
 
+    def test_inventory_local_overlay_wins_duplicate_exact_id_match(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "candidates.csv"
+            overlay_path = tmp_path / "local_inventory_candidates.csv"
+            fieldnames = CANDIDATE_FIELDS
+            qwen_model_id = "qwen3.6-27b-obliterated"
+            durable_row = {field: "" for field in fieldnames}
+            durable_row.update(
+                {
+                    "candidate_id": "stale-qwen-obliteratus",
+                    "model_name": "Qwen3.6 27B Obliteratus",
+                    "provider_or_org": "local note",
+                    "status": "watchlist",
+                    "local_model_id": qwen_model_id,
+                }
+            )
+            with registry_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerow(durable_row)
+            overlay_row = {field: "" for field in fieldnames}
+            overlay_row.update(
+                {
+                    "candidate_id": "local-lm-studio-qwen3-6-27b-obliterated-dc40e2cc",
+                    "model_name": "Qwen3.6 27B Obliteratus",
+                    "provider_or_org": "local LM Studio inventory",
+                    "status": "ready_for_eval",
+                    "local_runner": "lmstudio-cli",
+                    "local_model_id": qwen_model_id,
+                    "download_approval": "not_needed_local",
+                    "provenance_status": "local_inventory",
+                }
+            )
+            with overlay_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerow(overlay_row)
+            candidates = components._load_radar_candidates(
+                registry_path,
+                local_inventory_path=overlay_path,
+            )
+            detected_model = {
+                "runtime": "LM Studio",
+                "model_id": qwen_model_id,
+                "display_name": "Qwen3.6 27B Obliteratus",
+                "status": "loaded",
+                "model_type": "llm",
+            }
+
+            match_state, candidate = server._match_inventory_model(detected_model, candidates)
+
+        self.assertEqual(match_state, "registered")
+        self.assertEqual(
+            candidate["candidate_id"],
+            "local-lm-studio-qwen3-6-27b-obliterated-dc40e2cc",
+        )
+        self.assertTrue(server._inventory_run_allowed(detected_model, candidate))
+
+    def test_inventory_duplicate_exact_id_without_single_winner_stays_ambiguous(self):
+        qwen_model_id = "qwen3.6-27b-obliterated"
+        candidates = []
+        for candidate_id in ("manual-qwen-a", "manual-qwen-b"):
+            row = {field: "" for field in CANDIDATE_FIELDS}
+            row.update(
+                {
+                    "candidate_id": candidate_id,
+                    "model_name": "Qwen3.6 27B Obliteratus",
+                    "status": "watchlist",
+                    "local_model_id": qwen_model_id,
+                }
+            )
+            candidates.append(row)
+
+        match_state, candidate = server._match_inventory_model(
+            {
+                "runtime": "LM Studio",
+                "model_id": qwen_model_id,
+                "display_name": "Qwen3.6 27B Obliteratus",
+                "status": "loaded",
+                "model_type": "llm",
+            },
+            candidates,
+        )
+
+        self.assertEqual(match_state, "ambiguous")
+        self.assertIsNone(candidate)
+
     def test_inventory_auto_registers_when_soft_matches_are_ambiguous(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

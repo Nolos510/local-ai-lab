@@ -788,6 +788,22 @@ def _refresh_inventory(timeout=5):
     }
 
 
+def _preferred_exact_inventory_match(matches):
+    selectors = (
+        lambda row: row.get("candidate_id", "").startswith("local-")
+        and row.get("provenance_status", "").lower() == "local_inventory",
+        lambda row: row.get("candidate_id", "").startswith("local-"),
+        lambda row: row.get("provenance_status", "").lower() == "local_inventory",
+        lambda row: bool(row.get("local_runner"))
+        and row.get("download_approval", "").lower() == "not_needed_local",
+    )
+    for selector in selectors:
+        preferred = [row for row in matches if selector(row)]
+        if len(preferred) == 1:
+            return preferred[0]
+    return None
+
+
 def _match_inventory_model(model, candidates):
     model_ids = {
         value.strip().lower()
@@ -800,6 +816,9 @@ def _match_inventory_model(model, candidates):
     if len(exact_matches) == 1:
         return "registered", exact_matches[0]
     if len(exact_matches) > 1:
+        preferred = _preferred_exact_inventory_match(exact_matches)
+        if preferred:
+            return "registered", preferred
         return "ambiguous", None
 
     source_path = model.get("source_path", "").lower()
