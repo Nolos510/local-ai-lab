@@ -122,23 +122,44 @@ def _top_result_rows(summaries, *, limit=5):
     return rows
 
 
-def _machine_card(hardware_profiles, ready_count, artifact_counts):
+def _machine_card(hardware_profiles, ready_count, artifact_counts, current_hardware_profile=None):
     if hardware_profiles:
         profile = hardware_profiles[-1]
-        chip = profile.get("chip") or profile.get("machine") or "Recorded Mac"
-        memory = f"{profile.get('memory_gb')} GB" if profile.get("memory_gb") else "not recorded"
-        runtimes = profile.get("runtimes_present") or []
-        runtime_text = ", ".join(runtimes) if isinstance(runtimes, list) and runtimes else "not recorded"
+    else:
+        profile = current_hardware_profile or capability.current_hardware_profile()
+    machine = (
+        profile.get("machine_name")
+        or profile.get("machine_model")
+        or profile.get("machine")
+        or "Recorded Mac"
+    )
+    chip = profile.get("chip") or "not recorded"
+    memory = (
+        profile.get("memory_label")
+        or (f"{profile.get('memory_gb')} GB" if profile.get("memory_gb") else "")
+        or "not recorded"
+    )
+    runtimes = profile.get("runtimes_present") or []
+    if hardware_profiles:
+        runtime_text = (
+            ", ".join(runtimes) if isinstance(runtimes, list) and runtimes else "not recorded"
+        )
         captured = profile.get("captured_at") or "capture time not recorded"
     else:
-        chip = "No committed hardware snapshot"
-        memory = "not recorded"
-        runtime_text = "not recorded"
-        captured = "Run uv run ai-lab hardware snapshot to save a local profile."
+        runtime_text = (
+            ", ".join(runtimes)
+            if isinstance(runtimes, list) and runtimes
+            else "not found on PATH"
+        )
+        captured = (
+            profile.get("captured_at")
+            or "Live local read; run uv run ai-lab hardware snapshot to save a profile."
+        )
     return """
     <section class="panel home-card">
       <h2>This Machine</h2>
       <dl class="machine-facts">
+        <div><dt>Machine</dt><dd>{machine}</dd></div>
         <div><dt>Chip</dt><dd>{chip}</dd></div>
         <div><dt>Memory</dt><dd>{memory}</dd></div>
         <div><dt>Runtimes</dt><dd>{runtimes}</dd></div>
@@ -147,6 +168,7 @@ def _machine_card(hardware_profiles, ready_count, artifact_counts):
       </dl>
     </section>
     """.format(
+        machine=_text(machine),
         chip=_text(chip),
         memory=_text(memory),
         runtimes=_text(runtime_text),
@@ -163,6 +185,7 @@ def _overview(
     eval_results_dir=EVAL_RESULTS_DIR,
     hardware_profiles_dir=REPO_ROOT / "docs" / "lab-notes",
     local_inventory_path=LOCAL_INVENTORY_REGISTRY_PATH,
+    current_hardware_profile=None,
 ):
     counts = _real_counts(conn)
     all_summaries = db.list_model_summaries(conn)
@@ -233,7 +256,12 @@ def _overview(
             table_class="overview-table",
             header_tip_keys={**RESULT_TABLE_HEADER_TIPS, "Tok/s": "throughput"},
         ),
-        machine_card=_machine_card(hardware_profiles, ready_count, artifact_counts),
+        machine_card=_machine_card(
+            hardware_profiles,
+            ready_count,
+            artifact_counts,
+            current_hardware_profile=current_hardware_profile,
+        ),
     )
     return _layout("Home", "/", body)
 

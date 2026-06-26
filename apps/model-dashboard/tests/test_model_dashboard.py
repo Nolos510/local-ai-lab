@@ -1,6 +1,7 @@
 import csv
 import json
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -11,7 +12,7 @@ from unittest import mock
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
 
-from model_dashboard import components, csv_io, db, reports, server  # noqa: E402
+from model_dashboard import capability, components, csv_io, db, reports, server  # noqa: E402
 from model_dashboard.scoring import METRIC_FIELDS  # noqa: E402
 
 FIXTURE_DIR = APP_DIR / "fixtures"
@@ -552,6 +553,91 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("256.0 GB", html)
         self.assertIn("lms, ollama", html)
         self.assertIn("Export report", html)
+
+    def test_current_hardware_profile_reads_sanitized_local_facts(self):
+        def fake_runner(command):
+            if command == ["system_profiler", "SPHardwareDataType", "-json"]:
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    stdout=json.dumps(
+                        {
+                            "SPHardwareDataType": [
+                                {
+                                    "machine_name": "Mac Studio",
+                                    "machine_model": "Mac15,14",
+                                    "chip_type": "Apple M3 Ultra",
+                                    "physical_memory": "256 GB",
+                                    "serial_number": "PRIVATE-SERIAL",
+                                    "platform_UUID": "PRIVATE-UUID",
+                                }
+                            ]
+                        }
+                    ),
+                    stderr="",
+                )
+            sysctl_values = {
+                "machdep.cpu.brand_string": "Apple M3 Ultra",
+                "hw.memsize": "274877906944",
+                "hw.model": "Mac15,14",
+            }
+            if command[:2] == ["sysctl", "-n"]:
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    stdout=sysctl_values.get(command[2], ""),
+                    stderr="",
+                )
+            return subprocess.CompletedProcess(command, 1, stdout="", stderr="")
+
+        def fake_resolver(command_name):
+            return f"/private/bin/{command_name}" if command_name in {"lms", "ollama"} else None
+
+        profile = capability.current_hardware_profile(
+            command_runner=fake_runner,
+            command_resolver=fake_resolver,
+        )
+
+        self.assertEqual(profile["machine_name"], "Mac Studio")
+        self.assertEqual(profile["machine_model"], "Mac15,14")
+        self.assertEqual(profile["chip"], "Apple M3 Ultra")
+        self.assertEqual(profile["memory_label"], "256 GB")
+        self.assertEqual(profile["memory_gb"], "256.0")
+        self.assertEqual(profile["runtimes_present"], ["lms", "ollama"])
+        serialized = json.dumps(profile)
+        self.assertNotIn("PRIVATE-SERIAL", serialized)
+        self.assertNotIn("PRIVATE-UUID", serialized)
+        self.assertNotIn("/private/bin", serialized)
+
+    def test_home_machine_card_falls_back_to_current_hardware(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with db.connect(db_path) as conn:
+                html = server._overview(
+                    conn,
+                    registry_path=tmp_path / "missing-candidates.csv",
+                    eval_results_dir=tmp_path / "missing-eval-results",
+                    hardware_profiles_dir=tmp_path / "missing-hardware",
+                    local_inventory_path=tmp_path / "missing-local-inventory.csv",
+                    current_hardware_profile={
+                        "captured_at": "Live local read; not saved.",
+                        "machine_name": "Mac Studio",
+                        "machine_model": "Mac15,14",
+                        "chip": "Apple M3 Ultra",
+                        "memory_label": "256 GB",
+                        "runtimes_present": ["lms", "ollama"],
+                    },
+                )
+
+        self.assertIn("This Machine", html)
+        self.assertIn("Mac Studio", html)
+        self.assertIn("Apple M3 Ultra", html)
+        self.assertIn("256 GB", html)
+        self.assertIn("lms, ollama", html)
+        self.assertIn("Live local read; not saved.", html)
+        self.assertNotIn("No committed hardware snapshot", html)
 
     def test_overview_ranked_models_table_keeps_columns_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
