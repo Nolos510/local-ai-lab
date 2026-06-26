@@ -76,7 +76,7 @@ def generate_markdown_report(db_path, include_demo=False):
                 "",
                 "- Ranked models are imported benchmark results, not installed-model inventory.",
                 "- Radar candidates are possible models to evaluate, not scored models.",
-                "- Installed Models is the source of truth for what the dashboard detects locally.",
+                "- My Models is the source of truth for what the dashboard detects locally.",
                 "- Scores are only valid after raw responses, confirmed scores, "
                 "and decisions exist.",
                 "- Demo rows are examples only and are hidden from this report by default.",

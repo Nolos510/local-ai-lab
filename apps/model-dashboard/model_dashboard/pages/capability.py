@@ -164,7 +164,7 @@ def _capability(
       <h2>Capability Boundary</h2>
       <p>This page reads repo-local CSV, JSON, SQLite, and artifact metadata only. It does not refresh inventory, call runtime CLIs, start local model servers, inspect model folders, run prompts, download models, or expose raw responses.</p>
       <p>Use it as a planning view for three questions: what local hardware/runtime capability is documented, which candidates are ready or blocked before a run, and which benchmark artifacts exist but may still need dashboard import.</p>
-      <p>For results, use Overview, Model Runs, and Compare Models after importing an artifact into the dashboard database.</p>
+      <p>For results, use Home for summary and Benchmark for runs and comparisons after importing an artifact into the dashboard database.</p>
     </section>
     <section>
       <h2>Hardware Profile Examples</h2>

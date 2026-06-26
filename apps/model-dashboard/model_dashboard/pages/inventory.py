@@ -1243,7 +1243,7 @@ def _delete_result_page(result):
       <p><strong>Exit code:</strong> <code>{_text(result.returncode)}</code></p>
       <pre class="command">{_text(_command_lines(result.command))}</pre>
       <pre class="command">{_text(result.stdout)}{_text(result.stderr)}</pre>
-      <p><a href="/inventory">Back to Installed Models</a></p>
+      <p><a href="/inventory">Back to My Models</a></p>
     </section>
     """
     return _layout("Model Removal Result", "/inventory", body)

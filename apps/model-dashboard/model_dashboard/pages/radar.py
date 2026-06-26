@@ -233,7 +233,11 @@ def _radar(
     </section>
     <section>
       <h2>Radar Candidates{filtered_count}</h2>
-      <p class="section-note">This table shows candidate metadata, readiness, source links, and security gates. It is not a benchmark chart or proof that a model is safe, installed, or approved to run.</p>
+      <section class="panel compact-guide" style="margin-bottom:16px">
+        <h3>What this view shows</h3>
+        <p>This table is the local radar intake view: each row is a candidate-only record with source metadata, runtime availability, review notes, and the security/download gates that must clear before any local benchmark run.</p>
+        <p class="empty">Use <strong>Status</strong> to find ready or watchlist candidates, <strong>Availability</strong> to confirm LM Studio/Ollama fit, and <strong>Security gate</strong> to see what still blocks download, install, or execution. Benchmark results appear on Home and Benchmark only after a local artifact is imported.</p>
+      </section>
       {chips}
       {filters}
       {table}

@@ -60,7 +60,7 @@ def _storage(conn, query=None):
     <section class="panel" style="margin-bottom:16px">
       <h2>Storage / Install Status</h2>
       <p>This is a benchmark decision log. It is not an installed-model inventory scanner.</p>
-      <p>Use <a href="/inventory">Installed Models</a> to check local LM Studio and Ollama inventory.</p>
+      <p>Use <a href="/inventory">My Models</a> to check local LM Studio and Ollama inventory.</p>
     </section>
     {filters}
     <h2>Decision Log{filtered_count}</h2>
