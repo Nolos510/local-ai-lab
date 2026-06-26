@@ -324,6 +324,7 @@ def make_handler(
                     registry_path=candidate_registry_path,
                     local_inventory_path=local_inventory_registry_path,
                     run_history=_inventory_run_history(conn),
+                    decisions=db.list_decisions(conn),
                 )
             if path == "/radar":
                 return _radar(

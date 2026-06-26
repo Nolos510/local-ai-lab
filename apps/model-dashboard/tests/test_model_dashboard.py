@@ -2036,11 +2036,72 @@ class ModelDashboardQaTests(unittest.TestCase):
     def test_inventory_renders_manual_refresh_empty_state(self):
         html = server._inventory(action_token="fixture-token")
 
+        self.assertIn("What's installed locally.", html)
+        self.assertIn("Keep / Watch Decisions", html)
         self.assertIn("Installed Models", html)
         self.assertIn('action="/actions/refresh-inventory"', html)
         self.assertIn("Last refresh: not checked yet", html)
         self.assertIn('method="get" action="/inventory"', html)
         self.assertIn("No inventory refresh has run yet.", html)
+        self.assertIn("No keep/watch decisions have been imported yet.", html)
+
+    def test_inventory_merges_keep_watch_decision_log(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with db.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO models (id, model_name, model_family, provider)
+                    VALUES (1, 'Keep Local Model', 'Qwen', 'local')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO models (id, model_name, model_family, provider)
+                    VALUES (2, 'Watch Local Model', 'Mistral', 'local')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO decisions (
+                        id, model_id, decision, keep_installed, best_use_case, weakness,
+                        retest_condition
+                    )
+                    VALUES (
+                        1, 1, 'keep', 1, 'Coding', 'Needs periodic retest',
+                        'New quant'
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO decisions (
+                        id, model_id, decision, keep_installed, best_use_case, weakness,
+                        retest_condition
+                    )
+                    VALUES (
+                        2, 2, 'watchlist', 0, 'Research', 'Needs license review',
+                        'Reviewed source'
+                    )
+                    """
+                )
+                html = server._inventory(
+                    action_token="fixture-token",
+                    decisions=db.list_decisions(conn),
+                )
+
+        self.assertIn("Keep / Watch Decisions", html)
+        self.assertIn("Open decision filters", html)
+        self.assertIn("Keep Local Model", html)
+        self.assertIn("Watch Local Model", html)
+        self.assertIn("Coding", html)
+        self.assertIn("Research", html)
+        self.assertIn('class="storage-decisions-table"', html)
+        self.assertIn('id="inventory-decisions-table-scroll"', html)
+        self.assertIn('data-scroll-target="inventory-decisions-table-scroll"', html)
+        self.assertIn("Keep installed", html)
+        self.assertIn("Watchlist", html)
 
     def test_inventory_tables_use_horizontal_scroll_contracts(self):
         result = {

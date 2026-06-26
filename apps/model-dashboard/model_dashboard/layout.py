@@ -1049,6 +1049,30 @@ def _layout(title, current_path, body):
     .inventory-checks-table td:nth-child(5) {{
       width: 620px;
     }}
+    .storage-decisions-table {{
+      table-layout: fixed;
+      min-width: 1180px;
+    }}
+    .storage-decisions-table th:nth-child(1),
+    .storage-decisions-table td:nth-child(1) {{
+      width: 240px;
+    }}
+    .storage-decisions-table th:nth-child(2),
+    .storage-decisions-table td:nth-child(2),
+    .storage-decisions-table th:nth-child(3),
+    .storage-decisions-table td:nth-child(3) {{
+      width: 130px;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }}
+    .storage-decisions-table th:nth-child(4),
+    .storage-decisions-table td:nth-child(4),
+    .storage-decisions-table th:nth-child(5),
+    .storage-decisions-table td:nth-child(5),
+    .storage-decisions-table th:nth-child(6),
+    .storage-decisions-table td:nth-child(6) {{
+      width: 220px;
+    }}
     .model-detail-results-scroll {{
       width: 100%;
       overflow-x: auto;

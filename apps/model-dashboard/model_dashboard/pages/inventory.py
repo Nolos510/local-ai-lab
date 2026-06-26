@@ -17,6 +17,7 @@ from .. import db, removal
 from ..components import *
 from ..filters import *
 from ..layout import _layout
+from .storage import _storage_decision_table
 
 LMSTUDIO_MODELS_ROOT = Path.home() / ".lmstudio" / "models"
 LMSTUDIO_BUNDLED_MODELS_ROOT = Path.home() / ".lmstudio" / ".internal" / "bundled-models"
@@ -977,6 +978,55 @@ def _inventory_registration_note(result):
     )
 
 
+def _decision_stats(decisions):
+    keep_count = sum(1 for row in decisions if row["keep_installed"])
+    watchlist_count = sum(1 for row in decisions if str(row["decision"]).lower() == "watchlist")
+    retest_count = sum(1 for row in decisions if str(row["decision"]).lower() == "retest")
+    skip_count = sum(1 for row in decisions if str(row["decision"]).lower() == "skip")
+    return {
+        "total": len(decisions),
+        "keep": keep_count,
+        "watchlist": watchlist_count,
+        "retest": retest_count,
+        "skip": skip_count,
+    }
+
+
+def _inventory_decision_section(decisions):
+    stats = _decision_stats(decisions)
+    return """
+    <section style="margin-top:16px">
+      <div class="section-heading-row">
+        <div>
+          <h2>Keep / Watch Decisions</h2>
+          <p class="section-note">Use this log after a benchmark run to decide whether each local model should stay installed, remain on watchlist, be retested, or be skipped.</p>
+        </div>
+        <a class="action-link secondary" href="/storage">Open decision filters</a>
+      </div>
+      <section class="grid grid-compact">
+        {decisions_stat}
+        {keep_stat}
+        {watchlist_stat}
+        {retest_stat}
+        {skip_stat}
+      </section>
+      {table}
+    </section>
+    """.format(
+        decisions_stat=_stat_card("Decisions", stats["total"], "ti-checkup-list"),
+        keep_stat=_stat_card("Keep installed", stats["keep"], "ti-circle-check"),
+        watchlist_stat=_stat_card("Watchlist", stats["watchlist"], "ti-eye"),
+        retest_stat=_stat_card("Retest", stats["retest"], "ti-player-play"),
+        skip_stat=_stat_card("Skip", stats["skip"], "ti-circle"),
+        table=_storage_decision_table(
+            decisions,
+            empty_message="No keep/watch decisions have been imported yet.",
+            scroll_id="inventory-decisions-table-scroll",
+            scroll_label="Keep/watch decisions table",
+        ),
+    )
+
+
 def _inventory(
     query=None,
     inventory_result=None,
@@ -987,8 +1037,10 @@ def _inventory(
     registry_path=CANDIDATE_REGISTRY_PATH,
     local_inventory_path=None,
     run_history=None,
+    decisions=None,
 ):
     candidates = _load_radar_candidates(registry_path, local_inventory_path)
+    decision_rows = _real_rows(decisions or [])
     result = inventory_result
     filters = _inventory_filter_values(query or {})
     check_rows = []
@@ -1044,6 +1096,10 @@ def _inventory(
             )
 
     body = """
+    <section class="panel page-intro">
+      <p>What's installed locally. Run a benchmark, then keep, watchlist, retest, or skip each model.</p>
+      <p class="empty">My Models reads local LM Studio and Ollama inventory on demand and keeps decisions tied to imported local benchmark evidence.</p>
+    </section>
     <section class="panel" style="margin-bottom:16px">
       <h2>Installed Models</h2>
       <p>This page checks local runtime inventory on demand. It does not download, install, benchmark, score, or import models.</p>
@@ -1062,6 +1118,7 @@ def _inventory(
       {filters}
       {models}
     </section>
+    {decisions_section}
     <section style="margin-top:16px">
       <h2>Runtime Checks</h2>
       {checks}
@@ -1082,6 +1139,7 @@ def _inventory(
             else ""
         ),
         filters=_inventory_filters(entries, filters),
+        decisions_section=_inventory_decision_section(decision_rows),
         models=_table(
             [
                 "Runtime",

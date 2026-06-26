@@ -13,13 +13,10 @@ from ..layout import _layout
 from ..reports import generate_markdown_report
 from ..scoring import METRIC_FIELDS
 
-def _storage(conn, query=None):
+
+def _storage_decision_rows(decisions):
     rows = []
-    all_decisions = db.list_decisions(conn)
-    decisions = _real_rows(all_decisions)
-    filters = _storage_filter_values(query or {})
-    filtered_decisions = _filter_storage_decisions(decisions, filters)
-    for row in filtered_decisions:
+    for row in decisions:
         rows.append(
             [
                 '<a href="/models/{id}">{name}</a>'.format(
@@ -32,6 +29,32 @@ def _storage(conn, query=None):
                 _text(row["retest_condition"]),
             ]
         )
+    return rows
+
+
+def _storage_decision_table(
+    decisions,
+    empty_message="No real storage/install decisions match these filters.",
+    table_class="storage-decisions-table",
+    scroll_id="storage-decisions-table-scroll",
+    scroll_label="Decision log table",
+):
+    return _table(
+        ["Model", "Decision", "Keep installed", "Best use case", "Weakness", "Retest"],
+        _storage_decision_rows(decisions),
+        empty_message=empty_message,
+        table_class=table_class,
+        scroll_controls=True,
+        scroll_id=scroll_id,
+        scroll_label=scroll_label,
+    )
+
+
+def _storage(conn, query=None):
+    all_decisions = db.list_decisions(conn)
+    decisions = _real_rows(all_decisions)
+    filters = _storage_filter_values(query or {})
+    filtered_decisions = _filter_storage_decisions(decisions, filters)
     body = """
     {notice}
     <section class="panel" style="margin-bottom:16px">
@@ -48,12 +71,8 @@ def _storage(conn, query=None):
         filtered_count=(
             f" ({len(filtered_decisions)} of {len(decisions)})" if any(filters.values()) else ""
         ),
-        table=_table(
-            ["Model", "Decision", "Keep installed", "Best use case", "Weakness", "Retest"],
-            rows,
-            empty_message="No real storage/install decisions match these filters.",
-        ),
+        table=_storage_decision_table(filtered_decisions),
     )
     return _layout("Storage / Install Status", "/storage", body)
 
-__all__ = ('_storage',)
+__all__ = ('_storage', '_storage_decision_rows', '_storage_decision_table')
