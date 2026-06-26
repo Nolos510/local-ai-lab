@@ -1221,6 +1221,7 @@ class ModelDashboardQaTests(unittest.TestCase):
 
             self.assertIn("Unsafe Source Model", html)
             self.assertNotIn('href="javascript:alert(1)"', html)
+            self.assertIn("No keep/watch decision recorded yet.", html)
 
     def test_model_detail_tables_use_expandable_column_layouts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1290,6 +1291,10 @@ class ModelDashboardQaTests(unittest.TestCase):
 
             self.assertIn('class="model-detail-runs-table"', html)
             self.assertIn('class="model-detail-decisions-table"', html)
+            self.assertIn('class="split model-detail-header"', html)
+            self.assertIn('class="panel model-detail-card"', html)
+            self.assertIn('class="panel model-detail-card model-detail-read-card"', html)
+            self.assertIn('class="model-detail-results-shell"', html)
             self.assertIn('class="model-detail-results-scroll"', html)
             self.assertIn('class="model-detail-section"', html)
             self.assertIn('class="model-detail-results-toolbar"', html)
@@ -1303,6 +1308,9 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("ti-chevron-right", html)
             self.assertNotIn(">Left</button>", html)
             self.assertNotIn(">Right</button>", html)
+            self.assertIn(".model-detail-header {", html)
+            self.assertIn(".model-detail-card {", html)
+            self.assertIn(".model-detail-results-shell {", html)
             self.assertIn(".model-detail-results-scroll {", html)
             self.assertIn(".model-detail-results-toolbar {", html)
             self.assertIn("overscroll-behavior-x: contain", html)
@@ -1312,6 +1320,7 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("min-width: 1320px", html)
             self.assertIn("white-space: nowrap", html)
             self.assertIn("target.scrollBy", html)
+            self.assertIn(".model-detail-section h2 {", html)
 
     def test_project_repo_url_rejects_unsafe_scheme(self):
         with tempfile.TemporaryDirectory() as tmp:

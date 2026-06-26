@@ -1189,6 +1189,23 @@ def _layout(title, current_path, body):
     .storage-decisions-table td:nth-child(6) {{
       width: 220px;
     }}
+    .model-detail-header {{
+      margin-bottom: 18px;
+    }}
+    .model-detail-card {{
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }}
+    .model-detail-card h2,
+    .model-detail-card p {{
+      margin: 0;
+    }}
+    .model-detail-results-shell {{
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }}
     .model-detail-results-scroll {{
       width: 100%;
       overflow-x: auto;
@@ -1201,7 +1218,6 @@ def _layout(title, current_path, body):
       display: flex;
       justify-content: flex-end;
       gap: 8px;
-      margin: 16px 0 8px;
     }}
     .model-detail-results-toolbar button {{
       min-height: 34px;
@@ -1210,10 +1226,15 @@ def _layout(title, current_path, body):
       color: var(--ink);
     }}
     .model-detail-section {{
+      display: grid;
+      gap: 12px;
       min-width: 1320px;
     }}
+    .model-detail-section h2 {{
+      margin-bottom: 0;
+    }}
     .model-detail-section + .model-detail-section {{
-      margin-top: 16px;
+      margin-top: 18px;
     }}
     .model-detail-results-scroll .table-wrap {{
       overflow-x: visible;
