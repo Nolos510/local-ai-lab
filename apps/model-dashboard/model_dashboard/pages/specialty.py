@@ -34,7 +34,7 @@ def _specialty(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
             model_name = f'<a href="/models/{model_id}">{model_name}</a>'
         rows.append(
             [
-                '<div class="cell-stack"><div>{name}</div><code>{id}</code></div>'.format(
+                '<div class="cell-stack radar-candidate-identity"><div class="radar-candidate-name">{name}</div><code>{id}</code></div>'.format(
                     name=model_name,
                     id=_text(row.get("candidate_id")),
                 ),
@@ -59,21 +59,23 @@ def _specialty(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
         )
 
     body = """
-    <section class="grid">
+    <section class="grid specialty-stats-grid">
       {total_stat}
       {ready_stat}
       {watchlist_stat}
       {security_stat}
     </section>
-    <section class="panel" style="margin-bottom:16px">
+    <section class="panel specialty-intro-panel">
       <h2>Abliterated / Dolphin Models</h2>
       <p>This tab collects specialty radar candidates for refusal-boundary and Dolphin-style model testing. They remain candidates until local evidence, scores, and decisions exist.</p>
       <p>Low-refusal or uncensored claims are not safety approval. Download and runtime approval stay blocked until the security gate is reviewed.</p>
       <p>The same rows remain searchable in <a href="/radar?q=abliterated">Radar Candidates</a>.</p>
     </section>
-    {filters}
-    <h2>Specialty Candidates{filtered_count}</h2>
-    {table}
+    <section class="specialty-candidates-section">
+      {filters}
+      <h2>Specialty Candidates{filtered_count}</h2>
+      {table}
+    </section>
     """.format(
         total_stat=_stat_card("Specialty candidates", len(candidates), "ti-sparkles"),
         ready_stat=_stat_card("Ready for eval", ready_count, "ti-list-check"),
@@ -95,7 +97,7 @@ def _specialty(conn, query=None, registry_path=CANDIDATE_REGISTRY_PATH):
             ],
             rows,
             empty_message="No abliterated or Dolphin candidates match these filters.",
-            table_class="radar-table",
+            table_class="specialty-table",
             scroll_controls=True,
             scroll_id="specialty-candidates-table-scroll",
             scroll_label="Specialty candidates table",

@@ -469,6 +469,29 @@ def _layout(title, current_path, body):
       display: block;
       max-width: 100%;
     }}
+    .specialty-stats-grid {{
+      margin-bottom: 18px;
+    }}
+    .specialty-intro-panel {{
+      display: grid;
+      gap: 8px;
+      margin-bottom: 18px;
+    }}
+    .specialty-intro-panel h2,
+    .specialty-intro-panel p {{
+      margin: 0;
+    }}
+    .specialty-candidates-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }}
+    .specialty-candidates-section > h2 {{
+      margin: 0;
+    }}
+    .specialty-candidates-section .filters {{
+      margin-bottom: 0;
+    }}
     .field label {{
       display: block;
       color: var(--muted);
@@ -1017,6 +1040,8 @@ def _layout(title, current_path, body):
     .compare-table td:nth-child(1),
     .radar-table th:nth-child(1),
     .radar-table td:nth-child(1),
+    .specialty-table th:nth-child(1),
+    .specialty-table td:nth-child(1),
     .project-table th:nth-child(1),
     .project-table td:nth-child(1) {{
       position: sticky;
@@ -1028,6 +1053,7 @@ def _layout(title, current_path, body):
     .runs-table th:nth-child(2),
     .compare-table th:nth-child(1),
     .radar-table th:nth-child(1),
+    .specialty-table th:nth-child(1),
     .project-table th:nth-child(1) {{
       z-index: 4;
       background: #181a29;
@@ -1421,6 +1447,38 @@ def _layout(title, current_path, body):
     .radar-table th:nth-child(8),
     .radar-table td:nth-child(8) {{
       width: 178px;
+    }}
+    .specialty-table {{
+      table-layout: fixed;
+      min-width: 1540px;
+    }}
+    .specialty-table th:nth-child(1),
+    .specialty-table td:nth-child(1) {{
+      width: 260px;
+    }}
+    .specialty-table th:nth-child(2),
+    .specialty-table td:nth-child(2) {{
+      width: 130px;
+    }}
+    .specialty-table th:nth-child(3),
+    .specialty-table td:nth-child(3) {{
+      width: 240px;
+    }}
+    .specialty-table th:nth-child(4),
+    .specialty-table td:nth-child(4) {{
+      width: 250px;
+    }}
+    .specialty-table th:nth-child(5),
+    .specialty-table td:nth-child(5) {{
+      width: 280px;
+    }}
+    .specialty-table th:nth-child(6),
+    .specialty-table td:nth-child(6) {{
+      width: 220px;
+    }}
+    .specialty-table th:nth-child(7),
+    .specialty-table td:nth-child(7) {{
+      width: 160px;
     }}
     .project-table {{
       min-width: 980px;

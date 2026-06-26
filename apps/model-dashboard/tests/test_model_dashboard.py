@@ -3176,6 +3176,54 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Dolphin3.0-Llama3.1-8B-GGUF", security_html)
             self.assertNotIn("Qwen3-8B-Abliterated-GGUF", security_html)
 
+    def test_specialty_uses_section_rhythm_and_wide_table_contracts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(
+                registry_path,
+                extra_rows=[
+                    {
+                        "candidate_id": "20260605-dolphin3-llama31-8b-gguf",
+                        "model_name": "Dolphin3.0-Llama3.1-8B-GGUF",
+                        "model_family": "Dolphin",
+                        "provider_or_org": "Cognitive Computations",
+                        "status": "ready_for_eval",
+                        "format_or_runtime": "GGUF through LM Studio or llama.cpp",
+                        "source_packet_path": "automations/ai-lab-radar/inputs/dolphin.md",
+                        "report_path": "automations/ai-lab-radar/reports/dolphin.md",
+                        "why_interesting": "Local Dolphin baseline for assistant testing.",
+                        "risk_notes": "License and low-refusal behavior need review.",
+                        "proposed_eval": "Run local benchmark with safety notes.",
+                        "security_review_status": "needs_review",
+                        "download_approval": "not_approved",
+                        "license_review_status": "needs_review",
+                        "provenance_status": "source_metadata_only",
+                        "security_notes": "Synthetic Dolphin candidate needs security review.",
+                        "isolation_notes": "Use local runtime only after approval.",
+                    },
+                ],
+            )
+
+            with db.connect(db_path) as conn:
+                html = server._specialty(conn, registry_path=registry_path)
+
+        self.assertIn('class="grid specialty-stats-grid"', html)
+        self.assertIn('class="panel specialty-intro-panel"', html)
+        self.assertIn('class="specialty-candidates-section"', html)
+        self.assertIn('class="cell-stack radar-candidate-identity"', html)
+        self.assertIn('class="radar-candidate-name"', html)
+        self.assertIn('class="specialty-table"', html)
+        self.assertNotIn('class="panel" style="margin-bottom:16px"', html)
+        self.assertIn(".specialty-intro-panel {", html)
+        self.assertIn(".specialty-candidates-section {", html)
+        self.assertIn(".specialty-table {", html)
+        self.assertIn("min-width: 1540px", html)
+        self.assertIn(".specialty-table th:nth-child(1)", html)
+        self.assertIn("width: 260px", html)
+
     def test_projects_filters_project_registry_by_category(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
