@@ -1680,6 +1680,11 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("capability-chart-grid", html)
             self.assertIn('data-chart-dialog="capability-chart-tokens"', html)
             self.assertIn('<dialog class="chart-dialog" id="capability-chart-tokens"', html)
+            self.assertIn('class="panel capability-section"', html)
+            self.assertIn('class="capability-section"', html)
+            self.assertNotIn('<section style="margin-top:16px">', html)
+            self.assertIn(".capability-section {", html)
+            self.assertIn(".grid + .capability-section {", html)
 
     def test_capability_page_renders_candidate_and_artifact_counts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1751,6 +1756,15 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn('class="capability-ready-table"', html)
             self.assertIn(".capability-ready-table {", html)
             self.assertIn("min-width: 1280px", html)
+            self.assertIn('id="capability-hardware-table-scroll"', html)
+            self.assertIn('data-scroll-target="capability-hardware-table-scroll"', html)
+            self.assertIn('id="capability-status-table-scroll"', html)
+            self.assertIn('data-scroll-target="capability-status-table-scroll"', html)
+            self.assertIn('id="capability-ready-table-scroll"', html)
+            self.assertIn('data-scroll-target="capability-ready-table-scroll"', html)
+            self.assertIn('id="capability-artifacts-table-scroll"', html)
+            self.assertIn('data-scroll-target="capability-artifacts-table-scroll"', html)
+            self.assertIn('aria-label="Candidate readiness table horizontal scroll controls"', html)
             self.assertIn(".stat-metrics {", html)
 
     def test_capability_page_renders_perf_values_when_imported(self):
@@ -1844,6 +1858,8 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn('class="capability-quant-table"', html)
             self.assertIn(".capability-quant-table {", html)
             self.assertIn("min-width: 1520px", html)
+            self.assertIn('id="capability-quant-table-scroll"', html)
+            self.assertIn('data-scroll-target="capability-quant-table-scroll"', html)
             self.assertNotIn("<script src=", html)
 
     def test_capability_page_renders_missing_quant_advice_empty_state(self):

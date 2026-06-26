@@ -617,6 +617,18 @@ def _layout(title, current_path, body):
     .lab-section h2 {{
       margin-bottom: 0;
     }}
+    .capability-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      margin-top: 18px;
+    }}
+    .grid + .capability-section {{
+      margin-top: 22px;
+    }}
+    .capability-section h2 {{
+      margin-bottom: 0;
+    }}
     .home-hero {{
       display: grid;
       gap: 16px;
