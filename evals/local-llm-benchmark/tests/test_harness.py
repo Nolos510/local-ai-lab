@@ -21,6 +21,8 @@ FAKE_VM_STAT = "\n".join(
         "Pages speculative: 0.",
         "Pages wired down: 524288.",
         "Pages occupied by compressor: 0.",
+        "Swapins: 12.",
+        "Swapouts: 34.",
     ]
 )
 sys.path.insert(0, str(APP_DIR))
@@ -172,6 +174,14 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertTrue((run_dir / "metadata.json").exists())
             self.assertTrue((run_dir / "raw_responses.jsonl").exists())
             self.assertTrue((run_dir / "response-template.jsonl").exists())
+            self.assertTrue((run_dir / "runtime-metrics.json").exists())
+            runtime_metrics = json.loads(
+                (run_dir / "runtime-metrics.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(runtime_metrics["prompt_count"], 0)
+            self.assertEqual(runtime_metrics["memory"]["vm_stat_used_gb"], 10.0)
+            self.assertEqual(runtime_metrics["memory"]["vm_stat_swapins"], 12)
+            self.assertEqual(runtime_metrics["memory"]["vm_stat_swapouts"], 34)
 
             template_lines = (
                 (run_dir / "response-template.jsonl").read_text(encoding="utf-8").splitlines()
@@ -241,7 +251,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             )
             self.assertRegex(raw_records[0]["prompt_text_sha256"], r"^[0-9a-f]{64}$")
 
-            scores_path = Path(tmp) / "scores.json"
+            scores_path = run_dir / "scores.json"
             scores = {
                 "scores": {
                     "instruction_following": 80,
@@ -260,7 +270,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             }
             scores_path.write_text(json.dumps(scores), encoding="utf-8")
 
-            decision_path = Path(tmp) / "decision.json"
+            decision_path = run_dir / "decision.json"
             decision_path.write_text(
                 json.dumps(
                     {
@@ -317,6 +327,14 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertEqual(summaries[0]["model_name"], "Fixture Model")
             self.assertEqual(summaries[0]["final_label"], "WATCHLIST")
 
+            self.run_harness("render-report", "--run-dir", str(run_dir))
+            report_text = (run_dir / "benchmark-report.md").read_text(encoding="utf-8")
+            self.assertIn("Raw response records: 1", report_text)
+            self.assertIn("Runtime Metrics", report_text)
+            self.assertIn("Raw response SHA256", report_text)
+            self.assertIn("`instruction_following`: 80", report_text)
+            self.assertIn("`model_runs.csv`: 1", report_text)
+
     def test_run_local_captures_all_prompts_and_rejects_non_loopback_endpoint(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_id = "20260605-fixture-local-runner"
@@ -364,6 +382,14 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertGreater(metadata["run"]["tokens_per_sec"], 0)
             self.assertEqual(metadata["run"]["ram_usage_gb"], 10.0)
             self.assertIsNone(metadata["run"]["ttft_seconds"])
+            runtime_metrics = json.loads(
+                (run_dir / "runtime-metrics.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(runtime_metrics["prompt_count"], 12)
+            self.assertEqual(runtime_metrics["error_count"], 0)
+            self.assertEqual(runtime_metrics["memory"]["observed_ram_high_water_gb"], 10.0)
+            self.assertEqual(runtime_metrics["memory"]["vm_stat_used_gb"], 10.0)
+            self.assertEqual(runtime_metrics["memory"]["vm_stat_swapins"], 12)
 
             self.run_harness(
                 "export-dashboard",
@@ -379,6 +405,7 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertIn("total_latency_seconds", run_rows[0])
             self.assertNotEqual(run_rows[0]["total_latency_seconds"], "")
             self.assertEqual(run_rows[0]["ram_usage_gb"], "10.0")
+            self.assertIn("runtime_metrics=", run_rows[0]["run_notes"])
 
             failed = self.run_harness_raw(
                 "run-local",

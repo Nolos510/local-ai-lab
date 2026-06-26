@@ -21,6 +21,48 @@ The benchmark harness should measure local AI systems as systems, not just model
 - MLX-LM
 - vllm-metal later
 
+## Artifact-Level Runtime Metrics
+
+Benchmark artifacts now include `runtime-metrics.json` in addition to the stable
+dashboard CSVs. Keep exporting `ram_usage_gb` to `model_runs.csv`, but place
+richer local operational detail in the artifact and report:
+
+- raw prompt count and error count;
+- latency min/max/sum;
+- input/output token totals;
+- observed RAM high-water GB;
+- macOS `vm_stat` used-memory and swap counters when available.
+
+Missing values stay `null`. Do not infer memory pressure, swap behavior, token
+counts, or TTFT from model size or source claims.
+
+## Metadata-Only Large Model Queue
+
+The 256 GB Mac Studio can plan larger local tests, but queue entries remain
+metadata until a concrete local artifact clears review. Do not download, install,
+or run a model from this planning list.
+
+Suggested queue bands:
+
+- 24B class: Dolphin/Mistral specialty candidates and other already-indexed
+  LM Studio models with exact local IDs.
+- 30B class: Qwen3 A3B variants, including separate vanilla versus abliterated
+  candidates only when the exact local runtime ID matches the registry row.
+- 70B class: high-value GGUF/MLX candidates only after source, license, checksum,
+  quantization, storage, and runtime path review.
+- Specialty models: abliterated/Dolphin/uncensored candidates require extra
+  safety notes, refusal-behavior notes, and non-daily-driver risk labeling before
+  any keep decision.
+
+Required queue metadata before benchmark approval:
+
+- candidate ID and model name;
+- source packet/report paths;
+- security review path and approval state;
+- exact local runner and model ID/path;
+- runtime availability evidence from LM Studio, Ollama, MLX-LM, or llama.cpp;
+- planned benchmark run ID and reason to evaluate.
+
 ## Metadata-Only Lab Loop Smoke
 
 This smoke path verifies the local AI Lab OS operating surface without executing
@@ -52,6 +94,6 @@ exact local model id, runner, run id, and explicit approval flag.
 ## TODO
 
 - [ ] Define benchmark manifest format.
-- [ ] Add local run recorder.
-- [ ] Add report templates under `reports/benchmarks`.
+- [x] Add local run recorder.
+- [x] Add artifact-level runtime metrics and sanitized benchmark report renderer.
 - [ ] Add plots after the first stable benchmark data exists.

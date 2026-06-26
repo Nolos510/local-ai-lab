@@ -21,6 +21,11 @@ Supported runner values:
 Every live run is a separate operator-approved action. Implementation and test
 loops use fake subprocesses or fake endpoints only.
 
+The approval gate covers all current runner lanes: `openai-compatible`,
+`lmstudio-cli`, `ollama`, `mlx-lm`, and `llama-cpp`. A command that lacks
+`--i-approve-local-run` must refuse before shelling out to local runtimes or
+posting to a local endpoint.
+
 ## Preflight
 
 1. Inspect the candidate row:
@@ -133,6 +138,12 @@ tokens/sec cleanly:
 sampling plus subprocess RSS sampling through `ps` where applicable. Treat it as
 a local operational measurement, not a universal model-size claim.
 
+`runtime-metrics.json` keeps artifact-level operational detail that does not
+belong in the stable dashboard CSV schema yet: raw prompt count, error count,
+latency min/max/sum, token totals, observed RAM high-water, `vm_stat` used
+memory, and `vm_stat` swap counters when available. Missing fields stay `null`.
+Do not infer memory pressure, swap, or TTFT from model size or total latency.
+
 `ttft_seconds` stays empty unless a future streaming runner measures time to
 first token directly. Do not infer TTFT from total latency.
 
@@ -144,7 +155,9 @@ Each run writes:
 data/eval_results/<run_id>/
   metadata.json
   raw_responses.jsonl
+  runtime-metrics.json
   evidence.md
+  benchmark-report.md
   dashboard-import/
     models.csv
     model_runs.csv
@@ -155,6 +168,16 @@ data/eval_results/<run_id>/
 Raw responses remain local benchmark evidence. Do not paste private raw output
 into public notes. Draft local-judge scores must remain draft until human
 review confirms scores and decisions.
+
+Render a sanitized benchmark report after capture/export:
+
+```bash
+python3 evals/local-llm-benchmark/harness.py render-report \
+  --run-dir data/eval_results/<run_id>
+```
+
+The report includes counts, hashes, metrics, scores, decisions, and dashboard
+CSV row counts only.
 
 ## Import And Review
 

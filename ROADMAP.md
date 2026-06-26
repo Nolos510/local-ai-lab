@@ -85,12 +85,14 @@
 - [ ] Benchmark Ollama, MLX-LM, LM Studio, and llama.cpp where practical.
 - [x] Track imported TTFT, tokens/sec, and total latency in dashboard compare and
   capability charts.
-- [ ] Track memory pressure and swap behavior for approved local benchmark runs.
-- [ ] Add benchmark report templates and plotting utilities.
-- [ ] Publish reproducible benchmark methodology.
-- [ ] Expand the model registry for large 24B, 30B, 70B-class, and specialty
-  abliterated/Dolphin candidates that fit the 256 GB RAM environment.
-- [ ] Add an evaluation harness for RAG answers and citations.
+- [x] Track memory pressure and swap behavior for approved local benchmark runs.
+- [x] Add benchmark report templates and a sanitized report renderer.
+- [ ] Add benchmark plotting utilities after more stable multi-run data exists.
+- [x] Publish reproducible benchmark methodology.
+- [x] Expand metadata-only registry planning for large 24B, 30B, 70B-class,
+  and specialty abliterated/Dolphin candidates that fit the 256 GB RAM
+  environment.
+- [x] Add an evaluation harness for RAG answers and citations.
 - [x] Add a second unique model benchmark after security and exact local
   runtime-id approval.
 

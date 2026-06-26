@@ -339,8 +339,13 @@ def _max_memory_gb(*values):
 
 
 def _parse_vm_stat_gb(text):
+    return _parse_vm_stat_metrics(text).get("used_gb")
+
+
+def _parse_vm_stat_metrics(text):
+    metrics = {"used_gb": None, "swapins": None, "swapouts": None}
     if not text:
-        return None
+        return metrics
     page_size = 4096
     header = re.search(r"page size of ([0-9]+) bytes", text, flags=re.IGNORECASE)
     if header:
@@ -362,15 +367,22 @@ def _parse_vm_stat_gb(text):
             "pages occupied by compressor",
         )
     )
+    metrics["swapins"] = pages.get("swapins")
+    metrics["swapouts"] = pages.get("swapouts")
     if used_page_count <= 0:
-        return None
-    return round((used_page_count * page_size) / BYTES_PER_GIB, 3)
+        return metrics
+    metrics["used_gb"] = round((used_page_count * page_size) / BYTES_PER_GIB, 3)
+    return metrics
 
 
 def _vm_stat_memory_gb():
+    return _vm_stat_metrics().get("used_gb")
+
+
+def _vm_stat_metrics():
     fixture = os.environ.get(VM_STAT_FIXTURE_ENV)
     if fixture:
-        return _parse_vm_stat_gb(fixture)
+        return _parse_vm_stat_metrics(fixture)
     try:
         result = subprocess.run(
             ["vm_stat"],
@@ -380,10 +392,10 @@ def _vm_stat_memory_gb():
             timeout=2.0,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return None
+        return {"used_gb": None, "swapins": None, "swapouts": None}
     if result.returncode != 0:
-        return None
-    return _parse_vm_stat_gb(result.stdout)
+        return {"used_gb": None, "swapins": None, "swapouts": None}
+    return _parse_vm_stat_metrics(result.stdout)
 
 
 def _process_rss_gb(pid):
@@ -781,6 +793,7 @@ def _metadata_from_args(args, prompt_set, rubric, run_dir):
             "raw_responses": _display_path(run_dir / "raw_responses.jsonl"),
             "response_template": _display_path(run_dir / "response-template.jsonl"),
             "evidence": _display_path(run_dir / "evidence.md"),
+            "runtime_metrics": _display_path(run_dir / "runtime-metrics.json"),
             "dashboard_import": _display_path(run_dir / "dashboard-import"),
         },
         "dashboard_ids": {
@@ -898,6 +911,7 @@ def _manual_run_notes(metadata):
         "prompt_set_id={}".format(metadata["prompt_set_id"]),
         "rubric_version={}".format(metadata["rubric_version"]),
         "raw_artifact={}".format(metadata["artifact_paths"]["raw_responses"]),
+        "runtime_metrics={}".format(metadata["artifact_paths"]["runtime_metrics"]),
     ]
     existing = metadata["run"].get("run_notes")
     if existing:
@@ -952,6 +966,63 @@ def _apply_run_perf_summary(metadata, records):
 def _write_metadata_with_perf(run_dir, metadata, records):
     _apply_run_perf_summary(metadata, records)
     _write_json(Path(run_dir) / "metadata.json", metadata)
+    _write_json(Path(run_dir) / "runtime-metrics.json", _runtime_metrics(metadata, records))
+
+
+def _runtime_metrics(metadata, records):
+    latencies_ms = [
+        float(record.get("latency_ms"))
+        for record in records
+        if record.get("latency_ms") not in (None, "")
+    ]
+    input_tokens = [
+        int(record.get("input_tokens"))
+        for record in records
+        if record.get("input_tokens") not in (None, "")
+    ]
+    output_tokens = [
+        int(record.get("output_tokens"))
+        for record in records
+        if record.get("output_tokens") not in (None, "")
+    ]
+    ram_values = [
+        float(record.get("ram_usage_gb"))
+        for record in records
+        if record.get("ram_usage_gb") not in (None, "")
+    ]
+    vm_stat = _vm_stat_metrics()
+    missing = []
+    for field in ("tokens_per_sec", "ttft_seconds", "total_latency_seconds", "ram_usage_gb"):
+        if metadata["run"].get(field) in (None, ""):
+            missing.append(field)
+    return {
+        "generated_at": _utc_now(),
+        "benchmark_run_id": metadata["benchmark_run_id"],
+        "runner": metadata["run"].get("backend"),
+        "prompt_count": len(records),
+        "error_count": sum(1 for record in records if record.get("error")),
+        "total_latency_seconds": metadata["run"].get("total_latency_seconds"),
+        "latency_ms": {
+            "min": min(latencies_ms) if latencies_ms else None,
+            "max": max(latencies_ms) if latencies_ms else None,
+            "sum": sum(latencies_ms) if latencies_ms else None,
+        },
+        "tokens": {
+            "input_total": sum(input_tokens) if input_tokens else None,
+            "output_total": sum(output_tokens) if output_tokens else None,
+            "tokens_per_sec": metadata["run"].get("tokens_per_sec"),
+            "ttft_seconds": metadata["run"].get("ttft_seconds"),
+        },
+        "memory": {
+            "observed_ram_high_water_gb": max(ram_values) if ram_values else None,
+            "dashboard_ram_usage_gb": metadata["run"].get("ram_usage_gb"),
+            "vm_stat_used_gb": vm_stat.get("used_gb"),
+            "vm_stat_swapins": vm_stat.get("swapins"),
+            "vm_stat_swapouts": vm_stat.get("swapouts"),
+            "source": "vm_stat and subprocess ps when available",
+        },
+        "missing_metrics": missing,
+    }
 
 
 def _validate_score(value, field):
@@ -1035,6 +1106,141 @@ def write_dashboard_csvs(run_dir, metadata, rubric, scores_path=None, decision_p
     return output_dir
 
 
+def _read_json_if_exists(path):
+    path = Path(path)
+    if not path.exists():
+        return None
+    return _read_json(path)
+
+
+def _sha256_file(path):
+    path = Path(path)
+    if not path.exists():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _csv_row_count(path):
+    path = Path(path)
+    if not path.exists():
+        return 0
+    with path.open(newline="", encoding="utf-8") as handle:
+        return sum(1 for _ in csv.DictReader(handle))
+
+
+def _report_value(value):
+    if value in (None, ""):
+        return "not captured"
+    return str(value)
+
+
+def render_benchmark_report(run_dir, out=None):
+    run_dir = Path(run_dir).resolve()
+    metadata = _read_json(run_dir / "metadata.json")
+    runtime_metrics = _read_json_if_exists(run_dir / "runtime-metrics.json") or {}
+    scores = _read_json_if_exists(run_dir / "scores.json")
+    decision = _read_json_if_exists(run_dir / "decision.json")
+    raw_path = run_dir / "raw_responses.jsonl"
+    raw_records = _load_jsonl(raw_path) if raw_path.exists() else []
+    dashboard_dir = run_dir / "dashboard-import"
+    csv_counts = {
+        table_name: _csv_row_count(dashboard_dir / f"{table_name}.csv")
+        for table_name in IMPORT_ORDER
+    }
+    score_values = scores.get("scores", scores) if scores else {}
+    score_lines = []
+    if scores:
+        for field in _load_rubric()["metric_fields"]:
+            score_lines.append(f"- `{field}`: {_report_value(score_values.get(field))}")
+        score_lines.extend(
+            [
+                f"- `total_score`: {_report_value(scores.get('total_score'))}",
+                f"- `final_label`: {_report_value(scores.get('final_label'))}",
+                f"- `score_status`: {_report_value(scores.get('score_status', 'confirmed'))}",
+            ]
+        )
+    else:
+        score_lines.append("- No confirmed `scores.json` found.")
+
+    memory = runtime_metrics.get("memory", {})
+    tokens = runtime_metrics.get("tokens", {})
+    latency = runtime_metrics.get("latency_ms", {})
+    lines = [
+        "# Benchmark Report",
+        "",
+        f"Benchmark run: `{metadata['benchmark_run_id']}`",
+        f"Model: `{metadata['model']['model_name']}`",
+        f"Backend: `{metadata['run']['backend']}`",
+        "",
+        "## Source Artifacts",
+        "",
+        f"- Metadata: `{run_dir / 'metadata.json'}`",
+        f"- Raw responses: `{raw_path}`",
+        f"- Runtime metrics: `{run_dir / 'runtime-metrics.json'}`",
+        f"- Dashboard import: `{dashboard_dir}`",
+        f"- Raw response SHA256: `{_report_value(_sha256_file(raw_path))}`",
+        "",
+        "## Raw Response Summary",
+        "",
+        f"- Raw response records: {len(raw_records)}",
+        f"- Error records: {sum(1 for record in raw_records if record.get('error'))}",
+        "",
+        "## Runtime Metrics",
+        "",
+        f"- Total latency seconds: {_report_value(runtime_metrics.get('total_latency_seconds'))}",
+        f"- Latency min ms: {_report_value(latency.get('min'))}",
+        f"- Latency max ms: {_report_value(latency.get('max'))}",
+        f"- Output tokens total: {_report_value(tokens.get('output_total'))}",
+        f"- Tokens/sec: {_report_value(tokens.get('tokens_per_sec'))}",
+        f"- Time to first token seconds: {_report_value(tokens.get('ttft_seconds'))}",
+        "- Observed RAM high-water GB: {}".format(
+            _report_value(memory.get("observed_ram_high_water_gb"))
+        ),
+        f"- Dashboard RAM usage GB: {_report_value(memory.get('dashboard_ram_usage_gb'))}",
+        f"- vm_stat used GB: {_report_value(memory.get('vm_stat_used_gb'))}",
+        f"- vm_stat swapins: {_report_value(memory.get('vm_stat_swapins'))}",
+        f"- vm_stat swapouts: {_report_value(memory.get('vm_stat_swapouts'))}",
+        "",
+        "## Scores",
+        "",
+        *score_lines,
+        "",
+        "## Decision",
+        "",
+        f"- Decision: {_report_value(decision.get('decision') if decision else None)}",
+        "- Keep installed: {}".format(
+            _report_value(decision.get("keep_installed") if decision else None)
+        ),
+        "- Best use case: {}".format(
+            _report_value(decision.get("best_use_case") if decision else None)
+        ),
+        "- Retest condition: {}".format(
+            _report_value(decision.get("retest_condition") if decision else None)
+        ),
+        "",
+        "## Dashboard CSV Rows",
+        "",
+    ]
+    for table_name in IMPORT_ORDER:
+        lines.append(f"- `{table_name}.csv`: {csv_counts[table_name]}")
+    lines.extend(
+        [
+            "",
+            "## Privacy Notes",
+            "",
+            "- This report includes counts, hashes, metrics, scores, and paths only.",
+            "- Do not paste private raw model responses into public release notes.",
+        ]
+    )
+    output_path = Path(out).resolve() if out else run_dir / "benchmark-report.md"
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
 def _coerce_boolish(value):
     if value in (None, ""):
         return None
@@ -1064,6 +1270,7 @@ def init_run(args):
         _response_template_records(metadata, prompt_set),
     )
     _write_jsonl(run_dir / "raw_responses.jsonl", [])
+    _write_json(run_dir / "runtime-metrics.json", _runtime_metrics(metadata, []))
     _write_json(run_dir / "scores-template.json", _empty_scores_template(rubric))
     _write_json(run_dir / "decision-template.json", _decision_template())
     (run_dir / "evidence.md").write_text(_evidence_template(metadata, prompt_set), encoding="utf-8")
@@ -1146,6 +1353,7 @@ def record_responses(args):
         normalized.append(_normalize_response_record(record, metadata, prompts[prompt_id]))
     output_path = run_dir / "raw_responses.jsonl"
     _require_absent_empty_or_force(output_path, args.force)
+    _write_metadata_with_perf(run_dir, metadata, normalized)
     _write_jsonl(output_path, normalized)
     return output_path
 
@@ -1701,6 +1909,10 @@ def export_dashboard(args):
     )
 
 
+def render_report(args):
+    return render_benchmark_report(args.run_dir, out=args.out)
+
+
 def list_prompts(args):
     prompt_set = _load_prompt_set()
     if args.json:
@@ -1848,6 +2060,13 @@ def build_parser():
     export_parser.add_argument("--scores-json", type=Path)
     export_parser.add_argument("--decision-json", type=Path)
     export_parser.set_defaults(func=export_dashboard)
+
+    report_parser = subparsers.add_parser(
+        "render-report", help="Write a sanitized Markdown report for a benchmark run."
+    )
+    report_parser.add_argument("--run-dir", required=True, type=Path)
+    report_parser.add_argument("--out", type=Path)
+    report_parser.set_defaults(func=render_report)
     return parser
 
 
