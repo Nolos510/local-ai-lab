@@ -66,6 +66,47 @@ class DashboardHttpHandlerTests(unittest.TestCase):
             self.assertIn("Home", body)
             self.assertIn("Export report", body)
 
+    def test_home_route_uses_configured_local_metadata_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            candidate_registry = tmp_path / "candidates.csv"
+            local_inventory = tmp_path / "local_inventory_candidates.csv"
+            eval_results = tmp_path / "eval_results"
+            candidate_registry.write_text(
+                "candidate_id,model_name,status,local_runner,local_model_id\n"
+                "ready-one,Ready One,ready_for_eval,lmstudio-cli,ready-one\n",
+                encoding="utf-8",
+            )
+            local_inventory.write_text(
+                "candidate_id,model_name,status,local_runner,local_model_id\n"
+                "local-one,Local One,ready_for_eval,lmstudio-cli,local-one\n",
+                encoding="utf-8",
+            )
+            (eval_results / "artifact-one").mkdir(parents=True)
+            (eval_results / "artifact-two").mkdir()
+            db.init_db(db_path, reset=True)
+            base_url = self.start_server(
+                db_path,
+                action_token="test-token",
+                candidate_registry_path=candidate_registry,
+                local_inventory_registry_path=local_inventory,
+                eval_results_dir=eval_results,
+            )
+
+            with urlopen(f"{base_url}/", timeout=5) as response:
+                body = response.read().decode("utf-8")
+
+            self.assertEqual(response.status, 200)
+            self.assertIn("<span>Discover</span>", body)
+            self.assertIn("<strong>2</strong>", body)
+            self.assertIn("<em>ready candidates</em>", body)
+            self.assertIn("<span>Install</span>", body)
+            self.assertIn("<em>detected local models</em>", body)
+            self.assertIn("<span>Benchmark</span>", body)
+            self.assertIn("<em>artifact directories</em>", body)
+            self.assertIn("Benchmark your first local model", body)
+
     def test_demoted_get_routes_remain_reachable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "dashboard.sqlite"

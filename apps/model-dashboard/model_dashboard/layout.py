@@ -551,6 +551,110 @@ def _layout(title, current_path, body):
       width: 150px;
       font-weight: 500;
     }}
+    .home-hero {{
+      display: grid;
+      gap: 16px;
+      margin-bottom: 18px;
+    }}
+    .home-intro {{
+      font-size: 18px;
+      color: var(--ink);
+      margin: 0;
+    }}
+    .home-actions {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }}
+    .action-link {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 8px 13px;
+      background: var(--accent);
+      color: var(--accent-ink);
+      font-weight: 600;
+      text-decoration: none;
+    }}
+    .action-link.secondary {{
+      border-color: var(--line);
+      background: var(--panel-soft);
+      color: var(--ink);
+    }}
+    .workflow-strip {{
+      display: grid;
+      grid-template-columns: repeat(5, minmax(140px, 1fr));
+      gap: 10px;
+      margin-bottom: 18px;
+    }}
+    .workflow-step {{
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      text-decoration: none;
+      box-shadow: var(--shadow);
+    }}
+    .workflow-step span {{
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }}
+    .workflow-step strong {{
+      color: var(--ink);
+      font-size: 25px;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }}
+    .workflow-step em {{
+      color: var(--muted);
+      font-size: 13px;
+      font-style: normal;
+      line-height: 1.25;
+    }}
+    .do-next {{
+      display: grid;
+      gap: 10px;
+      margin-bottom: 18px;
+    }}
+    .do-next h2, .home-card h2 {{
+      margin-bottom: 6px;
+    }}
+    .home-columns {{
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+      gap: 16px;
+      align-items: start;
+    }}
+    .machine-facts {{
+      display: grid;
+      gap: 10px;
+      margin: 0;
+    }}
+    .machine-facts div {{
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }}
+    .machine-facts dt {{
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }}
+    .machine-facts dd {{
+      margin: 0;
+      color: var(--ink);
+      overflow-wrap: anywhere;
+    }}
     .lab-queue {{
       min-width: 980px;
     }}
@@ -1461,6 +1565,7 @@ def _layout(title, current_path, body):
       .sidebar nav {{ flex-direction: row; flex-wrap: wrap; }}
       .sidebar .nav {{ width: auto; }}
       .app main {{ padding: 20px; }}
+      .workflow-strip, .home-columns {{ grid-template-columns: 1fr; }}
     }}
   </style>
 </head>

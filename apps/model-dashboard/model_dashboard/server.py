@@ -288,7 +288,13 @@ def make_handler(
             if path == "/capability":
                 return _capability(conn)
             if path == "/":
-                return _overview(conn, query)
+                return _overview(
+                    conn,
+                    query,
+                    registry_path=candidate_registry_path,
+                    eval_results_dir=eval_results_dir,
+                    local_inventory_path=local_inventory_registry_path,
+                )
             if path == "/runs":
                 return _runs(
                     conn,

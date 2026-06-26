@@ -450,9 +450,108 @@ class ModelDashboardQaTests(unittest.TestCase):
 
             self.assertIn("Real Data View", html)
             self.assertIn("This page hides 4 demo fixture model rows", html)
-            self.assertIn("No real benchmark imports yet.", html)
+            self.assertIn("No scored benchmark imports yet.", html)
             self.assertNotIn("TinyCoder Local 1.1B</a>", html)
             self.assertNotIn("Qwen2.5-Coder 14B Instruct</a>", html)
+
+    def test_home_renders_consolidated_workflow_and_machine_card(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            local_inventory_path = tmp_path / "local_inventory_candidates.csv"
+            eval_results = tmp_path / "eval_results"
+            hardware_profiles = tmp_path / "lab-notes"
+            artifact_dir = eval_results / "20260620-home-artifact"
+            artifact_dir.mkdir(parents=True)
+            (artifact_dir / "raw_responses.jsonl").write_text(
+                '{"prompt_id":"home"}\n', encoding="utf-8"
+            )
+            (artifact_dir / "dashboard-import").mkdir()
+            (eval_results / "20260620-home-artifact-r2" / "dashboard-import").mkdir(
+                parents=True
+            )
+            hardware_profiles.mkdir()
+            (hardware_profiles / "home-hardware.json").write_text(
+                json.dumps(
+                    {
+                        "captured_at": "2026-06-20T12:00:00Z",
+                        "os": {"system": "Darwin", "release": "26.0"},
+                        "machine": {"machine": "arm64", "cpu_count": 32},
+                        "macos": {
+                            "chip_brand": "Apple M3 Ultra",
+                            "memory_bytes": 274877906944,
+                        },
+                        "runtimes": {
+                            "lms": {"present": True},
+                            "ollama": {"present": True},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(registry_path)
+            write_candidate_registry(local_inventory_path)
+
+            with db.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO models (id, model_name, model_family, provider)
+                    VALUES (1, 'Home Result Model', 'Home', 'local')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO model_runs (
+                        id, model_id, date_tested, backend, tokens_per_sec, ram_usage_gb
+                    )
+                    VALUES (2, 1, '2026-06-20', 'LM Studio CLI', 62.5, 44.0)
+                    """
+                )
+                metric_columns = ", ".join(METRIC_FIELDS)
+                metric_placeholders = ", ".join("?" for _ in METRIC_FIELDS)
+                conn.execute(
+                    f"""
+                    INSERT INTO eval_scores (
+                        id, run_id, {metric_columns}, total_score, final_label, score_status
+                    )
+                    VALUES (?, ?, {metric_placeholders}, ?, ?, ?)
+                    """,
+                    (3, 2, *([7] * len(METRIC_FIELDS)), 76.0, "WATCHLIST", "confirmed"),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO decisions (
+                        id, model_id, decision, keep_installed, best_use_case
+                    )
+                    VALUES (4, 1, 'watchlist', 1, 'Home validation')
+                    """
+                )
+                html = server._overview(
+                    conn,
+                    registry_path=registry_path,
+                    eval_results_dir=eval_results,
+                    hardware_profiles_dir=hardware_profiles,
+                    local_inventory_path=local_inventory_path,
+                )
+
+        self.assertIn("Benchmark and decide on local models, privately on your Mac.", html)
+        self.assertIn('aria-label="AI Lab OS workflow loop"', html)
+        self.assertIn(">Discover</span>", html)
+        self.assertIn(">Install</span>", html)
+        self.assertIn(">Benchmark</span>", html)
+        self.assertIn(">Compare</span>", html)
+        self.assertIn(">Decide</span>", html)
+        self.assertIn("Do This Next", html)
+        self.assertIn("Import benchmark artifacts", html)
+        self.assertIn("Top Results", html)
+        self.assertIn("Home Result Model", html)
+        self.assertIn("This Machine", html)
+        self.assertIn("Apple M3 Ultra", html)
+        self.assertIn("256.0 GB", html)
+        self.assertIn("lms, ollama", html)
+        self.assertIn("Export report", html)
 
     def test_overview_ranked_models_table_keeps_columns_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -619,12 +718,11 @@ class ModelDashboardQaTests(unittest.TestCase):
                 self.assertIn(f'title="{tip}"', html)
                 self.assertIn(f'aria-label="Metric explanation: {tip}"', html)
 
-        self.assertIn("System RAM High-Water", html)
         self.assertIn("System RAM GB", html)
         self.assertIn("not per-model RSS", html)
 
         score_tip = escape(components.METRIC_EXPLANATIONS["score"], quote=True)
-        self.assertGreaterEqual(html.count(f'data-tip="{score_tip}"'), 2)
+        self.assertGreaterEqual(html.count(f'data-tip="{score_tip}"'), 1)
         self.assertIn('class="metric-tip"', html)
         self.assertIn('tabindex="0"', html)
         self.assertIn("content: attr(data-tip)", html)
