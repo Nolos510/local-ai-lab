@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased - v1.1.0 Candidate
+## v1.1.0 - 2026-07-14
+
+Release evidence: approved 2-model benchmark batch executed 2026-07-14 via
+`ai-lab bench queue` and imported into the dashboard —
+Qwen3-Coder-30B-A3B (lmstudio-cli, `20260714-qwen3-coder-30b-a3b-lmstudio-cli-r3`):
+75.38 tok/s, 54.99 s total latency, 194.7 GB peak RAM; Dolphin-Mistral-24B
+Venice (`20260714-dolphin-mistral-24b-venice-edition-r3`): 33.94 tok/s,
+108.78 s, 193.3 GB. Full validation gate green at release (pytest 275 passed,
+dashboard/harness unittest OK, smoke OK, ruff clean).
 
 This candidate turns more of the repo's existing local evidence into direct,
 auditable answers. It does not create a `v1.1.0` tag and does not expand the
