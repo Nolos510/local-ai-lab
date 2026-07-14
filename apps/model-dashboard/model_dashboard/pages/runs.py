@@ -6,7 +6,7 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 
-from .. import capability, charts, db
+from .. import capability, charts, db, recommend
 from ..components import *
 from ..filters import *
 from ..layout import _layout
@@ -37,6 +37,7 @@ def _runs(
     rows = []
     all_runs = db.list_runs(conn)
     runs = _real_rows(all_runs)
+    task_summary = recommend.task_recommendations(_real_rows(db.list_score_details(conn)))
     filters = _run_filter_values(query or {})
     filtered_runs = _filter_runs(runs, filters)
     for row in filtered_runs:
@@ -92,6 +93,7 @@ def _runs(
       <p>Benchmark runs and side-by-side comparisons. Higher score and throughput are better; lower latency is better when latency fields exist.</p>
       <p class="empty">Benchmark reads local dashboard imports and artifact folders only. It does not download, install, run, or score a model by itself.</p>
     </section>
+    {task_leaders}
     <section class="runs-section">
       <h2>Model Runs{filtered_count}</h2>
       <p class="section-note">Model Runs are imported local benchmark run records. A row may have raw performance fields before reviewed scores or keep/watch decisions exist.</p>
@@ -108,6 +110,7 @@ def _runs(
     </section>
     """.format(
         notice=_real_data_notice(len(_demo_rows(all_runs))),
+        task_leaders=_task_leaders(task_summary, surface_class="task-leaders-benchmark"),
         filters=_runs_filters(runs, filters),
         filtered_count=(f" ({len(filtered_runs)} of {len(runs)})" if any(filters.values()) else ""),
         compare_section=_compare_section(

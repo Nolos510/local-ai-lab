@@ -3,6 +3,7 @@
 __all__ = [
     "csv_io",
     "db",
+    "recommend",
     "reports",
     "scoring",
     "server",

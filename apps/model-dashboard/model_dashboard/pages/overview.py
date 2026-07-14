@@ -7,7 +7,7 @@ import csv
 from html import escape
 from pathlib import Path
 
-from .. import capability, charts, db
+from .. import capability, charts, db, recommend
 from ..components import *
 from ..filters import *
 from ..layout import _layout
@@ -123,10 +123,7 @@ def _top_result_rows(summaries, *, limit=5):
 
 
 def _machine_card(hardware_profiles, ready_count, artifact_counts, current_hardware_profile=None):
-    if hardware_profiles:
-        profile = hardware_profiles[-1]
-    else:
-        profile = current_hardware_profile or capability.current_hardware_profile()
+    profile = hardware_profiles[-1] if hardware_profiles else (current_hardware_profile or {})
     machine = (
         profile.get("machine_name")
         or profile.get("machine_model")
@@ -146,7 +143,7 @@ def _machine_card(hardware_profiles, ready_count, artifact_counts, current_hardw
             ", ".join(runtimes) if isinstance(runtimes, list) and runtimes else "not recorded"
         )
         captured = profile.get("captured_at") or "capture time not recorded"
-    else:
+    elif current_hardware_profile:
         runtime_text = (
             ", ".join(runtimes)
             if isinstance(runtimes, list) and runtimes
@@ -156,6 +153,9 @@ def _machine_card(hardware_profiles, ready_count, artifact_counts, current_hardw
             profile.get("captured_at")
             or "Live local read; run uv run ai-lab hardware snapshot to save a profile."
         )
+    else:
+        runtime_text = "not recorded"
+        captured = "No saved hardware snapshot; run uv run ai-lab hardware snapshot."
     return """
     <section class="panel home-card">
       <h2>This Machine</h2>
@@ -193,6 +193,7 @@ def _overview(
     counts = _real_counts(conn)
     all_summaries = db.list_model_summaries(conn)
     summaries = _real_rows(all_summaries)
+    task_summary = recommend.task_recommendations(_real_rows(db.list_score_details(conn)))
     score_values = [
         float(row["total_score"]) for row in summaries if row["total_score"] not in (None, "")
     ]
@@ -218,6 +219,7 @@ def _overview(
       {compare_step}
       {decide_step}
     </section>
+    {task_leaders}
     {next_action}
     <section class="grid">
       {models_stat}
@@ -239,6 +241,7 @@ def _overview(
         benchmark_step=_workflow_step("Benchmark", artifact_counts["total"], "artifact directories", "/runs"),
         compare_step=_workflow_step("Compare", counts["eval_scores"], "imported scores", "/runs"),
         decide_step=_workflow_step("Decide", counts["decisions"], "recorded decisions", "/inventory"),
+        task_leaders=_task_leaders(task_summary, surface_class="task-leaders-home"),
         next_action=_home_action_card(action),
         models_stat=_stat_card("Models", counts["models"], "ti-cube"),
         runs_stat=_stat_card("Runs", counts["model_runs"], "ti-player-play"),

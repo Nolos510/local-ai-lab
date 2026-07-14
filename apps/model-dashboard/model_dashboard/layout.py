@@ -835,6 +835,70 @@ def _layout(title, current_path, body):
       gap: 10px;
       align-items: center;
     }}
+    .task-leaders {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      margin-bottom: 18px;
+    }}
+    .task-leaders-heading {{
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px 16px;
+    }}
+    .task-leaders-heading h2,
+    .task-leader-note {{
+      margin: 0;
+    }}
+    .task-leader-note {{
+      color: var(--muted);
+      font-size: 13px;
+    }}
+    .task-leader-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 10px;
+    }}
+    .task-leader-card {{
+      display: grid;
+      align-content: start;
+      gap: 5px;
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel-soft);
+    }}
+    .task-leader-task {{
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }}
+    .task-leader-models {{
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }}
+    .task-leader-model {{
+      color: var(--ink);
+      font-weight: 500;
+      text-decoration-color: var(--accent);
+      text-underline-offset: 3px;
+    }}
+    .task-leader-score {{
+      color: var(--accent-2);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }}
+    .task-leader-tie {{
+      display: inline-block;
+      margin-left: 6px;
+      color: var(--accent-soft-ink);
+      font-size: 11px;
+      text-transform: uppercase;
+    }}
     .action-link {{
       display: inline-flex;
       align-items: center;

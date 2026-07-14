@@ -46,6 +46,7 @@ METRIC_EXPLANATIONS = {
     "status": "Confirmed = a score you finalized after review. Draft = an auto-suggested score awaiting confirmation; drafts never overwrite confirmed scores.",
     "decision": "Your keep / watchlist / retest / skip verdict after reviewing results.",
     "fit": "Estimated memory = parameter count in billions × quantization bits ÷ 8 × 1.1 weight overhead, plus an 8 GB context/runtime allowance. Fit compares that estimate with machine memory after a 16 GB system reserve. It is an estimate, not a measured run; observed tok/s comes only from imported benchmark runs.",
+    "task_leader": "Task leaders use confirmed scores only; drafts are excluded. Coding averages instruction-following and coding/debugging. Reasoning & agents averages reasoning and agent-planning. Research & writing averages research-synthesis and creativity. Long context and Fast & practical use their matching dimensions. Equal scores remain co-leaders.",
 }
 METRIC_LABEL_KEYS = {
     "total score": "total_score",
@@ -156,6 +157,52 @@ def _fit_memory_gb(
     if not profile:
         return None
     return fit.parse_parameter_count_b(profile.get("memory_gb"))
+
+
+def _task_leaders(summary, *, surface_class):
+    if not summary.tasks:
+        return ""
+    cards = []
+    for task in summary.tasks:
+        links = []
+        for leader in task.leaders:
+            model_id = _text(leader.model_id)
+            model_name = _text(leader.model_name)
+            links.append(
+                f'<a class="task-leader-model" href="/models/{model_id}">{model_name}</a>'
+            )
+        model_links = "<span> + </span>".join(links)
+        tie = '<span class="task-leader-tie">tie</span>' if len(task.leaders) > 1 else ""
+        task_label = _text(task.task)
+        score_label = _number(task.score, 1)
+        cards.append(
+            f"""
+            <div class="task-leader-card">
+              <span class="task-leader-task">{task_label}</span>
+              <span class="task-leader-models">{model_links}{tie}</span>
+              <strong class="task-leader-score">Score {score_label}</strong>
+            </div>
+            """
+        )
+    single_model_note = (
+        '<p class="task-leader-note">only 1 model scored - benchmark more to compare</p>'
+        if summary.scored_model_count == 1
+        else ""
+    )
+    return """
+    <section class="task-leaders {surface_class} panel" aria-label="Best models by task">
+      <div class="task-leaders-heading">
+        <h2>{heading}</h2>
+        {single_model_note}
+      </div>
+      <div class="task-leader-grid">{cards}</div>
+    </section>
+    """.format(
+        surface_class=_text(surface_class),
+        heading=_metric_label("Best for...", tip_key="task_leader"),
+        single_model_note=single_model_note,
+        cards="".join(cards),
+    )
 
 
 def _metric_key(label):
@@ -850,4 +897,4 @@ def _import_state_for_run(run, decisions_by_model):
         decision=decision_state,
     )
 
-__all__ = ('_text', '_number', '_pill', '_status_pill', '_fit_summary', '_fit_capacity_summary', '_fit_memory_gb', '_stat_card', '_chart_panel', '_model_chart_label', '_average_metric_items', '_performance_items', '_performance_chart', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_run_note_value', '_benchmark_run_id_from_notes', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_import_guidance', '_artifact_import_control', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_fit_evidence', '_dashboard_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'LOCAL_INVENTORY_REGISTRY_PATH', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE', 'METRIC_EXPLANATIONS', 'METRIC_LABEL_KEYS', 'RESULT_TABLE_HEADER_TIPS')
+__all__ = ('_text', '_number', '_pill', '_status_pill', '_fit_summary', '_fit_capacity_summary', '_fit_memory_gb', '_task_leaders', '_stat_card', '_chart_panel', '_model_chart_label', '_average_metric_items', '_performance_items', '_performance_chart', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_run_note_value', '_benchmark_run_id_from_notes', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_import_guidance', '_artifact_import_control', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_fit_evidence', '_dashboard_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'LOCAL_INVENTORY_REGISTRY_PATH', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE', 'METRIC_EXPLANATIONS', 'METRIC_LABEL_KEYS', 'RESULT_TABLE_HEADER_TIPS')
