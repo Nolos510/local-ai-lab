@@ -99,6 +99,37 @@ U5 — RUN-ALL BUTTON (My Models)
   token required, sequential dispatch, partial-failure summary, no execution
   without confirm.
 
+U6 — DISCOVER GRADUATION (evaluated models leave Discover)
+- Lifecycle rule: a candidate is GRADUATED once it is evaluated and logged —
+  derive this live from the dashboard DB (its benchmark_run_id maps to an
+  imported run with a confirmed score and/or a logged decision), not from more
+  manual CSV state. Graduated candidates disappear from the DEFAULT Discover
+  view; they remain reachable via an explicit "Evaluated" filter chip (with
+  count) so nothing is lost, and Discover's default becomes purely
+  "still worth evaluating". The auto-registered local-inventory overlay rows
+  follow the same rule.
+- Loop-strip/Home counts for Discover reflect the un-graduated count.
+- RE-SURFACE ON UPSTREAM UPDATE (opt-in network, never passive): a new
+  `ai-lab radar check-updates` command — network is allowed ONLY with an
+  explicit --lookup flag (same sanctioned-opt-in convention as the quant
+  advisor's --lookup-hf; document it as such). For candidates with a
+  huggingface.co model page URL use the public HF API metadata (lastModified /
+  sha); for github.com URLs use the public GitHub API (default branch head
+  sha / pushed_at). No tokens, no downloads, metadata only, per-candidate
+  failures reported not fatal. Compare against the last recorded upstream
+  state stored in a LOCAL gitignored state file
+  (data/dashboard/radar_upstream_state.json); when changed meaningfully,
+  mark the candidate "updated upstream since evaluation" — which re-surfaces
+  it in the default Discover view with a clearly labeled badge + the observed
+  change (old -> new revision/date). A dismiss action (token-gated POST or
+  re-running check-updates after re-evaluation) re-graduates it.
+- Without ever running check-updates the dashboard makes NO network calls —
+  graduation still works purely locally.
+- Tests: graduation derivation (scored+decided vs merely-run vs unscored),
+  default-view exclusion + Evaluated chip + counts, overlay rows, re-surface
+  badge from a fixture state file (fake HTTP — tests never hit the network),
+  no-network-without-flag assertion, dismiss/re-graduate flow.
+
 Per loop: implement, test, run the full gate, STOP with a concise report.
 Never claim a command passed unless it was run. Begin with U1.
 ```
