@@ -24,6 +24,34 @@ LMSTUDIO_BUNDLED_MODELS_ROOT = Path.home() / ".lmstudio" / ".internal" / "bundle
 OLLAMA_MODELS_ROOT = Path.home() / ".ollama" / "models"
 HF_HUB_CACHE_ROOT = Path.home() / ".cache" / "huggingface" / "hub"
 LMSTUDIO_WEIGHT_SUFFIXES = (".gguf", ".safetensors", ".bin", ".mlx", ".npz")
+INVENTORY_DECISIONS_ANCHOR = "inventory-decisions"
+INVENTORY_DECISION_FILTERS = {
+    "all": {
+        "label": "Decisions",
+        "href": f"/inventory#{INVENTORY_DECISIONS_ANCHOR}",
+        "icon": "ti-checkup-list",
+    },
+    "keep": {
+        "label": "Keep installed",
+        "href": f"/inventory?keep=yes#{INVENTORY_DECISIONS_ANCHOR}",
+        "icon": "ti-circle-check",
+    },
+    "watchlist": {
+        "label": "Watchlist",
+        "href": f"/inventory?decision=watchlist#{INVENTORY_DECISIONS_ANCHOR}",
+        "icon": "ti-eye",
+    },
+    "retest": {
+        "label": "Retest",
+        "href": f"/inventory?decision=retest#{INVENTORY_DECISIONS_ANCHOR}",
+        "icon": "ti-player-play",
+    },
+    "skip": {
+        "label": "Skip",
+        "href": f"/inventory?decision=skip#{INVENTORY_DECISIONS_ANCHOR}",
+        "icon": "ti-circle",
+    },
+}
 CANDIDATE_FIELDNAMES = (
     "candidate_id",
     "model_name",
@@ -1050,18 +1078,64 @@ def _decision_stats(decisions):
     }
 
 
-def _inventory_decision_section(decisions):
+def _inventory_decision_filter(query):
+    keep_filter = _query_value(query or {}, "keep").lower()
+    decision_filter = _query_value(query or {}, "decision").lower()
+    if keep_filter == "yes":
+        return "keep"
+    if decision_filter in ("watchlist", "retest", "skip"):
+        return decision_filter
+    return "all"
+
+
+def _filter_inventory_decisions(decisions, active_filter):
+    if active_filter == "keep":
+        return [row for row in decisions if row["keep_installed"]]
+    if active_filter in ("watchlist", "retest", "skip"):
+        return [
+            row
+            for row in decisions
+            if str(row["decision"] or "").lower() == active_filter
+        ]
+    return list(decisions)
+
+
+def _inventory_decision_stat(filter_name, count, active_filter):
+    config = INVENTORY_DECISION_FILTERS[filter_name]
+    return _stat_card(
+        config["label"],
+        count,
+        config["icon"],
+        href=config["href"],
+        active=filter_name == active_filter,
+        link_class="decision-stat-link",
+    )
+
+
+def _inventory_decision_section(decisions, query=None):
     stats = _decision_stats(decisions)
+    active_filter = _inventory_decision_filter(query or {})
+    filtered_decisions = _filter_inventory_decisions(decisions, active_filter)
+    active_label = INVENTORY_DECISION_FILTERS[active_filter]["label"]
+    filter_status = ""
+    if active_filter != "all":
+        filter_status = (
+            '<p class="decision-filter-status" role="status">'
+            f"Showing filter: {_text(active_label)} "
+            f"({_text(len(filtered_decisions))} of {_text(len(decisions))})."
+            "</p>"
+        )
     return """
-    <section class="inventory-section inventory-decisions-section">
+    <section class="inventory-section inventory-decisions-section" id="{anchor}">
       <div class="section-heading-row">
         <div>
           <h2>Keep / Watch Decisions</h2>
           <p class="section-note">Use this log after a benchmark run to decide whether each local model should stay installed, remain on watchlist, be retested, or be skipped.</p>
+          {filter_status}
         </div>
-        <a class="action-link secondary" href="/storage">Open decision filters</a>
+        <a class="action-link secondary clear-link" href="/inventory#{anchor}">Clear / All decisions</a>
       </div>
-      <section class="grid grid-compact">
+      <section class="grid grid-compact" aria-label="Decision filters">
         {decisions_stat}
         {keep_stat}
         {watchlist_stat}
@@ -1071,14 +1145,22 @@ def _inventory_decision_section(decisions):
       {table}
     </section>
     """.format(
-        decisions_stat=_stat_card("Decisions", stats["total"], "ti-checkup-list"),
-        keep_stat=_stat_card("Keep installed", stats["keep"], "ti-circle-check"),
-        watchlist_stat=_stat_card("Watchlist", stats["watchlist"], "ti-eye"),
-        retest_stat=_stat_card("Retest", stats["retest"], "ti-player-play"),
-        skip_stat=_stat_card("Skip", stats["skip"], "ti-circle"),
+        anchor=INVENTORY_DECISIONS_ANCHOR,
+        filter_status=filter_status,
+        decisions_stat=_inventory_decision_stat("all", stats["total"], active_filter),
+        keep_stat=_inventory_decision_stat("keep", stats["keep"], active_filter),
+        watchlist_stat=_inventory_decision_stat(
+            "watchlist", stats["watchlist"], active_filter
+        ),
+        retest_stat=_inventory_decision_stat("retest", stats["retest"], active_filter),
+        skip_stat=_inventory_decision_stat("skip", stats["skip"], active_filter),
         table=_storage_decision_table(
-            decisions,
-            empty_message="No keep/watch decisions have been imported yet.",
+            filtered_decisions,
+            empty_message=(
+                "No keep/watch decisions have been imported yet."
+                if active_filter == "all"
+                else "No keep/watch decisions match this filter."
+            ),
             scroll_id="inventory-decisions-table-scroll",
             scroll_label="Keep/watch decisions table",
         ),
@@ -1239,7 +1321,7 @@ def _inventory(
             else ""
         ),
         filters=_inventory_filters(entries, filters),
-        decisions_section=_inventory_decision_section(decision_rows),
+        decisions_section=_inventory_decision_section(decision_rows, query or {}),
         models=_table(
             [
                 "Runtime",

@@ -236,12 +236,22 @@ def _metric_label(label, tip_key=None, auto=True):
     return f'<span class="metric-label">{_text(label)}{info}</span>'
 
 
-def _stat_card(label, value, icon_name):
+def _stat_card(label, value, icon_name, href=None, active=False, link_class="stat-link"):
+    tag = "a" if href is not None else "div"
+    classes = "stat"
+    attributes = f'class="{classes}"'
+    if href is not None:
+        classes += f" {_text(link_class)}"
+        if active:
+            classes += " active"
+        attributes = f'class="{classes}" href="{_text(href)}"'
+        if active:
+            attributes += ' aria-current="true"'
     return (
-        '<div class="stat">'
+        f"<{tag} {attributes}>"
         f"{render_icon(icon_name)}"
         f'<div><div class="label">{_metric_label(label)}</div><div class="value">{_text(value)}</div></div>'
-        "</div>"
+        f"</{tag}>"
     )
 
 

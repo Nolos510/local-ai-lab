@@ -2358,16 +2358,112 @@ class ModelDashboardQaTests(unittest.TestCase):
                 )
 
         self.assertIn("Keep / Watch Decisions", html)
-        self.assertIn("Open decision filters", html)
+        self.assertNotIn("Open decision filters", html)
+        self.assertIn("Clear / All decisions", html)
         self.assertIn("Keep Local Model", html)
         self.assertIn("Watch Local Model", html)
         self.assertIn("Coding", html)
         self.assertIn("Research", html)
+        self.assertIn('id="inventory-decisions"', html)
+        self.assertIn('href="/inventory#inventory-decisions"', html)
+        self.assertIn('href="/inventory?keep=yes#inventory-decisions"', html)
+        self.assertIn('href="/inventory?decision=watchlist#inventory-decisions"', html)
+        self.assertIn('href="/inventory?decision=retest#inventory-decisions"', html)
+        self.assertIn('href="/inventory?decision=skip#inventory-decisions"', html)
         self.assertIn('class="storage-decisions-table"', html)
         self.assertIn('id="inventory-decisions-table-scroll"', html)
         self.assertIn('data-scroll-target="inventory-decisions-table-scroll"', html)
         self.assertIn("Keep installed", html)
         self.assertIn("Watchlist", html)
+
+    def test_inventory_decision_stat_links_filter_subsets_and_clear_to_all(self):
+        decisions = [
+            {
+                "id": 1,
+                "model_id": 1,
+                "model_name": "Keep Filter Model",
+                "provider": "local",
+                "decision": "keep",
+                "keep_installed": 1,
+                "best_use_case": "Coding",
+                "weakness": "None observed",
+                "retest_condition": "New quant",
+            },
+            {
+                "id": 2,
+                "model_id": 2,
+                "model_name": "Watch Filter Model",
+                "provider": "local",
+                "decision": "watchlist",
+                "keep_installed": 0,
+                "best_use_case": "Research",
+                "weakness": "Needs review",
+                "retest_condition": "Reviewed source",
+            },
+            {
+                "id": 3,
+                "model_id": 3,
+                "model_name": "Retest Filter Model",
+                "provider": "local",
+                "decision": "retest",
+                "keep_installed": 0,
+                "best_use_case": "Agents",
+                "weakness": "Slow",
+                "retest_condition": "Runtime update",
+            },
+            {
+                "id": 4,
+                "model_id": 4,
+                "model_name": "Skip Filter Model",
+                "provider": "local",
+                "decision": "skip",
+                "keep_installed": 0,
+                "best_use_case": "Legacy",
+                "weakness": "Low quality",
+                "retest_condition": "Major release",
+            },
+        ]
+        cases = (
+            ({"keep": ["yes"]}, "keep=yes", "Keep installed", "Keep Filter Model"),
+            ({"decision": ["watchlist"]}, "decision=watchlist", "Watchlist", "Watch Filter Model"),
+            ({"decision": ["retest"]}, "decision=retest", "Retest", "Retest Filter Model"),
+            ({"decision": ["skip"]}, "decision=skip", "Skip", "Skip Filter Model"),
+        )
+        all_model_names = [row["model_name"] for row in decisions]
+
+        for query, query_string, label, expected_model in cases:
+            with self.subTest(label=label):
+                html = server._inventory(query=query, decisions=decisions)
+
+                self.assertIn('id="inventory-decisions"', html)
+                self.assertIn(
+                    'class="stat decision-stat-link active" '
+                    f'href="/inventory?{query_string}#inventory-decisions" '
+                    'aria-current="true"',
+                    html,
+                )
+                self.assertIn(".decision-stat-link.active {", html)
+                self.assertIn(f"Showing filter: {label} (1 of 4).", html)
+                self.assertIn(expected_model, html)
+                for model_name in all_model_names:
+                    if model_name != expected_model:
+                        self.assertNotIn(model_name, html)
+                self.assertIn(
+                    'class="action-link secondary clear-link" '
+                    'href="/inventory#inventory-decisions">'
+                    "Clear / All decisions</a>",
+                    html,
+                )
+
+        all_html = server._inventory(query={}, decisions=decisions)
+        self.assertIn(
+            'class="stat decision-stat-link active" '
+            'href="/inventory#inventory-decisions" aria-current="true"',
+            all_html,
+        )
+        self.assertNotIn("Showing filter:", all_html)
+        for model_name in all_model_names:
+            self.assertIn(model_name, all_html)
 
     def test_inventory_tables_use_horizontal_scroll_contracts(self):
         result = {

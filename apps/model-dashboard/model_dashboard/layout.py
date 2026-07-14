@@ -964,6 +964,27 @@ def _layout(title, current_path, body):
     .inventory-section > .section-heading-row {{
       margin-top: 0;
     }}
+    .decision-stat-link {{
+      color: inherit;
+      text-decoration: none;
+    }}
+    .decision-stat-link:hover {{
+      text-decoration: none;
+    }}
+    .decision-stat-link.active {{
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      box-shadow: var(--glow);
+    }}
+    .decision-stat-link:focus-visible {{
+      outline: 2px solid var(--accent-2);
+      outline-offset: 2px;
+    }}
+    .decision-filter-status {{
+      margin: 6px 0 0;
+      color: var(--accent-2);
+      font-weight: 600;
+    }}
     .runs-section {{
       display: grid;
       gap: 12px;
