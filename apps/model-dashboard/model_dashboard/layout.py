@@ -663,6 +663,45 @@ def _layout(title, current_path, body):
       font-weight: 500;
       white-space: nowrap;
     }}
+    .fit-summary {{
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+    }}
+    .pill.fit-comfortable {{
+      background: var(--status-confirmed-bg);
+      color: var(--status-confirmed-ink);
+      border-color: rgba(52, 211, 153, 0.35);
+    }}
+    .pill.fit-fits,
+    .pill.fit-capacity {{
+      background: var(--accent-soft);
+      color: var(--accent-soft-ink);
+      border-color: rgba(139, 123, 255, 0.38);
+    }}
+    .pill.fit-tight {{
+      background: var(--status-draft-bg);
+      color: var(--status-draft-ink);
+      border-color: rgba(251, 191, 36, 0.38);
+    }}
+    .pill.fit-exceeds {{
+      background: var(--danger-bg);
+      color: var(--danger);
+      border-color: var(--danger-border);
+    }}
+    .pill.fit-unknown {{
+      background: var(--panel-soft);
+      color: var(--muted);
+      border-color: var(--line);
+    }}
+    .observed-performance {{
+      color: var(--accent-2);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }}
     .score-status {{
       background: var(--status-confirmed-bg);
       color: var(--status-confirmed-ink);

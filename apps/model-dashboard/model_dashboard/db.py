@@ -211,6 +211,7 @@ def list_runs(conn):
             m.model_family,
             m.provider,
             m.source_url,
+            m.params_b,
             s.total_score,
             s.final_label,
             s.score_status

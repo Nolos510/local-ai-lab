@@ -13,7 +13,7 @@ from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 
-from .. import db, removal
+from .. import db, fit, removal
 from ..components import *
 from ..filters import *
 from ..layout import _layout
@@ -135,16 +135,36 @@ def _inventory_run_history(conn):
     history = {}
     if conn is None:
         return history
+
+    def merge_run(key, row):
+        if not key:
+            return
+        run = history.setdefault(key, {})
+        if not run:
+            run.update(
+                {
+                    "date_tested": row["date_tested"] or "",
+                    "benchmark_run_id": _run_note_value(
+                        row["run_notes"], "benchmark_run_id"
+                    ),
+                    "score_status": row["score_status"] or "",
+                    "final_label": row["final_label"] or "",
+                    "params_b": row["params_b"],
+                    "quantization": row["quantization"],
+                    "tokens_per_sec": None,
+                }
+            )
+        if run.get("params_b") in (None, "") and row["params_b"] not in (None, ""):
+            run["params_b"] = row["params_b"]
+        if run.get("quantization") in (None, "") and row["quantization"] not in (None, ""):
+            run["quantization"] = row["quantization"]
+        if run.get("tokens_per_sec") is None and row["tokens_per_sec"] is not None:
+            run["tokens_per_sec"] = row["tokens_per_sec"]
+
     for row in _real_rows(db.list_runs(conn)):
         candidate_id = _run_note_value(row["run_notes"], "candidate_id")
-        if not candidate_id or candidate_id in history:
-            continue
-        history[candidate_id] = {
-            "date_tested": row["date_tested"] or "",
-            "benchmark_run_id": _run_note_value(row["run_notes"], "benchmark_run_id"),
-            "score_status": row["score_status"] or "",
-            "final_label": row["final_label"] or "",
-        }
+        merge_run(candidate_id, row)
+        merge_run(f'model:{str(row["model_name"] or "").strip().lower()}', row)
     return history
 
 
@@ -1057,6 +1077,9 @@ def _inventory(
     local_inventory_path=None,
     run_history=None,
     decisions=None,
+    hardware_profiles_dir=REPO_ROOT / "docs" / "lab-notes",
+    current_hardware_profile=None,
+    read_current_hardware=False,
 ):
     candidates = _load_radar_candidates(registry_path, local_inventory_path)
     decision_rows = _real_rows(decisions or [])
@@ -1065,6 +1088,11 @@ def _inventory(
     check_rows = []
     model_rows = []
     entries = []
+    memory_gb = _fit_memory_gb(
+        hardware_profiles_dir,
+        current_hardware_profile=current_hardware_profile,
+        read_current_hardware=read_current_hardware,
+    )
     if result:
         for check in result["checks"]:
             output = check.get("stderr") or check.get("stdout") or ""
@@ -1095,11 +1123,45 @@ def _inventory(
                 if candidate
                 else _pill(match_state)
             )
+            history = run_history or {}
+            run = history.get(candidate.get("candidate_id", "") if candidate else "")
+            if run is None and candidate:
+                run = history.get(f'model:{candidate.get("model_name", "").strip().lower()}')
+            if run is None:
+                run = history.get(f'model:{model.get("display_name", "").strip().lower()}')
+            run = run or {}
+            params_b = fit.parse_parameter_count_b(
+                model.get("params_b"),
+                candidate.get("params_b") if candidate else None,
+                run.get("params_b"),
+                model.get("display_name"),
+                model.get("model_id"),
+            )
+            bits = fit.parse_quantization_bits(
+                model.get("quantization_bits"),
+                model.get("quantization"),
+                candidate.get("quantization_bits") if candidate else None,
+                candidate.get("quantization") if candidate else None,
+                run.get("quantization"),
+                model.get("format_or_runtime"),
+                candidate.get("format_or_runtime") if candidate else None,
+                model.get("model_id"),
+                model.get("display_name"),
+            )
+            fit_summary = _fit_summary(
+                params_b,
+                bits,
+                memory_gb,
+                run.get("tokens_per_sec"),
+            )
             model_rows.append(
                 [
                     _text(model["runtime"]),
                     "<code>{}</code>".format(_text(model["model_id"])),
-                    _text(model["display_name"]),
+                    '<div class="cell-stack"><span>{}</span>{}</div>'.format(
+                        _text(model["display_name"]),
+                        fit_summary,
+                    ),
                     _pill(model["status"]),
                     _inventory_paths_cell(model),
                     candidate_cell,

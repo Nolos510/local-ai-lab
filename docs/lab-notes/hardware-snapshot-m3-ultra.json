@@ -1,0 +1,41 @@
+{
+  "captured_at": "2026-07-14T17:41:17Z",
+  "machine": {
+    "cpu_count": 32,
+    "machine": "arm64",
+    "processor": "arm"
+  },
+  "macos": {
+    "chip_brand": "Apple M3 Ultra",
+    "memory_bytes": 274877906944
+  },
+  "os": {
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "release": "25.5.0",
+    "system": "Darwin",
+    "version": "Darwin Kernel Version 25.5.0: Mon Apr 27 20:39:42 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6031"
+  },
+  "python": {
+    "implementation": "CPython",
+    "version": "3.12.13"
+  },
+  "runtimes": {
+    "llama-cli": {
+      "present": false,
+      "version": null
+    },
+    "lms": {
+      "present": true,
+      "version": "CLI commit: 0b2a176"
+    },
+    "mlx_lm": {
+      "present": false,
+      "version": null
+    },
+    "ollama": {
+      "present": true,
+      "version": "ollama version is 0.30.10"
+    }
+  },
+  "schema_version": "hardware-snapshot-v0.1"
+}

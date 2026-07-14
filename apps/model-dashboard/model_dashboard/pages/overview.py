@@ -140,6 +140,7 @@ def _machine_card(hardware_profiles, ready_count, artifact_counts, current_hardw
         or "not recorded"
     )
     runtimes = profile.get("runtimes_present") or []
+    fit_summary = _fit_capacity_summary(profile.get("memory_gb"))
     if hardware_profiles:
         runtime_text = (
             ", ".join(runtimes) if isinstance(runtimes, list) and runtimes else "not recorded"
@@ -162,6 +163,7 @@ def _machine_card(hardware_profiles, ready_count, artifact_counts, current_hardw
         <div><dt>Machine</dt><dd>{machine}</dd></div>
         <div><dt>Chip</dt><dd>{chip}</dd></div>
         <div><dt>Memory</dt><dd>{memory}</dd></div>
+        <div><dt>Fit</dt><dd>{fit_summary}</dd></div>
         <div><dt>Runtimes</dt><dd>{runtimes}</dd></div>
         <div><dt>Snapshot</dt><dd>{captured}</dd></div>
         <div><dt>Readiness</dt><dd>{ready} ready candidates; {artifacts} benchmark artifact directories.</dd></div>
@@ -171,6 +173,7 @@ def _machine_card(hardware_profiles, ready_count, artifact_counts, current_hardw
         machine=_text(machine),
         chip=_text(chip),
         memory=_text(memory),
+        fit_summary=fit_summary,
         runtimes=_text(runtime_text),
         captured=_text(captured),
         ready=_text(ready_count),

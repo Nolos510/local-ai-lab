@@ -6,7 +6,7 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 
-from .. import capability, charts, db
+from .. import capability, charts, db, fit
 from ..components import *
 from ..filters import *
 from ..layout import _layout
@@ -14,11 +14,34 @@ from ..reports import generate_markdown_report
 from ..scoring import METRIC_FIELDS
 
 
-def _candidate_rows(conn, candidates):
+def _candidate_rows(conn, candidates, memory_gb=None):
     model_links = _dashboard_model_links(conn)
+    evidence = _dashboard_fit_evidence(conn)
     rows = []
     for row in candidates:
         model_id = model_links.get(row.get("model_name", "").lower())
+        candidate_evidence = evidence["by_candidate"].get(row.get("candidate_id", ""), {})
+        model_evidence = evidence["by_name"].get(row.get("model_name", "").lower(), {})
+        params_b = fit.parse_parameter_count_b(
+            row.get("params_b"),
+            candidate_evidence.get("params_b"),
+            model_evidence.get("params_b"),
+            row.get("model_name"),
+            row.get("local_model_id"),
+        )
+        bits = fit.parse_quantization_bits(
+            row.get("quantization_bits"),
+            row.get("quantization"),
+            candidate_evidence.get("quantization"),
+            model_evidence.get("quantization"),
+            row.get("format_or_runtime"),
+            row.get("local_model_id"),
+            row.get("model_name"),
+        )
+        observed_tokens_per_sec = candidate_evidence.get("tokens_per_sec")
+        if observed_tokens_per_sec is None:
+            observed_tokens_per_sec = model_evidence.get("tokens_per_sec")
+        fit_summary = _fit_summary(params_b, bits, memory_gb, observed_tokens_per_sec)
         model_name = _text(row.get("model_name"))
         if model_id:
             model_name = f'<a href="/models/{model_id}">{model_name}</a>'
@@ -53,9 +76,10 @@ def _candidate_rows(conn, candidates):
         )
         rows.append(
             [
-                '<div class="cell-stack radar-candidate-identity"><div class="radar-candidate-name">{name}</div><code>{id}</code></div>'.format(
+                '<div class="cell-stack radar-candidate-identity"><div class="radar-candidate-name">{name}</div><code>{id}</code>{fit_summary}</div>'.format(
                     name=model_name,
                     id=_text(row.get("candidate_id")),
+                    fit_summary=fit_summary,
                 ),
                 _pill(row.get("status")),
                 metadata,
@@ -199,6 +223,9 @@ def _radar(
     query=None,
     registry_path=CANDIDATE_REGISTRY_PATH,
     project_registry_path=PROJECT_REGISTRY_PATH,
+    hardware_profiles_dir=REPO_ROOT / "docs" / "lab-notes",
+    current_hardware_profile=None,
+    read_current_hardware=False,
 ):
     candidates = _load_radar_candidates(registry_path)
     projects = _load_project_repos(project_registry_path)
@@ -211,7 +238,12 @@ def _radar(
     security_review_count = sum(
         1 for row in candidates if _candidate_security_status(row) in ("needs_review", "unreviewed")
     )
-    rows = _candidate_rows(conn, filtered_candidates)
+    memory_gb = _fit_memory_gb(
+        hardware_profiles_dir,
+        current_hardware_profile=current_hardware_profile,
+        read_current_hardware=read_current_hardware,
+    )
+    rows = _candidate_rows(conn, filtered_candidates, memory_gb)
 
     body = """
     <section class="panel page-intro radar-intro">

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import csv
 import ipaddress
+import math
 import re
 import shlex
 import subprocess
@@ -14,7 +15,7 @@ from html import escape
 from pathlib import Path
 from urllib.parse import urlparse
 
-from . import charts, db
+from . import capability, charts, db, fit
 from .icons import icon as render_icon
 from .scoring import METRIC_FIELDS
 
@@ -44,6 +45,7 @@ METRIC_EXPLANATIONS = {
     "score": "Summed quality score across the benchmark rubric's dimensions (instruction-following, reasoning, coding, agent-planning, etc.). Higher is better; it's a relative ranking signal, not a percentage. See the model detail page for the per-dimension breakdown.",
     "status": "Confirmed = a score you finalized after review. Draft = an auto-suggested score awaiting confirmation; drafts never overwrite confirmed scores.",
     "decision": "Your keep / watchlist / retest / skip verdict after reviewing results.",
+    "fit": "Estimated memory = parameter count in billions × quantization bits ÷ 8 × 1.1 weight overhead, plus an 8 GB context/runtime allowance. Fit compares that estimate with machine memory after a 16 GB system reserve. It is an estimate, not a measured run; observed tok/s comes only from imported benchmark runs.",
 }
 METRIC_LABEL_KEYS = {
     "total score": "total_score",
@@ -60,6 +62,7 @@ METRIC_LABEL_KEYS = {
     "score": "score",
     "status": "status",
     "decision": "decision",
+    "fit": "fit",
 }
 RESULT_TABLE_HEADER_TIPS = {
     "System RAM GB": "ram_footprint",
@@ -90,6 +93,69 @@ def _status_pill(value):
     if status == "draft":
         class_name += " draft"
     return f'<span class="{class_name}">{_text(status.upper())}</span>'
+
+
+def _observed_tokens_per_second(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number) or number < 0:
+        return None
+    return number
+
+
+def _fit_summary(params_b, bits, memory_gb, observed_tokens_per_sec=None):
+    assessment = fit.assess_fit(params_b, bits, memory_gb)
+    if assessment.status == "unknown":
+        label = "Fit: unknown"
+    else:
+        label = f"Fit: {assessment.status} · {assessment.estimated_memory_gb:.1f} GB est."
+    observed = _observed_tokens_per_second(observed_tokens_per_sec)
+    observed_html = (
+        f'<span class="observed-performance">Observed {observed:.1f} tok/s</span>'
+        if observed is not None
+        else ""
+    )
+    return (
+        '<span class="fit-summary">'
+        f'<span class="pill fit-pill fit-{_text(assessment.status)}">{_text(label)}</span>'
+        f'{_metric_info("fit")}'
+        f"{observed_html}"
+        "</span>"
+    )
+
+
+def _fit_capacity_summary(memory_gb):
+    capacity = fit.max_estimated_weights_gb(memory_gb)
+    if capacity is None:
+        label = "Fit: unknown"
+        class_name = "fit-unknown"
+    else:
+        rounded_capacity = math.floor(capacity / 10.0) * 10
+        label = f"Fit: up to ~{rounded_capacity:.0f} GB est. weights"
+        class_name = "fit-capacity"
+    return (
+        '<span class="fit-summary">'
+        f'<span class="pill fit-pill {class_name}">{_text(label)}</span>'
+        f'{_metric_info("fit")}'
+        "</span>"
+    )
+
+
+def _fit_memory_gb(
+    hardware_profiles_dir,
+    *,
+    current_hardware_profile=None,
+    read_current_hardware=False,
+):
+    profiles = capability.load_hardware_profiles(Path(hardware_profiles_dir), limit=1)
+    profile = profiles[-1] if profiles else current_hardware_profile
+    if profile is None and read_current_hardware:
+        profile = capability.current_hardware_profile()
+    if not profile:
+        return None
+    return fit.parse_parameter_count_b(profile.get("memory_gb"))
 
 
 def _metric_key(label):
@@ -518,12 +584,17 @@ def _artifact_link(benchmark_run_id):
     return '<a href="/artifacts/{id}"><code>{id}</code></a>'.format(id=_text(benchmark_run_id))
 
 
-def _benchmark_run_id_from_notes(notes):
+def _run_note_value(notes, key):
+    prefix = f"{key}="
     for part in str(notes or "").split("|"):
         part = part.strip()
-        if part.startswith("benchmark_run_id="):
+        if part.startswith(prefix):
             return part.split("=", 1)[1].strip()
     return ""
+
+
+def _benchmark_run_id_from_notes(notes):
+    return _run_note_value(notes, "benchmark_run_id")
 
 
 def _artifact_link_from_notes(notes):
@@ -705,6 +776,36 @@ def _dashboard_model_links(conn):
     return links
 
 
+def _merge_fit_evidence(target, row):
+    for field in ("params_b", "quantization"):
+        if target.get(field) in (None, "") and row[field] not in (None, ""):
+            target[field] = row[field]
+    observed = _observed_tokens_per_second(row["tokens_per_sec"])
+    if target.get("tokens_per_sec") is None and observed is not None:
+        target["tokens_per_sec"] = observed
+
+
+def _dashboard_fit_evidence(conn):
+    """Index latest model metadata and real observed throughput for fit pills."""
+    by_name = {}
+    by_candidate = {}
+    for row in _real_rows(db.list_runs(conn)):
+        model_name = str(row["model_name"] or "").strip().lower()
+        if model_name:
+            evidence = by_name.setdefault(model_name, {})
+            _merge_fit_evidence(evidence, row)
+        candidate_id = _run_note_value(row["run_notes"], "candidate_id")
+        if candidate_id:
+            evidence = by_candidate.setdefault(candidate_id, {})
+            _merge_fit_evidence(evidence, row)
+    for row in _real_rows(db.list_model_summaries(conn)):
+        model_name = str(row["model_name"] or "").strip().lower()
+        if model_name:
+            evidence = by_name.setdefault(model_name, {})
+            _merge_fit_evidence(evidence, row)
+    return {"by_name": by_name, "by_candidate": by_candidate}
+
+
 def _dashboard_run_ids(conn):
     run_ids = set()
     for row in _real_rows(db.list_runs(conn)):
@@ -749,4 +850,4 @@ def _import_state_for_run(run, decisions_by_model):
         decision=decision_state,
     )
 
-__all__ = ('_text', '_number', '_pill', '_status_pill', '_stat_card', '_chart_panel', '_model_chart_label', '_average_metric_items', '_performance_items', '_performance_chart', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_benchmark_run_id_from_notes', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_import_guidance', '_artifact_import_control', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'LOCAL_INVENTORY_REGISTRY_PATH', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE', 'METRIC_EXPLANATIONS', 'METRIC_LABEL_KEYS', 'RESULT_TABLE_HEADER_TIPS')
+__all__ = ('_text', '_number', '_pill', '_status_pill', '_fit_summary', '_fit_capacity_summary', '_fit_memory_gb', '_stat_card', '_chart_panel', '_model_chart_label', '_average_metric_items', '_performance_items', '_performance_chart', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_run_note_value', '_benchmark_run_id_from_notes', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_import_guidance', '_artifact_import_control', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_fit_evidence', '_dashboard_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'LOCAL_INVENTORY_REGISTRY_PATH', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE', 'METRIC_EXPLANATIONS', 'METRIC_LABEL_KEYS', 'RESULT_TABLE_HEADER_TIPS')
