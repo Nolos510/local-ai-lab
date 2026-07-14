@@ -61,9 +61,14 @@ def _model_detail(conn, model_id):
                 _text(row["retest_condition"]),
             ]
         )
+    summary = (
+        _text(detail["decisions"][0]["best_use_case"])
+        if detail["decisions"]
+        else '<span class="empty">No keep/watch decision recorded yet.</span>'
+    )
     body = """
-    <div class="split">
-      <section class="panel">
+    <div class="split model-detail-header">
+      <section class="panel model-detail-card">
         <h2>{name}</h2>
         <p><strong>Family:</strong> {family}</p>
         <p><strong>Provider:</strong> {provider}</p>
@@ -72,19 +77,21 @@ def _model_detail(conn, model_id):
         <p><strong>Source:</strong> {source}</p>
         <p>{notes}</p>
       </section>
-      <section class="panel">
+      <section class="panel model-detail-card model-detail-read-card">
         <h2>Current Read</h2>
         <p>{summary}</p>
       </section>
     </div>
-    <div class="model-detail-results-toolbar" aria-label="Model detail results controls">
-      <button class="icon-button" type="button" data-scroll-target="model-detail-results" data-scroll-by="-360" aria-label="Scroll model detail results left" title="Scroll model detail results left">{left_icon}</button>
-      <button class="icon-button" type="button" data-scroll-target="model-detail-results" data-scroll-by="360" aria-label="Scroll model detail results right" title="Scroll model detail results right">{right_icon}</button>
-    </div>
-    <div id="model-detail-results" class="model-detail-results-scroll" aria-label="Model detail runs and decisions">
-      <section class="model-detail-section"><h2>Runs</h2>{runs}</section>
-      <section class="model-detail-section"><h2>Decisions</h2>{decisions}</section>
-    </div>
+    <section class="model-detail-results-shell">
+      <div class="model-detail-results-toolbar" aria-label="Model detail results controls">
+        <button class="icon-button" type="button" data-scroll-target="model-detail-results" data-scroll-by="-360" aria-label="Scroll model detail results left" title="Scroll model detail results left">{left_icon}</button>
+        <button class="icon-button" type="button" data-scroll-target="model-detail-results" data-scroll-by="360" aria-label="Scroll model detail results right" title="Scroll model detail results right">{right_icon}</button>
+      </div>
+      <div id="model-detail-results" class="model-detail-results-scroll" aria-label="Model detail runs and decisions">
+        <section class="model-detail-section"><h2>Runs</h2>{runs}</section>
+        <section class="model-detail-section"><h2>Decisions</h2>{decisions}</section>
+      </div>
+    </section>
     """.format(
         name=_text(model["model_name"]),
         family=_text(model["model_family"]),
@@ -93,7 +100,7 @@ def _model_detail(conn, model_id):
         license=_text(model["license"]),
         source=_external_link_or_text(model["source_url"], model["source_url"]),
         notes=_text(model["notes"]),
-        summary=_text(detail["decisions"][0]["best_use_case"] if detail["decisions"] else ""),
+        summary=summary,
         left_icon=render_icon("ti-chevron-left"),
         right_icon=render_icon("ti-chevron-right"),
         runs=_table(

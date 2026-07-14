@@ -788,6 +788,22 @@ def _refresh_inventory(timeout=5):
     }
 
 
+def _preferred_exact_inventory_match(matches):
+    selectors = (
+        lambda row: row.get("candidate_id", "").startswith("local-")
+        and row.get("provenance_status", "").lower() == "local_inventory",
+        lambda row: row.get("candidate_id", "").startswith("local-"),
+        lambda row: row.get("provenance_status", "").lower() == "local_inventory",
+        lambda row: bool(row.get("local_runner"))
+        and row.get("download_approval", "").lower() == "not_needed_local",
+    )
+    for selector in selectors:
+        preferred = [row for row in matches if selector(row)]
+        if len(preferred) == 1:
+            return preferred[0]
+    return None
+
+
 def _match_inventory_model(model, candidates):
     model_ids = {
         value.strip().lower()
@@ -800,6 +816,9 @@ def _match_inventory_model(model, candidates):
     if len(exact_matches) == 1:
         return "registered", exact_matches[0]
     if len(exact_matches) > 1:
+        preferred = _preferred_exact_inventory_match(exact_matches)
+        if preferred:
+            return "registered", preferred
         return "ambiguous", None
 
     source_path = model.get("source_path", "").lower()
@@ -995,7 +1014,7 @@ def _decision_stats(decisions):
 def _inventory_decision_section(decisions):
     stats = _decision_stats(decisions)
     return """
-    <section style="margin-top:16px">
+    <section class="inventory-section inventory-decisions-section">
       <div class="section-heading-row">
         <div>
           <h2>Keep / Watch Decisions</h2>
@@ -1100,7 +1119,7 @@ def _inventory(
       <p>What's installed locally. Run a benchmark, then keep, watchlist, retest, or skip each model.</p>
       <p class="empty">My Models reads local LM Studio and Ollama inventory on demand and keeps decisions tied to imported local benchmark evidence.</p>
     </section>
-    <section class="panel" style="margin-bottom:16px">
+    <section class="panel inventory-refresh-panel">
       <h2>Installed Models</h2>
       <p>This page checks local runtime inventory on demand. It does not download, install, benchmark, score, or import models.</p>
       <p>LM Studio rows distinguish <code>loaded</code>, <code>indexed</code>, and <code>filesystem_only</code>. Filesystem-only folders are visible on disk but are not runnable from the dashboard until LM Studio indexes or loads them.</p>
@@ -1113,13 +1132,13 @@ def _inventory(
       <p class="empty">Last refresh: {checked_at}</p>
       {registration_note}
     </section>
-    <section>
+    <section class="inventory-section">
       <h2>Detected Models{filtered_count}</h2>
       {filters}
       {models}
     </section>
     {decisions_section}
-    <section style="margin-top:16px">
+    <section class="inventory-section">
       <h2>Runtime Checks</h2>
       {checks}
     </section>
@@ -1172,7 +1191,7 @@ def _inventory(
             scroll_label="Runtime checks table",
         ),
     )
-    return _layout("Installed Models", "/inventory", body)
+    return _layout("My Models", "/inventory", body)
 
 
 def _format_bytes(value):
@@ -1243,7 +1262,7 @@ def _delete_result_page(result):
       <p><strong>Exit code:</strong> <code>{_text(result.returncode)}</code></p>
       <pre class="command">{_text(_command_lines(result.command))}</pre>
       <pre class="command">{_text(result.stdout)}{_text(result.stderr)}</pre>
-      <p><a href="/inventory">Back to Installed Models</a></p>
+      <p><a href="/inventory">Back to My Models</a></p>
     </section>
     """
     return _layout("Model Removal Result", "/inventory", body)

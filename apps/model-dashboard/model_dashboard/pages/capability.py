@@ -160,31 +160,31 @@ def _capability(
       {scores_stat}
       {dashboard_stat}
     </section>
-    <section class="panel" style="margin-bottom:16px">
+    <section class="panel capability-section">
       <h2>Capability Boundary</h2>
       <p>This page reads repo-local CSV, JSON, SQLite, and artifact metadata only. It does not refresh inventory, call runtime CLIs, start local model servers, inspect model folders, run prompts, download models, or expose raw responses.</p>
       <p>Use it as a planning view for three questions: what local hardware/runtime capability is documented, which candidates are ready or blocked before a run, and which benchmark artifacts exist but may still need dashboard import.</p>
-      <p>For results, use Overview, Model Runs, and Compare Models after importing an artifact into the dashboard database.</p>
+      <p>For results, use Home for summary and Benchmark for runs and comparisons after importing an artifact into the dashboard database.</p>
     </section>
-    <section>
+    <section class="capability-section">
       <h2>Hardware Profile Examples</h2>
       {hardware_table}
     </section>
-    <section style="margin-top:16px">
+    <section class="capability-section">
       <h2>Candidate Readiness</h2>
       {status_table}
       {ready_table}
     </section>
-    <section style="margin-top:16px">
+    <section class="capability-section">
       <h2>Benchmark Artifact Counts</h2>
       {artifact_table}
     </section>
-    <section style="margin-top:16px">
+    <section class="capability-section">
       <h2>Quant Advice</h2>
       <p class="empty">Saved quant advice is local metadata only. It does not approve downloads, installs, model runs, or eval scores.</p>
       {quant_advice_table}
     </section>
-    <section style="margin-top:16px">
+    <section class="capability-section">
       <h2>Performance Signals</h2>
       <p class="empty">These charts use imported local benchmark run metadata only. Empty charts mean no approved run has imported that perf field yet.</p>
       <div class="chart-grid capability-chart-grid" aria-label="Capability performance charts">
@@ -193,7 +193,7 @@ def _capability(
         {latency_panel}
       </div>
     </section>
-    <section class="panel" style="margin-top:16px">
+    <section class="panel capability-section">
       <h2>Next Benchmark Matrix</h2>
       <p>Generate the current read-only benchmark queue from the CLI:</p>
       {matrix_command}
@@ -217,21 +217,33 @@ def _capability(
                 "No committed hardware profile JSON examples found. Create one with "
                 "uv run ai-lab hardware snapshot --out docs/lab-notes/hardware-snapshot-local.json."
             ),
+            scroll_controls=True,
+            scroll_id="capability-hardware-table-scroll",
+            scroll_label="Hardware profile examples table",
         ),
         ready_table=_table(
             ["Candidate", "Readiness", "Runner", "Local model id", "Preflight notes", "Artifact"],
             ready_rows,
             empty_message="No ready_for_eval candidates are registered.",
             table_class="capability-ready-table",
+            scroll_controls=True,
+            scroll_id="capability-ready-table-scroll",
+            scroll_label="Candidate readiness table",
         ),
         status_table=_table(
             ["Status", "Count"],
             status_rows,
             empty_message="No candidate statuses found.",
+            scroll_controls=True,
+            scroll_id="capability-status-table-scroll",
+            scroll_label="Candidate status table",
         ),
         artifact_table=_table(
             ["Signal", "Count"],
             [[_text(label), _text(value)] for label, value in artifact_rows],
+            scroll_controls=True,
+            scroll_id="capability-artifacts-table-scroll",
+            scroll_label="Benchmark artifact counts table",
         ),
         quant_advice_table=_table(
             [
@@ -249,6 +261,9 @@ def _capability(
                 "--candidate <id> --out-json data/model_registry/quant_advice/<id>.json."
             ),
             table_class="capability-quant-table",
+            scroll_controls=True,
+            scroll_id="capability-quant-table-scroll",
+            scroll_label="Quant advice table",
         ),
         tokens_panel=tokens_panel,
         ttft_panel=ttft_panel,

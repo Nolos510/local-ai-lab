@@ -12,6 +12,7 @@ from ..filters import *
 from ..layout import _layout
 from ..reports import generate_markdown_report
 from ..scoring import METRIC_FIELDS
+from .compare import _compare_section
 
 
 def _artifact_score_state(row):
@@ -87,18 +88,34 @@ def _runs(
         )
     body = """
     {notice}
-    {filters}
-    <h2>Model Runs{filtered_count}</h2>
-    {table}
-    <section class="section">
+    <section class="panel page-intro">
+      <p>Benchmark runs and side-by-side comparisons. Higher score and throughput are better; lower latency is better when latency fields exist.</p>
+      <p class="empty">Benchmark reads local dashboard imports and artifact folders only. It does not download, install, run, or score a model by itself.</p>
+    </section>
+    <section class="runs-section">
+      <h2>Model Runs{filtered_count}</h2>
+      <p class="section-note">Model Runs are imported local benchmark run records. A row may have raw performance fields before reviewed scores or keep/watch decisions exist.</p>
+      {filters}
+      {table}
+    </section>
+    <section class="runs-section runs-compare-section">
+      {compare_section}
+    </section>
+    <section class="runs-section runs-artifact-section">
       <h2>Local Artifact Import Queue</h2>
-      <p class="muted">Use this queue for benchmark artifacts already written under <code>data/eval_results</code>. Importing a raw run updates model/run/performance data; labels and stability reports appear only after reviewed score and decision files exist.</p>
+      <p class="section-note">Use this queue for benchmark artifacts already written under <code>data/eval_results</code>. Importing a raw run updates model/run/performance data; labels and stability reports appear only after reviewed score and decision files exist.</p>
       {artifact_table}
     </section>
     """.format(
         notice=_real_data_notice(len(_demo_rows(all_runs))),
         filters=_runs_filters(runs, filters),
         filtered_count=(f" ({len(filtered_runs)} of {len(runs)})" if any(filters.values()) else ""),
+        compare_section=_compare_section(
+            conn,
+            include_notice=False,
+            include_filters=False,
+            include_deep_link=True,
+        ),
         table=_table(
             [
                 "Date",
@@ -143,6 +160,6 @@ def _runs(
             scroll_label="Artifact import queue",
         ),
     )
-    return _layout("Model Runs", "/runs", body)
+    return _layout("Benchmark", "/runs", body)
 
 __all__ = ('_artifact_score_state', '_runs',)

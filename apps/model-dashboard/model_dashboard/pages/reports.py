@@ -16,16 +16,19 @@ from ..scoring import METRIC_FIELDS
 def _reports(conn, database_path):
     report = generate_markdown_report(database_path)
     body = f"""
-    <section class="panel" style="margin-bottom:16px">
+    <section class="panel reports-intro-panel">
       <h2>What This Means</h2>
       <p>Ranked models are imported benchmark results, not installed-model inventory.</p>
       <p>Radar candidates are possible models to evaluate, not scored models.</p>
-      <p>Installed Models checks local LM Studio and Ollama inventory on demand.</p>
+      <p>My Models checks local LM Studio and Ollama inventory on demand.</p>
       <p>Scores are valid only after raw responses, confirmed scores, and decisions exist.</p>
       <p>Demo rows are examples only and are hidden from real dashboard views by default.</p>
     </section>
-    <h2>Reports</h2><pre class="report">{escape(report)}</pre>
+    <section class="reports-export-section">
+      <h2>Export Report</h2>
+      <pre class="report reports-output">{escape(report)}</pre>
+    </section>
     """
-    return _layout("Reports", "/reports", body)
+    return _layout("Export Report", "/reports", body)
 
 __all__ = ('_reports',)

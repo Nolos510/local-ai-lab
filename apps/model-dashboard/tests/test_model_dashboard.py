@@ -1,6 +1,7 @@
 import csv
 import json
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -11,7 +12,7 @@ from unittest import mock
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
 
-from model_dashboard import components, csv_io, db, reports, server  # noqa: E402
+from model_dashboard import capability, components, csv_io, db, reports, server  # noqa: E402
 from model_dashboard.scoring import METRIC_FIELDS  # noqa: E402
 
 FIXTURE_DIR = APP_DIR / "fixtures"
@@ -440,6 +441,24 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("TinyCoder Local 1.1B", report)
             self.assertIn("Qwen2.5-Coder 14B Instruct", report)
 
+    def test_reports_page_uses_section_rhythm_and_report_output_contracts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            csv_io.import_fixture_set(db_path, FIXTURE_DIR)
+            with db.connect(db_path) as conn:
+                html = server._reports(conn, db_path)
+
+        self.assertIn('class="panel reports-intro-panel"', html)
+        self.assertNotIn('style="margin-bottom:16px"', html)
+        self.assertIn('class="reports-export-section"', html)
+        self.assertIn('class="report reports-output"', html)
+        self.assertIn("# Local Model Performance Report", html)
+        self.assertIn(".reports-intro-panel {", html)
+        self.assertIn(".reports-export-section {", html)
+        self.assertIn(".reports-export-section > h2 {", html)
+        self.assertIn(".reports-output {", html)
+        self.assertIn("max-width: 100%", html)
+
     def test_overview_hides_fixture_data_by_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "dashboard.sqlite"
@@ -546,12 +565,98 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("Do This Next", html)
         self.assertIn("Import benchmark artifacts", html)
         self.assertIn("Top Results", html)
+        self.assertIn('class="panel home-card home-results"', html)
         self.assertIn("Home Result Model", html)
         self.assertIn("This Machine", html)
         self.assertIn("Apple M3 Ultra", html)
         self.assertIn("256.0 GB", html)
         self.assertIn("lms, ollama", html)
         self.assertIn("Export report", html)
+
+    def test_current_hardware_profile_reads_sanitized_local_facts(self):
+        def fake_runner(command):
+            if command == ["system_profiler", "SPHardwareDataType", "-json"]:
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    stdout=json.dumps(
+                        {
+                            "SPHardwareDataType": [
+                                {
+                                    "machine_name": "Mac Studio",
+                                    "machine_model": "Mac15,14",
+                                    "chip_type": "Apple M3 Ultra",
+                                    "physical_memory": "256 GB",
+                                    "serial_number": "PRIVATE-SERIAL",
+                                    "platform_UUID": "PRIVATE-UUID",
+                                }
+                            ]
+                        }
+                    ),
+                    stderr="",
+                )
+            sysctl_values = {
+                "machdep.cpu.brand_string": "Apple M3 Ultra",
+                "hw.memsize": "274877906944",
+                "hw.model": "Mac15,14",
+            }
+            if command[:2] == ["sysctl", "-n"]:
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    stdout=sysctl_values.get(command[2], ""),
+                    stderr="",
+                )
+            return subprocess.CompletedProcess(command, 1, stdout="", stderr="")
+
+        def fake_resolver(command_name):
+            return f"/private/bin/{command_name}" if command_name in {"lms", "ollama"} else None
+
+        profile = capability.current_hardware_profile(
+            command_runner=fake_runner,
+            command_resolver=fake_resolver,
+        )
+
+        self.assertEqual(profile["machine_name"], "Mac Studio")
+        self.assertEqual(profile["machine_model"], "Mac15,14")
+        self.assertEqual(profile["chip"], "Apple M3 Ultra")
+        self.assertEqual(profile["memory_label"], "256 GB")
+        self.assertEqual(profile["memory_gb"], "256.0")
+        self.assertEqual(profile["runtimes_present"], ["lms", "ollama"])
+        serialized = json.dumps(profile)
+        self.assertNotIn("PRIVATE-SERIAL", serialized)
+        self.assertNotIn("PRIVATE-UUID", serialized)
+        self.assertNotIn("/private/bin", serialized)
+
+    def test_home_machine_card_falls_back_to_current_hardware(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with db.connect(db_path) as conn:
+                html = server._overview(
+                    conn,
+                    registry_path=tmp_path / "missing-candidates.csv",
+                    eval_results_dir=tmp_path / "missing-eval-results",
+                    hardware_profiles_dir=tmp_path / "missing-hardware",
+                    local_inventory_path=tmp_path / "missing-local-inventory.csv",
+                    current_hardware_profile={
+                        "captured_at": "Live local read; not saved.",
+                        "machine_name": "Mac Studio",
+                        "machine_model": "Mac15,14",
+                        "chip": "Apple M3 Ultra",
+                        "memory_label": "256 GB",
+                        "runtimes_present": ["lms", "ollama"],
+                    },
+                )
+
+        self.assertIn("This Machine", html)
+        self.assertIn("Mac Studio", html)
+        self.assertIn("Apple M3 Ultra", html)
+        self.assertIn("256 GB", html)
+        self.assertIn("lms, ollama", html)
+        self.assertIn("Live local read; not saved.", html)
+        self.assertNotIn("No committed hardware snapshot", html)
 
     def test_overview_ranked_models_table_keeps_columns_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -652,6 +757,16 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn(".overview-table {", html)
         self.assertIn("min-width: 1240px", html)
         self.assertIn(".overview-table th:nth-child(1)", html)
+        self.assertIn("html {\n      overflow-x: hidden", html)
+        self.assertIn("font-weight: 400;\n      overflow-x: hidden", html)
+        self.assertIn(".home-columns > .panel {", html)
+        self.assertIn("overflow-x: hidden", html)
+        self.assertIn(".home-results .table-wrap {", html)
+        self.assertIn("contain: paint", html)
+        self.assertIn(".workflow-step:hover,", html)
+        self.assertIn(".workflow-step:focus-visible {", html)
+        self.assertIn(".action-link:hover,", html)
+        self.assertIn(".action-link:focus-visible {", html)
 
     def test_overview_metric_explanations_render_without_external_assets(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -836,6 +951,40 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Radar Candidates", html)
             self.assertIn("No candidates match these filters.", html)
 
+    def test_radar_uses_section_rhythm_and_wide_table_contracts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            project_registry_path = tmp_path / "github_repos.csv"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(registry_path)
+            write_project_registry(project_registry_path)
+
+            with db.connect(db_path) as conn:
+                html = server._radar(
+                    conn,
+                    registry_path=registry_path,
+                    project_registry_path=project_registry_path,
+                )
+
+        self.assertIn('class="grid radar-stats-grid"', html)
+        self.assertIn('class="panel radar-security-panel"', html)
+        self.assertIn('class="radar-candidates-section"', html)
+        self.assertIn('class="panel compact-guide radar-guide"', html)
+        self.assertIn('class="cell-stack radar-candidate-identity"', html)
+        self.assertIn('class="radar-candidate-name"', html)
+        self.assertIn('class="radar-projects-section"', html)
+        self.assertNotIn('class="panel" style="margin-bottom:16px"', html)
+        self.assertNotIn('class="panel compact-guide" style="margin-bottom:16px"', html)
+        self.assertIn(".radar-security-panel,", html)
+        self.assertIn(".radar-candidates-section,", html)
+        self.assertIn(".radar-candidate-identity {", html)
+        self.assertIn("table-layout: fixed", html)
+        self.assertIn("min-width: 1680px", html)
+        self.assertIn(".radar-table th:nth-child(1)", html)
+        self.assertIn("width: 240px", html)
+
     def test_discover_merges_radar_specialty_and_projects(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -888,7 +1037,9 @@ class ModelDashboardQaTests(unittest.TestCase):
 
         self.assertIn("Models worth evaluating", html)
         self.assertIn("Discover records are local review metadata only", html)
-        self.assertIn("This table shows candidate metadata", html)
+        self.assertIn("What this view shows", html)
+        self.assertIn("candidate-only record with source metadata", html)
+        self.assertIn("Benchmark results appear on Home and Benchmark", html)
         self.assertIn('href="/radar?lane=specialty"', html)
         self.assertIn("All candidates", html)
         self.assertIn("Specialty", html)
@@ -1058,6 +1209,19 @@ class ModelDashboardQaTests(unittest.TestCase):
                 )
 
         self.assertIn("Local Artifact Import Queue", html)
+        self.assertIn("<title>Benchmark - Local Model Dashboard</title>", html)
+        self.assertIn("Benchmark runs and side-by-side comparisons.", html)
+        self.assertIn("does not download, install, run, or score a model by itself", html)
+        self.assertIn("Model Runs are imported local benchmark run records.", html)
+        self.assertIn('class="runs-section"', html)
+        self.assertIn('class="runs-section runs-compare-section"', html)
+        self.assertIn('class="runs-section runs-artifact-section"', html)
+        self.assertIn(".runs-section {", html)
+        self.assertIn(".page-intro + .runs-section {", html)
+        self.assertNotIn('<section class="section">', html)
+        self.assertNotIn('class="muted"', html)
+        self.assertIn("Compare Models", html)
+        self.assertIn("Open compare filters", html)
         self.assertIn("/artifacts/20260625-raw-fixture", html)
         self.assertIn("Raw run artifact", html)
         self.assertIn("Label needs reviewed scores and a decision", html)
@@ -1109,6 +1273,7 @@ class ModelDashboardQaTests(unittest.TestCase):
 
             self.assertIn("Unsafe Source Model", html)
             self.assertNotIn('href="javascript:alert(1)"', html)
+            self.assertIn("No keep/watch decision recorded yet.", html)
 
     def test_model_detail_tables_use_expandable_column_layouts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1178,6 +1343,10 @@ class ModelDashboardQaTests(unittest.TestCase):
 
             self.assertIn('class="model-detail-runs-table"', html)
             self.assertIn('class="model-detail-decisions-table"', html)
+            self.assertIn('class="split model-detail-header"', html)
+            self.assertIn('class="panel model-detail-card"', html)
+            self.assertIn('class="panel model-detail-card model-detail-read-card"', html)
+            self.assertIn('class="model-detail-results-shell"', html)
             self.assertIn('class="model-detail-results-scroll"', html)
             self.assertIn('class="model-detail-section"', html)
             self.assertIn('class="model-detail-results-toolbar"', html)
@@ -1191,6 +1360,9 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("ti-chevron-right", html)
             self.assertNotIn(">Left</button>", html)
             self.assertNotIn(">Right</button>", html)
+            self.assertIn(".model-detail-header {", html)
+            self.assertIn(".model-detail-card {", html)
+            self.assertIn(".model-detail-results-shell {", html)
             self.assertIn(".model-detail-results-scroll {", html)
             self.assertIn(".model-detail-results-toolbar {", html)
             self.assertIn("overscroll-behavior-x: contain", html)
@@ -1200,6 +1372,7 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("min-width: 1320px", html)
             self.assertIn("white-space: nowrap", html)
             self.assertIn("target.scrollBy", html)
+            self.assertIn(".model-detail-section h2 {", html)
 
     def test_project_repo_url_rejects_unsafe_scheme(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1397,11 +1570,17 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn('id="model-runs-table-scroll"', runs_html)
             self.assertIn('data-scroll-target="model-runs-table-scroll"', runs_html)
             self.assertIn("Qwen Filter Model", runs_html)
-            self.assertNotIn("Research Filter Model", runs_html)
+            runs_table_region = runs_html.split("Compare Models", 1)[0]
+            self.assertNotIn("Research Filter Model", runs_table_region)
+            self.assertIn("Open compare filters", runs_html)
+            self.assertIn("Research Filter Model", runs_html)
             self.assertIn("Compare Models (1 of 2)", compare_html)
             self.assertIn('class="compare-table"', compare_html)
             self.assertIn('id="compare-models-table-scroll"', compare_html)
             self.assertIn('data-scroll-target="compare-models-table-scroll"', compare_html)
+            self.assertIn('class="compare-section"', compare_html)
+            self.assertNotIn('<section style="margin-top:16px">', compare_html)
+            self.assertIn(".compare-section {", compare_html)
             self.assertIn(".compare-table {", compare_html)
             self.assertIn("min-width: 2960px", compare_html)
             self.assertIn(".compare-table th:nth-child(1)", compare_html)
@@ -1414,6 +1593,48 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Decision Log (1 of 2)", storage_html)
             self.assertIn("Qwen Filter Model", storage_html)
             self.assertNotIn("Research Filter Model", storage_html)
+
+    def test_storage_uses_section_rhythm_and_wide_table_contracts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with db.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO models (id, model_name, model_family, provider)
+                    VALUES (1, 'Storage Rhythm Model', 'Storage', 'local')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO decisions (
+                        id, model_id, decision, keep_installed, best_use_case,
+                        weakness, retest_condition
+                    )
+                    VALUES (
+                        1, 1, 'keep', 1, 'Long-running local coding work',
+                        'Needs periodic retest', 'After model update'
+                    )
+                    """
+                )
+
+                html = server._storage(conn)
+
+        self.assertIn('class="panel storage-intro-panel"', html)
+        self.assertNotIn('style="margin-bottom:16px"', html)
+        self.assertIn('class="storage-decisions-section"', html)
+        self.assertIn('class="cell-stack storage-model-identity"', html)
+        self.assertIn('class="storage-model-name"', html)
+        self.assertIn('class="storage-decisions-table"', html)
+        self.assertIn('id="storage-decisions-table-scroll"', html)
+        self.assertIn('data-scroll-target="storage-decisions-table-scroll"', html)
+        self.assertIn(".storage-intro-panel {", html)
+        self.assertIn(".storage-decisions-section {", html)
+        self.assertIn(".storage-decisions-section .filters {", html)
+        self.assertIn(".storage-model-identity {", html)
+        self.assertIn(".storage-decisions-table {", html)
+        self.assertIn("table-layout: fixed", html)
+        self.assertIn("min-width: 1180px", html)
 
     def test_compare_page_renders_perf_empty_state_for_null_values(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1531,6 +1752,17 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn(".lab-artifacts-table {", html)
             self.assertIn("min-width: 1560px", html)
             self.assertIn(".lab-artifacts-table th:nth-child(1)", html)
+            self.assertIn('class="lab-section"', html)
+            self.assertNotIn('<section style="margin-top:16px">', html)
+            self.assertIn(".lab-section {", html)
+            self.assertIn(".grid + .lab-section {", html)
+            self.assertIn('id="lab-product-loop-table-scroll"', html)
+            self.assertIn('data-scroll-target="lab-product-loop-table-scroll"', html)
+            self.assertIn('id="lab-ready-queue-table-scroll"', html)
+            self.assertIn('data-scroll-target="lab-ready-queue-table-scroll"', html)
+            self.assertIn('id="lab-artifacts-table-scroll"', html)
+            self.assertIn('data-scroll-target="lab-artifacts-table-scroll"', html)
+            self.assertIn('aria-label="Benchmark artifacts table horizontal scroll controls"', html)
 
     def test_capability_page_renders_empty_hardware_state(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1561,6 +1793,11 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("capability-chart-grid", html)
             self.assertIn('data-chart-dialog="capability-chart-tokens"', html)
             self.assertIn('<dialog class="chart-dialog" id="capability-chart-tokens"', html)
+            self.assertIn('class="panel capability-section"', html)
+            self.assertIn('class="capability-section"', html)
+            self.assertNotIn('<section style="margin-top:16px">', html)
+            self.assertIn(".capability-section {", html)
+            self.assertIn(".grid + .capability-section {", html)
 
     def test_capability_page_renders_candidate_and_artifact_counts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1632,6 +1869,15 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn('class="capability-ready-table"', html)
             self.assertIn(".capability-ready-table {", html)
             self.assertIn("min-width: 1280px", html)
+            self.assertIn('id="capability-hardware-table-scroll"', html)
+            self.assertIn('data-scroll-target="capability-hardware-table-scroll"', html)
+            self.assertIn('id="capability-status-table-scroll"', html)
+            self.assertIn('data-scroll-target="capability-status-table-scroll"', html)
+            self.assertIn('id="capability-ready-table-scroll"', html)
+            self.assertIn('data-scroll-target="capability-ready-table-scroll"', html)
+            self.assertIn('id="capability-artifacts-table-scroll"', html)
+            self.assertIn('data-scroll-target="capability-artifacts-table-scroll"', html)
+            self.assertIn('aria-label="Candidate readiness table horizontal scroll controls"', html)
             self.assertIn(".stat-metrics {", html)
 
     def test_capability_page_renders_perf_values_when_imported(self):
@@ -1725,6 +1971,8 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn('class="capability-quant-table"', html)
             self.assertIn(".capability-quant-table {", html)
             self.assertIn("min-width: 1520px", html)
+            self.assertIn('id="capability-quant-table-scroll"', html)
+            self.assertIn('data-scroll-target="capability-quant-table-scroll"', html)
             self.assertNotIn("<script src=", html)
 
     def test_capability_page_renders_missing_quant_advice_empty_state(self):
@@ -1935,6 +2183,8 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn(".runs-table th:nth-child(13)", html)
         self.assertIn("white-space: nowrap", html)
         self.assertIn("overflow-wrap: normal", html)
+        self.assertIn(".runs-section {", html)
+        self.assertIn(".runs-section > .section-heading-row {", html)
 
     def test_wide_table_identity_columns_are_sticky(self):
         html = server._layout("Fixture", "/compare", "<p>Body</p>")
@@ -2036,12 +2286,20 @@ class ModelDashboardQaTests(unittest.TestCase):
     def test_inventory_renders_manual_refresh_empty_state(self):
         html = server._inventory(action_token="fixture-token")
 
+        self.assertIn("<title>My Models - Local Model Dashboard</title>", html)
         self.assertIn("What's installed locally.", html)
         self.assertIn("Keep / Watch Decisions", html)
-        self.assertIn("Installed Models", html)
+        self.assertIn("My Models reads local LM Studio and Ollama inventory", html)
         self.assertIn('action="/actions/refresh-inventory"', html)
         self.assertIn("Last refresh: not checked yet", html)
         self.assertIn('method="get" action="/inventory"', html)
+        self.assertIn('class="panel inventory-refresh-panel"', html)
+        self.assertIn('class="inventory-section"', html)
+        self.assertIn('class="inventory-section inventory-decisions-section"', html)
+        self.assertIn(".inventory-refresh-panel {", html)
+        self.assertIn(".inventory-section {", html)
+        self.assertNotIn('<section class="panel" style="margin-bottom:16px">', html)
+        self.assertNotIn('<section style="margin-top:16px">', html)
         self.assertIn("No inventory refresh has run yet.", html)
         self.assertIn("No keep/watch decisions have been imported yet.", html)
 
@@ -2140,6 +2398,12 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("min-width: 1950px", html)
         self.assertIn(".inventory-models-table th:nth-child(5)", html)
         self.assertIn(".inventory-models-table th:nth-child(8)", html)
+        self.assertIn(
+            ".inventory-models-table th:nth-child(2),\n"
+            "    .inventory-models-table td:nth-child(2) {\n"
+            "      position: sticky;",
+            html,
+        )
         self.assertIn('class="inventory-checks-table"', html)
         self.assertIn('id="inventory-checks-table-scroll"', html)
         self.assertIn('data-scroll-target="inventory-checks-table-scroll"', html)
@@ -2408,6 +2672,94 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertEqual(match_state, "registered")
         self.assertEqual(candidate["candidate_id"], "local-lm-studio-qwen3-6-27b-obliterated")
         self.assertEqual(candidate["local_model_id"], qwen_model_id)
+
+    def test_inventory_local_overlay_wins_duplicate_exact_id_match(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "candidates.csv"
+            overlay_path = tmp_path / "local_inventory_candidates.csv"
+            fieldnames = CANDIDATE_FIELDS
+            qwen_model_id = "qwen3.6-27b-obliterated"
+            durable_row = {field: "" for field in fieldnames}
+            durable_row.update(
+                {
+                    "candidate_id": "stale-qwen-obliteratus",
+                    "model_name": "Qwen3.6 27B Obliteratus",
+                    "provider_or_org": "local note",
+                    "status": "watchlist",
+                    "local_model_id": qwen_model_id,
+                }
+            )
+            with registry_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerow(durable_row)
+            overlay_row = {field: "" for field in fieldnames}
+            overlay_row.update(
+                {
+                    "candidate_id": "local-lm-studio-qwen3-6-27b-obliterated-dc40e2cc",
+                    "model_name": "Qwen3.6 27B Obliteratus",
+                    "provider_or_org": "local LM Studio inventory",
+                    "status": "ready_for_eval",
+                    "local_runner": "lmstudio-cli",
+                    "local_model_id": qwen_model_id,
+                    "download_approval": "not_needed_local",
+                    "provenance_status": "local_inventory",
+                }
+            )
+            with overlay_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerow(overlay_row)
+            candidates = components._load_radar_candidates(
+                registry_path,
+                local_inventory_path=overlay_path,
+            )
+            detected_model = {
+                "runtime": "LM Studio",
+                "model_id": qwen_model_id,
+                "display_name": "Qwen3.6 27B Obliteratus",
+                "status": "loaded",
+                "model_type": "llm",
+            }
+
+            match_state, candidate = server._match_inventory_model(detected_model, candidates)
+
+        self.assertEqual(match_state, "registered")
+        self.assertEqual(
+            candidate["candidate_id"],
+            "local-lm-studio-qwen3-6-27b-obliterated-dc40e2cc",
+        )
+        self.assertTrue(server._inventory_run_allowed(detected_model, candidate))
+
+    def test_inventory_duplicate_exact_id_without_single_winner_stays_ambiguous(self):
+        qwen_model_id = "qwen3.6-27b-obliterated"
+        candidates = []
+        for candidate_id in ("manual-qwen-a", "manual-qwen-b"):
+            row = {field: "" for field in CANDIDATE_FIELDS}
+            row.update(
+                {
+                    "candidate_id": candidate_id,
+                    "model_name": "Qwen3.6 27B Obliteratus",
+                    "status": "watchlist",
+                    "local_model_id": qwen_model_id,
+                }
+            )
+            candidates.append(row)
+
+        match_state, candidate = server._match_inventory_model(
+            {
+                "runtime": "LM Studio",
+                "model_id": qwen_model_id,
+                "display_name": "Qwen3.6 27B Obliteratus",
+                "status": "loaded",
+                "model_type": "llm",
+            },
+            candidates,
+        )
+
+        self.assertEqual(match_state, "ambiguous")
+        self.assertIsNone(candidate)
 
     def test_inventory_auto_registers_when_soft_matches_are_ambiguous(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2951,6 +3303,8 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Abliterated / Dolphin Lane", html)
             self.assertIn("Qwen3-8B-Abliterated-GGUF", html)
             self.assertIn("Dolphin3.0-Llama3.1-8B-GGUF", html)
+            self.assertIn('id="lab-specialty-table-scroll"', html)
+            self.assertIn('data-scroll-target="lab-specialty-table-scroll"', html)
             self.assertIn("Abliterated", html)
             self.assertIn("Dolphin", html)
             self.assertIn("Specialty Models", specialty_html)
@@ -2969,6 +3323,54 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Specialty Candidates (1 of 2)", security_html)
             self.assertIn("Dolphin3.0-Llama3.1-8B-GGUF", security_html)
             self.assertNotIn("Qwen3-8B-Abliterated-GGUF", security_html)
+
+    def test_specialty_uses_section_rhythm_and_wide_table_contracts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(
+                registry_path,
+                extra_rows=[
+                    {
+                        "candidate_id": "20260605-dolphin3-llama31-8b-gguf",
+                        "model_name": "Dolphin3.0-Llama3.1-8B-GGUF",
+                        "model_family": "Dolphin",
+                        "provider_or_org": "Cognitive Computations",
+                        "status": "ready_for_eval",
+                        "format_or_runtime": "GGUF through LM Studio or llama.cpp",
+                        "source_packet_path": "automations/ai-lab-radar/inputs/dolphin.md",
+                        "report_path": "automations/ai-lab-radar/reports/dolphin.md",
+                        "why_interesting": "Local Dolphin baseline for assistant testing.",
+                        "risk_notes": "License and low-refusal behavior need review.",
+                        "proposed_eval": "Run local benchmark with safety notes.",
+                        "security_review_status": "needs_review",
+                        "download_approval": "not_approved",
+                        "license_review_status": "needs_review",
+                        "provenance_status": "source_metadata_only",
+                        "security_notes": "Synthetic Dolphin candidate needs security review.",
+                        "isolation_notes": "Use local runtime only after approval.",
+                    },
+                ],
+            )
+
+            with db.connect(db_path) as conn:
+                html = server._specialty(conn, registry_path=registry_path)
+
+        self.assertIn('class="grid specialty-stats-grid"', html)
+        self.assertIn('class="panel specialty-intro-panel"', html)
+        self.assertIn('class="specialty-candidates-section"', html)
+        self.assertIn('class="cell-stack radar-candidate-identity"', html)
+        self.assertIn('class="radar-candidate-name"', html)
+        self.assertIn('class="specialty-table"', html)
+        self.assertNotIn('class="panel" style="margin-bottom:16px"', html)
+        self.assertIn(".specialty-intro-panel {", html)
+        self.assertIn(".specialty-candidates-section {", html)
+        self.assertIn(".specialty-table {", html)
+        self.assertIn("min-width: 1540px", html)
+        self.assertIn(".specialty-table th:nth-child(1)", html)
+        self.assertIn("width: 260px", html)
 
     def test_projects_filters_project_registry_by_category(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2989,6 +3391,28 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Core local runtime for larger models.", html)
             self.assertIn("100k", html)
             self.assertNotIn("Agent Watch", html)
+
+    def test_projects_use_section_rhythm_and_wide_table_contracts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "github_repos.csv"
+            write_project_registry(registry_path)
+
+            html = server._projects(registry_path=registry_path)
+
+        self.assertIn('class="grid projects-stats-grid"', html)
+        self.assertIn('class="projects-radar-section"', html)
+        self.assertIn('class="cell-stack project-identity"', html)
+        self.assertIn('class="project-name"', html)
+        self.assertIn('class="project-table"', html)
+        self.assertIn(".projects-radar-section {", html)
+        self.assertIn(".projects-radar-section .filters {", html)
+        self.assertIn(".project-identity {", html)
+        self.assertIn(".project-table {", html)
+        self.assertIn("table-layout: fixed", html)
+        self.assertIn("min-width: 1500px", html)
+        self.assertIn(".project-table th:nth-child(1)", html)
+        self.assertIn("width: 240px", html)
 
     def test_projects_sort_by_priority_before_stars(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3022,6 +3446,8 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("GitHub Project Radar", html)
             self.assertIn("Local Runtime", html)
             self.assertIn("Supports benchmark serving.", html)
+            self.assertIn('id="lab-project-table-scroll"', html)
+            self.assertIn('data-scroll-target="lab-project-table-scroll"', html)
             self.assertIn("/projects", html)
 
 

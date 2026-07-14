@@ -29,7 +29,7 @@ def _projects(query=None, registry_path=PROJECT_REGISTRY_PATH):
     rows = []
     for row in filtered_projects:
         repo = _external_link_or_text(row.get("repo_url"), row.get("repo_name"))
-        identity = '<div class="cell-stack"><div>{repo}</div><code>{owner}</code></div>'.format(
+        identity = '<div class="cell-stack project-identity"><div class="project-name">{repo}</div><code>{owner}</code></div>'.format(
             repo=repo,
             owner=_text(row.get("owner")),
         )
@@ -81,14 +81,14 @@ def _projects(query=None, registry_path=PROJECT_REGISTRY_PATH):
         )
 
     body = """
-    <section class="grid">
+    <section class="grid projects-stats-grid">
       {projects_stat}
       {ready_stat}
       {watchlist_stat}
       {local_stat}
       {priority_stat}
     </section>
-    <section>
+    <section class="projects-radar-section">
       {filters}
       <h2>Project Radar{filtered_count}</h2>
       {table}

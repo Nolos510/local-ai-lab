@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import csv
 import json
+import os
+import platform
+import shutil
+import subprocess
+from collections.abc import Callable
 from pathlib import Path
+from typing import Optional
 
 ACCEPTABLE_SECURITY_STATES = {
     "approved",
@@ -18,6 +24,9 @@ ACCEPTABLE_DOWNLOAD_STATES = {
     "not_required",
     "local_only",
 }
+RUNTIME_COMMANDS = ("ollama", "lms", "mlx_lm", "llama-cli")
+CommandRunner = Callable[[list[str]], subprocess.CompletedProcess[str]]
+CommandResolver = Callable[[str], Optional[str]]  # noqa: UP045 - evaluated on Python 3.9
 
 
 def load_candidates(path: Path) -> list[dict[str, str]]:
@@ -106,6 +115,43 @@ def load_hardware_profiles(root: Path, *, limit: int = 3) -> list[dict[str, obje
     return profiles[-limit:]
 
 
+def current_hardware_profile(
+    *,
+    command_runner: CommandRunner | None = None,
+    command_resolver: CommandResolver = shutil.which,
+) -> dict[str, object]:
+    """Return a sanitized, live local hardware summary for dashboard display."""
+    runner = command_runner or _default_command_runner
+    profiler = _system_profiler_hardware(runner)
+    chip = _string_value(profiler.get("chip_type")) or _sysctl_text(
+        runner, "machdep.cpu.brand_string"
+    )
+    memory_bytes = _sysctl_int(runner, "hw.memsize")
+    memory_label = _string_value(profiler.get("physical_memory"))
+    return {
+        "filename": "",
+        "captured_at": "Live local read; not saved.",
+        "schema_version": "hardware-snapshot-v0.1-live",
+        "os": " ".join(
+            value for value in (platform.system(), platform.release()) if value
+        ),
+        "python": " ".join(
+            value
+            for value in (platform.python_implementation(), platform.python_version())
+            if value
+        ),
+        "machine": platform.machine(),
+        "machine_name": _string_value(profiler.get("machine_name")),
+        "machine_model": _string_value(profiler.get("machine_model"))
+        or _sysctl_text(runner, "hw.model"),
+        "cpu_count": os.cpu_count() or "",
+        "chip": chip,
+        "memory_gb": _memory_gb(memory_bytes) or _memory_gb_from_label(memory_label),
+        "memory_label": memory_label,
+        "runtimes_present": sorted(name for name in RUNTIME_COMMANDS if command_resolver(name)),
+    }
+
+
 def summarize_hardware_profile(filename: str, payload: dict[str, object]) -> dict[str, object]:
     os_info = _dict_value(payload, "os")
     machine = _dict_value(payload, "machine")
@@ -130,6 +176,8 @@ def summarize_hardware_profile(filename: str, payload: dict[str, object]) -> dic
             if value
         ),
         "machine": str(machine.get("machine") or ""),
+        "machine_name": str(macos.get("machine_name") or ""),
+        "machine_model": str(macos.get("machine_model") or ""),
         "cpu_count": machine.get("cpu_count") or "",
         "chip": macos.get("chip_brand") or "",
         "memory_gb": _memory_gb(macos.get("memory_bytes")),
@@ -151,3 +199,65 @@ def _memory_gb(value: object) -> str:
         return f"{int(value) / (1024**3):.1f}"
     except (TypeError, ValueError):
         return ""
+
+
+def _memory_gb_from_label(value: str) -> str:
+    first = value.split(maxsplit=1)[0] if value else ""
+    try:
+        return f"{float(first):.1f}"
+    except ValueError:
+        return ""
+
+
+def _string_value(value: object) -> str:
+    return str(value).strip() if value is not None else ""
+
+
+def _default_command_runner(command: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=3,
+    )
+
+
+def _run_text(command_runner: CommandRunner, command: list[str]) -> str:
+    try:
+        result = command_runner(command)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if result.returncode != 0:
+        return ""
+    return (result.stdout or result.stderr or "").strip()
+
+
+def _sysctl_text(command_runner: CommandRunner, key: str) -> str:
+    output = _run_text(command_runner, ["sysctl", "-n", key])
+    return output.splitlines()[0].strip() if output else ""
+
+
+def _sysctl_int(command_runner: CommandRunner, key: str) -> int | None:
+    value = _sysctl_text(command_runner, key)
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _system_profiler_hardware(command_runner: CommandRunner) -> dict[str, object]:
+    output = _run_text(command_runner, ["system_profiler", "SPHardwareDataType", "-json"])
+    if not output:
+        return {}
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        return {}
+    items = payload.get("SPHardwareDataType")
+    if not isinstance(items, list) or not items:
+        return {}
+    first = items[0]
+    if not isinstance(first, dict):
+        return {}
+    return first

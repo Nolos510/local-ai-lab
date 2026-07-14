@@ -96,6 +96,9 @@ def _layout(title, current_path, body):
       --glow: 0 0 0 1px rgba(139, 123, 255, 0.30), 0 10px 34px rgba(139, 123, 255, 0.22);
     }}
     * {{ box-sizing: border-box; }}
+    html {{
+      overflow-x: hidden;
+    }}
     body {{
       margin: 0;
       background: var(--bg);
@@ -104,6 +107,7 @@ def _layout(title, current_path, body):
       font-size: 15px;
       line-height: 1.5;
       font-weight: 400;
+      overflow-x: hidden;
     }}
     strong {{ font-weight: 500; }}
     header {{
@@ -422,6 +426,96 @@ def _layout(title, current_path, body):
     .filter-chip strong {{
       font-variant-numeric: tabular-nums;
     }}
+    .radar-stats-grid {{
+      margin-bottom: 18px;
+    }}
+    .radar-security-panel,
+    .radar-guide {{
+      display: grid;
+      gap: 8px;
+    }}
+    .radar-security-panel {{
+      margin-bottom: 18px;
+    }}
+    .radar-security-panel h2,
+    .radar-security-panel p,
+    .radar-guide h3,
+    .radar-guide p {{
+      margin: 0;
+    }}
+    .radar-candidates-section,
+    .radar-projects-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      margin-bottom: 22px;
+    }}
+    .radar-candidates-section > h2,
+    .radar-projects-section h2 {{
+      margin: 0;
+    }}
+    .radar-candidates-section .filter-chip-row,
+    .radar-candidates-section .filters,
+    .radar-guide {{
+      margin-bottom: 0;
+    }}
+    .radar-candidate-identity {{
+      gap: 6px;
+    }}
+    .radar-candidate-name {{
+      font-weight: 500;
+    }}
+    .radar-candidate-identity code {{
+      display: block;
+      max-width: 100%;
+    }}
+    .specialty-stats-grid {{
+      margin-bottom: 18px;
+    }}
+    .specialty-intro-panel {{
+      display: grid;
+      gap: 8px;
+      margin-bottom: 18px;
+    }}
+    .specialty-intro-panel h2,
+    .specialty-intro-panel p {{
+      margin: 0;
+    }}
+    .specialty-candidates-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }}
+    .specialty-candidates-section > h2 {{
+      margin: 0;
+    }}
+    .specialty-candidates-section .filters {{
+      margin-bottom: 0;
+    }}
+    .projects-stats-grid {{
+      margin-bottom: 18px;
+    }}
+    .projects-radar-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }}
+    .projects-radar-section > h2 {{
+      margin: 0;
+    }}
+    .projects-radar-section .filters {{
+      margin-bottom: 0;
+    }}
+    .project-identity {{
+      gap: 6px;
+    }}
+    .project-name {{
+      font-weight: 500;
+    }}
+    .project-identity code {{
+      display: block;
+      max-width: 100%;
+    }}
     .field label {{
       display: block;
       color: var(--muted);
@@ -587,6 +681,23 @@ def _layout(title, current_path, body):
       overflow-x: auto;
       white-space: pre-wrap;
     }}
+    .reports-intro-panel {{
+      margin-bottom: 18px;
+    }}
+    .reports-export-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }}
+    .reports-export-section > h2 {{
+      margin: 0;
+    }}
+    .reports-output {{
+      box-sizing: border-box;
+      margin: 0;
+      max-width: 100%;
+      line-height: 1.55;
+    }}
     .command {{
       margin: 0;
       background: var(--code-bg);
@@ -600,6 +711,74 @@ def _layout(title, current_path, body):
     .workflow-table td:nth-child(1) {{
       width: 150px;
       font-weight: 500;
+    }}
+    .lab-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      margin-top: 18px;
+    }}
+    .grid + .lab-section {{
+      margin-top: 22px;
+    }}
+    .lab-section h2 {{
+      margin-bottom: 0;
+    }}
+    .capability-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      margin-top: 18px;
+    }}
+    .grid + .capability-section {{
+      margin-top: 22px;
+    }}
+    .capability-section h2 {{
+      margin-bottom: 0;
+    }}
+    .compare-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      margin-top: 18px;
+    }}
+    .compare-section h2 {{
+      margin-bottom: 0;
+    }}
+    .inventory-refresh-panel {{
+      display: grid;
+      gap: 12px;
+      margin-bottom: 18px;
+    }}
+    .inventory-refresh-panel h2 {{
+      margin-bottom: 0;
+    }}
+    .inventory-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      margin-top: 18px;
+    }}
+    .inventory-section h2 {{
+      margin-bottom: 0;
+    }}
+    .inventory-section > .section-heading-row {{
+      margin-top: 0;
+    }}
+    .runs-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      margin-top: 18px;
+    }}
+    .page-intro + .runs-section {{
+      margin-top: 0;
+    }}
+    .runs-section h2 {{
+      margin-bottom: 0;
+    }}
+    .runs-section > .section-heading-row {{
+      margin-top: 0;
     }}
     .home-hero {{
       display: grid;
@@ -629,10 +808,23 @@ def _layout(title, current_path, body):
       color: var(--accent-ink);
       font-weight: 600;
       text-decoration: none;
+      transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease;
     }}
     .action-link.secondary {{
       border-color: var(--line);
       background: var(--panel-soft);
+      color: var(--ink);
+    }}
+    .action-link:hover,
+    .action-link:focus-visible {{
+      transform: translateY(-1px);
+      text-decoration: none;
+      box-shadow: var(--glow);
+    }}
+    .action-link.secondary:hover,
+    .action-link.secondary:focus-visible {{
+      border-color: rgba(139, 123, 255, 0.45);
+      background: var(--accent-soft);
       color: var(--ink);
     }}
     .workflow-strip {{
@@ -651,6 +843,14 @@ def _layout(title, current_path, body):
       background: var(--panel);
       text-decoration: none;
       box-shadow: var(--shadow);
+      transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    }}
+    .workflow-step:hover,
+    .workflow-step:focus-visible {{
+      transform: translateY(-1px);
+      border-color: rgba(139, 123, 255, 0.45);
+      background: var(--panel-soft);
+      box-shadow: var(--glow);
     }}
     .workflow-step span {{
       color: var(--muted);
@@ -683,6 +883,17 @@ def _layout(title, current_path, body):
       grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
       gap: 16px;
       align-items: start;
+    }}
+    .home-columns > .panel {{
+      min-width: 0;
+    }}
+    .home-results {{
+      display: grid;
+      gap: 12px;
+      overflow-x: hidden;
+    }}
+    .home-results .table-wrap {{
+      contain: paint;
     }}
     .machine-facts {{
       display: grid;
@@ -870,6 +1081,8 @@ def _layout(title, current_path, body):
     .compare-table td:nth-child(1),
     .radar-table th:nth-child(1),
     .radar-table td:nth-child(1),
+    .specialty-table th:nth-child(1),
+    .specialty-table td:nth-child(1),
     .project-table th:nth-child(1),
     .project-table td:nth-child(1) {{
       position: sticky;
@@ -881,6 +1094,7 @@ def _layout(title, current_path, body):
     .runs-table th:nth-child(2),
     .compare-table th:nth-child(1),
     .radar-table th:nth-child(1),
+    .specialty-table th:nth-child(1),
     .project-table th:nth-child(1) {{
       z-index: 4;
       background: #181a29;
@@ -999,6 +1213,18 @@ def _layout(title, current_path, body):
     .inventory-models-table td:nth-child(2) {{
       width: 300px;
     }}
+    .inventory-models-table th:nth-child(2),
+    .inventory-models-table td:nth-child(2) {{
+      position: sticky;
+      left: 0;
+      z-index: 3;
+      background: var(--control);
+      box-shadow: 1px 0 0 var(--line), 10px 0 18px rgba(0, 0, 0, 0.18);
+    }}
+    .inventory-models-table th:nth-child(2) {{
+      z-index: 4;
+      background: #181a29;
+    }}
     .inventory-models-table th:nth-child(3),
     .inventory-models-table td:nth-child(3) {{
       width: 260px;
@@ -1049,6 +1275,26 @@ def _layout(title, current_path, body):
     .inventory-checks-table td:nth-child(5) {{
       width: 620px;
     }}
+    .storage-intro-panel {{
+      margin-bottom: 18px;
+    }}
+    .storage-decisions-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }}
+    .storage-decisions-section > h2 {{
+      margin: 0;
+    }}
+    .storage-decisions-section .filters {{
+      margin-bottom: 0;
+    }}
+    .storage-model-identity {{
+      gap: 6px;
+    }}
+    .storage-model-name {{
+      font-weight: 500;
+    }}
     .storage-decisions-table {{
       table-layout: fixed;
       min-width: 1180px;
@@ -1073,6 +1319,23 @@ def _layout(title, current_path, body):
     .storage-decisions-table td:nth-child(6) {{
       width: 220px;
     }}
+    .model-detail-header {{
+      margin-bottom: 18px;
+    }}
+    .model-detail-card {{
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }}
+    .model-detail-card h2,
+    .model-detail-card p {{
+      margin: 0;
+    }}
+    .model-detail-results-shell {{
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }}
     .model-detail-results-scroll {{
       width: 100%;
       overflow-x: auto;
@@ -1085,7 +1348,6 @@ def _layout(title, current_path, body):
       display: flex;
       justify-content: flex-end;
       gap: 8px;
-      margin: 16px 0 8px;
     }}
     .model-detail-results-toolbar button {{
       min-height: 34px;
@@ -1094,10 +1356,15 @@ def _layout(title, current_path, body):
       color: var(--ink);
     }}
     .model-detail-section {{
+      display: grid;
+      gap: 12px;
       min-width: 1320px;
     }}
+    .model-detail-section h2 {{
+      margin-bottom: 0;
+    }}
     .model-detail-section + .model-detail-section {{
-      margin-top: 16px;
+      margin-top: 18px;
     }}
     .model-detail-results-scroll .table-wrap {{
       overflow-x: visible;
@@ -1207,11 +1474,12 @@ def _layout(title, current_path, body):
       font-weight: 500;
     }}
     .radar-table {{
-      min-width: 1520px;
+      table-layout: fixed;
+      min-width: 1680px;
     }}
     .radar-table th:nth-child(1),
     .radar-table td:nth-child(1) {{
-      width: 180px;
+      width: 240px;
     }}
     .radar-table th:nth-child(2),
     .radar-table td:nth-child(2) {{
@@ -1219,42 +1487,91 @@ def _layout(title, current_path, body):
     }}
     .radar-table th:nth-child(3),
     .radar-table td:nth-child(3) {{
-      width: 132px;
+      width: 150px;
     }}
     .radar-table th:nth-child(4),
     .radar-table td:nth-child(4) {{
-      width: 220px;
+      width: 240px;
     }}
     .radar-table th:nth-child(5),
     .radar-table td:nth-child(5) {{
-      width: 230px;
+      width: 260px;
     }}
     .radar-table th:nth-child(6),
     .radar-table td:nth-child(6) {{
-      width: 260px;
+      width: 280px;
     }}
     .radar-table th:nth-child(7),
     .radar-table td:nth-child(7) {{
-      width: 190px;
+      width: 220px;
     }}
     .radar-table th:nth-child(8),
     .radar-table td:nth-child(8) {{
-      width: 190px;
+      width: 178px;
+    }}
+    .specialty-table {{
+      table-layout: fixed;
+      min-width: 1540px;
+    }}
+    .specialty-table th:nth-child(1),
+    .specialty-table td:nth-child(1) {{
+      width: 260px;
+    }}
+    .specialty-table th:nth-child(2),
+    .specialty-table td:nth-child(2) {{
+      width: 130px;
+    }}
+    .specialty-table th:nth-child(3),
+    .specialty-table td:nth-child(3) {{
+      width: 240px;
+    }}
+    .specialty-table th:nth-child(4),
+    .specialty-table td:nth-child(4) {{
+      width: 250px;
+    }}
+    .specialty-table th:nth-child(5),
+    .specialty-table td:nth-child(5) {{
+      width: 280px;
+    }}
+    .specialty-table th:nth-child(6),
+    .specialty-table td:nth-child(6) {{
+      width: 220px;
+    }}
+    .specialty-table th:nth-child(7),
+    .specialty-table td:nth-child(7) {{
+      width: 160px;
     }}
     .project-table {{
-      min-width: 980px;
+      table-layout: fixed;
+      min-width: 1500px;
     }}
     .project-table th:nth-child(1),
     .project-table td:nth-child(1) {{
-      width: 190px;
+      width: 240px;
     }}
     .project-table th:nth-child(2),
     .project-table td:nth-child(2) {{
+      width: 110px;
+    }}
+    .project-table th:nth-child(3),
+    .project-table td:nth-child(3) {{
       width: 150px;
     }}
     .project-table th:nth-child(4),
     .project-table td:nth-child(4) {{
       width: 220px;
+    }}
+    .project-table th:nth-child(5),
+    .project-table td:nth-child(5) {{
+      width: 360px;
+    }}
+    .project-table th:nth-child(6),
+    .project-table td:nth-child(6) {{
+      width: 210px;
+    }}
+    .project-table th:nth-child(7),
+    .project-table td:nth-child(7) {{
+      width: 210px;
     }}
     @media (max-width: 780px) {{
       .filters {{ grid-template-columns: 1fr; }}

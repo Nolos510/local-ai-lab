@@ -244,23 +244,23 @@ def _lab(
       {specialty_stat}
       {projects_stat}
     </section>
-    <section>
+    <section class="lab-section">
       <h2>Product Loop</h2>
       {stages}
     </section>
-    <section style="margin-top:16px">
+    <section class="lab-section">
       <h2>Abliterated / Dolphin Lane</h2>
       {specialty_table}
     </section>
-    <section style="margin-top:16px">
+    <section class="lab-section">
       <h2>GitHub Project Radar</h2>
       {project_table}
     </section>
-    <section style="margin-top:16px">
+    <section class="lab-section">
       <h2>Ready Queue</h2>
       {queue}
     </section>
-    <section style="margin-top:16px">
+    <section class="lab-section">
       <h2>Benchmark Artifacts</h2>
       {artifacts_table}
     </section>
@@ -277,24 +277,36 @@ def _lab(
             ["Stage", "State", "Signal", "Next action"],
             stage_rows,
             table_class="workflow-table",
+            scroll_controls=True,
+            scroll_id="lab-product-loop-table-scroll",
+            scroll_label="Product loop table",
         ),
         specialty_table=_table(
             ["Candidate", "Lane", "Local fit", "Proposed eval"],
             specialty_rows,
             empty_message="No abliterated or Dolphin candidates are registered yet.",
             table_class="lab-queue",
+            scroll_controls=True,
+            scroll_id="lab-specialty-table-scroll",
+            scroll_label="Abliterated / Dolphin table",
         ),
         project_table=_table(
             ["Project", "Signal", "Business fit", "Next step"],
             project_rows,
             empty_message="No GitHub projects are ready for review yet.",
             table_class="project-table",
+            scroll_controls=True,
+            scroll_id="lab-project-table-scroll",
+            scroll_label="GitHub project radar table",
         ),
         queue=_table(
             ["Candidate", "Status", "State", "Run", "Next command"],
             queue_rows,
             empty_message="No ready candidates. Approve one in radar first.",
             table_class="lab-queue",
+            scroll_controls=True,
+            scroll_id="lab-ready-queue-table-scroll",
+            scroll_label="Ready queue table",
         ),
         artifacts_table=_table(
             [
@@ -311,6 +323,9 @@ def _lab(
             artifact_rows,
             empty_message="No benchmark artifacts found.",
             table_class="lab-artifacts-table",
+            scroll_controls=True,
+            scroll_id="lab-artifacts-table-scroll",
+            scroll_label="Benchmark artifacts table",
         ),
     )
     return _layout("Lab Dashboard", "/lab", body)
