@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from local_ai_lab.cli import lab, quant_advisor
+from local_ai_lab.cli import bench_judge, lab, quant_advisor
 
 
 def write_registry(path: Path) -> None:
@@ -131,6 +132,117 @@ def capture_commands(monkeypatch):
 
     monkeypatch.setattr(lab.subprocess, "run", fake_run)
     return commands
+
+
+def write_judge_fixture(
+    root: Path,
+    *,
+    existing_score_status: str | None = None,
+) -> tuple[str, Path, Path]:
+    run_id = "20260714-fixture-model-r3"
+    eval_results = root / "eval_results"
+    run_dir = eval_results / run_id
+    run_dir.mkdir(parents=True)
+    prompt_set = json.loads(bench_judge.PROMPT_PATH.read_text(encoding="utf-8"))
+    records = [
+        {
+            "benchmark_run_id": run_id,
+            "prompt_set_id": prompt_set["prompt_set_id"],
+            "rubric_version": "ai-lab-local-llm-rubric-v0.1",
+            "prompt_id": prompt["id"],
+            "prompt_title": prompt["title"],
+            "raw_response": f"Fixture answer for {prompt['id']}",
+            "error": None,
+            "latency_ms": 1000,
+            "tokens_per_sec": 20.0,
+        }
+        for prompt in prompt_set["prompts"]
+    ]
+    (run_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "benchmark_run_id": run_id,
+                "prompt_set_id": prompt_set["prompt_set_id"],
+                "rubric_version": "ai-lab-local-llm-rubric-v0.1",
+                "run": {"tokens_per_sec": 20.0, "ram_usage_gb": 10.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "raw_responses.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in records),
+        encoding="utf-8",
+    )
+
+    db_path = root / "dashboard.sqlite"
+    metric_columns = ",\n".join(
+        f"{field} REAL NOT NULL" for field in bench_judge.METRIC_FIELDS
+    )
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            f"""
+            CREATE TABLE models (
+                id INTEGER PRIMARY KEY,
+                model_name TEXT NOT NULL
+            );
+            CREATE TABLE model_runs (
+                id INTEGER PRIMARY KEY,
+                model_id INTEGER NOT NULL REFERENCES models(id),
+                run_notes TEXT
+            );
+            CREATE TABLE eval_scores (
+                id INTEGER PRIMARY KEY,
+                run_id INTEGER NOT NULL UNIQUE REFERENCES model_runs(id),
+                {metric_columns},
+                total_score REAL NOT NULL,
+                final_label TEXT NOT NULL,
+                score_status TEXT NOT NULL
+            );
+            """
+        )
+        conn.execute("INSERT INTO models (id, model_name) VALUES (7, 'Fixture Model')")
+        conn.execute(
+            "INSERT INTO model_runs (id, model_id, run_notes) VALUES (?, ?, ?)",
+            (17, 7, f"benchmark_run_id={run_id} | fixture=yes"),
+        )
+        if existing_score_status:
+            fields = ", ".join(bench_judge.METRIC_FIELDS)
+            placeholders = ", ".join("?" for _ in bench_judge.METRIC_FIELDS)
+            conn.execute(
+                f"""
+                INSERT INTO eval_scores (
+                    id, run_id, {fields}, total_score, final_label, score_status
+                ) VALUES (?, ?, {placeholders}, ?, ?, ?)
+                """,
+                (
+                    23,
+                    17,
+                    *([91.0] * len(bench_judge.METRIC_FIELDS)),
+                    91.0,
+                    "DAILY_DRIVER",
+                    existing_score_status,
+                ),
+            )
+    return run_id, eval_results, db_path
+
+
+def fake_judge_output(prompt: str, *, malformed_prompt_id: str | None = None) -> str:
+    match = re.search(r'"prompt_id":\s*"([^"]+)"', prompt)
+    assert match is not None
+    prompt_id = match.group(1)
+    if prompt_id == malformed_prompt_id:
+        return "not valid JSON"
+    prompt_set = json.loads(bench_judge.PROMPT_PATH.read_text(encoding="utf-8"))
+    prompt_by_id = {item["id"]: item for item in prompt_set["prompts"]}
+    return json.dumps(
+        {
+            "prompt_id": prompt_id,
+            "scores": {
+                dimension: 80.0
+                for dimension in prompt_by_id[prompt_id]["primary_dimensions"]
+            },
+        }
+    )
 
 
 def test_status_reads_registry_artifacts_and_dashboard_db(tmp_path, capsys) -> None:
@@ -271,6 +383,158 @@ def test_bench_run_builds_harness_init_command(tmp_path, monkeypatch) -> None:
     assert "Ready Model" in command
     assert "--backend" in command
     assert "llama.cpp" in command
+
+
+def test_bench_judge_refuses_without_approval_after_enumerated_preflight(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    run_id, eval_results, db_path = write_judge_fixture(tmp_path)
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("bench judge must not call a model runner without approval")
+
+    monkeypatch.setattr(bench_judge, "invoke_judge", fail_if_called)
+    monkeypatch.setattr(bench_judge.subprocess, "run", fail_if_called)
+    monkeypatch.setattr(bench_judge, "_post_json", fail_if_called)
+
+    exit_code = lab.main(
+        [
+            "bench",
+            "judge",
+            "--run",
+            run_id,
+            "--judge-model",
+            "fixture-judge",
+            "--runner",
+            "lmstudio-cli",
+            "--eval-results",
+            str(eval_results),
+            "--db",
+            str(db_path),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "Local judge preflight" in captured.out
+    assert f"run_id: {run_id}" in captured.out
+    assert "judge_model: fixture-judge" in captured.out
+    assert "runner: lmstudio-cli" in captured.out
+    assert "response_row_count: 12" in captured.out
+    assert f"output_target: {db_path}" in captured.out
+    assert "LLMCORE-v0.1-001" in captured.out
+    assert "LLMCORE-v0.1-012" in captured.out
+    assert "approval: missing" in captured.err
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM eval_scores").fetchone()[0] == 0
+
+
+def test_bench_judge_writes_draft_scores_and_skips_unparseable_prompt(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    run_id, eval_results, db_path = write_judge_fixture(tmp_path)
+    calls = []
+
+    def fake_invoke(**kwargs):
+        calls.append(kwargs)
+        return fake_judge_output(
+            kwargs["prompt"],
+            malformed_prompt_id="LLMCORE-v0.1-001",
+        )
+
+    monkeypatch.setattr(bench_judge, "invoke_judge", fake_invoke)
+
+    exit_code = lab.main(
+        [
+            "bench",
+            "judge",
+            "--run",
+            run_id,
+            "--judge-model",
+            "fixture-judge",
+            "--runner",
+            "ollama",
+            "--eval-results",
+            str(eval_results),
+            "--db",
+            str(db_path),
+            "--i-approve-local-run",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert len(calls) == 12
+    assert all(call["runner"] == "ollama" for call in calls)
+    assert "judged_prompts: 11" in captured.out
+    assert "skipped_prompts: 1" in captured.out
+    assert "LLMCORE-v0.1-001: unparseable judge output" in captured.out
+    assert "draft_write: inserted" in captured.out
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT * FROM eval_scores").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["run_id"] == 17
+    assert rows[0]["score_status"] == "draft"
+    assert rows[0]["total_score"] == 80.0
+    assert all(rows[0][field] == 80.0 for field in bench_judge.METRIC_FIELDS)
+
+
+def test_bench_judge_never_touches_existing_confirmed_score(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    run_id, eval_results, db_path = write_judge_fixture(
+        tmp_path,
+        existing_score_status="confirmed",
+    )
+
+    calls = []
+
+    def fake_invoke(**kwargs):
+        calls.append(kwargs)
+        return fake_judge_output(kwargs["prompt"])
+
+    monkeypatch.setattr(bench_judge, "invoke_judge", fake_invoke)
+
+    exit_code = lab.main(
+        [
+            "bench",
+            "judge",
+            "--run",
+            run_id,
+            "--judge-model",
+            "fixture-judge",
+            "--runner",
+            "openai-compatible",
+            "--endpoint",
+            "http://127.0.0.1:1234/v1",
+            "--eval-results",
+            str(eval_results),
+            "--db",
+            str(db_path),
+            "--i-approve-local-run",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert calls == []
+    assert "existing_score_status: confirmed (protected)" in captured.out
+    assert "draft_write: skipped; confirmed score protected" in captured.out
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT * FROM eval_scores").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["id"] == 23
+    assert rows[0]["score_status"] == "confirmed"
+    assert rows[0]["total_score"] == 91.0
+    assert all(rows[0][field] == 91.0 for field in bench_judge.METRIC_FIELDS)
 
 
 def test_bench_execute_refuses_without_approval_before_subprocess(

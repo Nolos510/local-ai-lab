@@ -20,6 +20,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
+from local_ai_lab.cli import bench_judge
 from local_ai_lab.cli.bench_matrix import (
     build_matrix,
     format_json,
@@ -490,6 +491,93 @@ def command_bench_execute(args: argparse.Namespace) -> int:
     return _run_approved_bench_execute(args, candidate)
 
 
+def _bench_judge_preflight(args: argparse.Namespace, plan: bench_judge.JudgePlan) -> str:
+    if plan.existing_score_status == "confirmed":
+        existing_status = "confirmed (protected)"
+    else:
+        existing_status = plan.existing_score_status or "none"
+    lines = [
+        "Local judge preflight",
+        f"run_id: {plan.run_id}",
+        f"run_model: {plan.dashboard_model_name}",
+        f"dashboard_model_id: {plan.dashboard_model_id}",
+        f"dashboard_run_id: {plan.dashboard_run_id}",
+        f"judge_model: {plan.judge_model}",
+        f"runner: {plan.runner}",
+        f"response_row_count: {len(plan.records)}",
+        f"rubric_version: {plan.rubric.get('rubric_version')}",
+        f"output_target: {_display_path(plan.db_path)}",
+        f"output_row: eval_scores.run_id={plan.dashboard_run_id}, score_status=draft",
+        f"existing_score_status: {existing_status}",
+        f"call_shape: {bench_judge.endpoint_display(args.runner, args.endpoint)}",
+        "approval_scope: only the exact prompt rows enumerated below",
+        "| Row | Prompt id | Draft dimensions |",
+        "| --- | --- | --- |",
+    ]
+    for row_number, record in enumerate(plan.records, start=1):
+        prompt_id = str(record["prompt_id"])
+        dimensions = plan.prompt_by_id[prompt_id].get("primary_dimensions") or ()
+        lines.append(
+            "| {} | {} | {} |".format(
+                row_number,
+                _queue_cell(prompt_id),
+                _queue_cell(", ".join(dimensions)),
+            )
+        )
+    if plan.input_skips:
+        lines.append(f"input_rows_skipped_before_judging: {len(plan.input_skips)}")
+        lines.extend(f"input_skip: {note}" for note in plan.input_skips)
+    return "\n".join(lines)
+
+
+def command_bench_judge(args: argparse.Namespace) -> int:
+    try:
+        plan = bench_judge.build_plan(
+            run_id=args.run,
+            eval_results=args.eval_results,
+            db_path=args.db,
+            judge_model=args.judge_model,
+            runner=args.runner,
+        )
+        preflight = _bench_judge_preflight(args, plan)
+    except bench_judge.JudgeError as exc:
+        print(f"judge error: {exc}", file=sys.stderr)
+        return 2
+
+    print(preflight)
+    if not args.i_approve_local_run:
+        print(
+            "approval: missing; refusing before any judge subprocess or endpoint call.",
+            file=sys.stderr,
+        )
+        return 2
+    print("approval: explicit --i-approve-local-run")
+
+    try:
+        result = bench_judge.judge_plan(
+            plan,
+            endpoint=args.endpoint,
+            timeout=args.timeout,
+            ttl=args.ttl,
+            max_tokens=args.max_tokens,
+            lms_path=args.lms_path,
+        )
+    except bench_judge.JudgeError as exc:
+        print(f"judge error: {exc}", file=sys.stderr)
+        return 2
+
+    print("Local judge summary")
+    print(f"run_id: {plan.run_id}")
+    print(f"judged_prompts: {result.judged_prompts}")
+    print(f"skipped_prompts: {len(result.skipped_prompts)}")
+    for prompt_id, reason in result.skipped_prompts:
+        print(f"skip: {prompt_id}: {reason}")
+    print(f"draft_write: {result.draft_write}")
+    if result.draft_write in ("inserted", "updated existing draft"):
+        print("score_status: draft")
+    return 0
+
+
 def _queue_selected_candidates(args: argparse.Namespace) -> list[dict[str, str]]:
     rows = _read_candidates(args.registry)
     if not args.candidate:
@@ -942,6 +1030,30 @@ def build_parser() -> argparse.ArgumentParser:
     bench_execute.add_argument("--force", action="store_true")
     bench_execute.add_argument("--i-approve-local-run", action="store_true")
     bench_execute.set_defaults(func=command_bench_execute)
+    bench_judge_parser = bench_subparsers.add_parser(
+        "judge",
+        help="Ask an explicitly approved local model for draft benchmark scores.",
+    )
+    bench_judge_parser.add_argument("--run", required=True)
+    bench_judge_parser.add_argument("--judge-model", required=True)
+    bench_judge_parser.add_argument(
+        "--runner",
+        required=True,
+        choices=bench_judge.SUPPORTED_RUNNERS,
+    )
+    bench_judge_parser.add_argument(
+        "--eval-results",
+        type=Path,
+        default=DEFAULT_EVAL_RESULTS,
+    )
+    bench_judge_parser.add_argument("--db", type=Path, default=DEFAULT_DASHBOARD_DB)
+    bench_judge_parser.add_argument("--endpoint")
+    bench_judge_parser.add_argument("--lms-path")
+    bench_judge_parser.add_argument("--timeout", type=float, default=180.0)
+    bench_judge_parser.add_argument("--ttl", type=int, default=3600)
+    bench_judge_parser.add_argument("--max-tokens", type=int, default=1024)
+    bench_judge_parser.add_argument("--i-approve-local-run", action="store_true")
+    bench_judge_parser.set_defaults(func=command_bench_judge)
     bench_queue = bench_subparsers.add_parser(
         "queue",
         help="Run an explicitly approved batch of ready local benchmark candidates.",

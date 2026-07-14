@@ -195,6 +195,47 @@ Raw responses remain local benchmark evidence. Do not paste private raw output
 into public notes. Draft local-judge scores must remain draft until human
 review confirms scores and decisions.
 
+## Local-Judge Draft Scoring
+
+Import the benchmark run before judging it so `--run` can resolve the exact
+dashboard model/run row. Then use `ai-lab bench judge` with an exact local judge
+model id and one of the supported local runners:
+
+```bash
+uv run ai-lab bench judge \
+  --run <benchmark_run_id> \
+  --judge-model <exact_local_judge_model_id> \
+  --runner lmstudio-cli \
+  --i-approve-local-run
+```
+
+The other runner lanes are `ollama` and `openai-compatible`. Ollama defaults to
+its loopback endpoint; pass `--endpoint` to override it. An
+`openai-compatible` judge requires an explicit loopback `--endpoint`. Optional
+local controls include `--lms-path`, `--timeout`, `--ttl`, and `--max-tokens`.
+
+The command reads `raw_responses.jsonl`, the version-matched prompt set, and
+`rubrics/ai-lab-local-llm-rubric-v0.1.json`. Its preflight enumerates every
+prompt row, the exact judge model and runner, the existing score status, and
+the `eval_scores` output target. Without `--i-approve-local-run`, it refuses
+before resolving or starting a judge subprocess and before contacting a local
+endpoint.
+
+Each benchmark response is judged separately using a JSON-only template. The
+judge scores only that prompt's declared primary dimensions. Parsed scores are
+averaged per dimension, and the completed aggregate is written with
+`score_status='draft'`. Unparseable, incomplete, non-numeric, non-finite, or
+out-of-range judge output is skipped and named in the summary; no replacement
+score is invented. If skipped outputs leave any dimension without evidence, no
+draft row is written.
+
+Draft scores are suggestions pending human review and confirmation. They do
+not become confirmed automatically and must not be used as confirmed evidence.
+An existing draft may be refreshed by another approved pass. Because the
+dashboard schema stores one score row per run, an existing confirmed row is
+protected and the judge command performs no model call or score write for that
+run.
+
 Render a sanitized benchmark report after capture/export:
 
 ```bash
