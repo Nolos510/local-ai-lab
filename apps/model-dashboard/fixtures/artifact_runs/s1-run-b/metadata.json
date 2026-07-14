@@ -1,0 +1,7 @@
+{
+  "benchmark_run_id": "s1-run-b",
+  "prompt_set_id": "s1-shared-prompts",
+  "model": {
+    "model_name": "S1 Model B"
+  }
+}

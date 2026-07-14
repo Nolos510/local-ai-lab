@@ -393,6 +393,131 @@ def _layout(title, current_path, body):
       max-width: 980px;
       line-height: 1.5;
     }}
+    .artifact-response-section,
+    .artifact-ab-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      margin-top: 22px;
+    }}
+    .artifact-response-section > h2,
+    .artifact-ab-section > h2 {{
+      margin: 0;
+    }}
+    .artifact-response-section .section-note {{
+      margin: 0;
+    }}
+    .artifact-ab-picker {{
+      display: grid;
+      gap: 10px;
+    }}
+    .artifact-ab-picker h2,
+    .artifact-ab-picker p {{
+      margin: 0;
+    }}
+    .ab-picker {{
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) auto;
+      gap: 12px;
+      align-items: end;
+      margin-top: 4px;
+    }}
+    .artifact-warning {{
+      margin: 0;
+      padding: 10px 12px;
+      border-left: 3px solid var(--accent-2);
+      border-radius: 0 9px 9px 0;
+      background: var(--panel-soft);
+      color: var(--muted);
+    }}
+    .prompt-responses-table {{
+      table-layout: fixed;
+      min-width: 1120px;
+    }}
+    .prompt-responses-table th:nth-child(1),
+    .prompt-responses-table td:nth-child(1) {{ width: 190px; }}
+    .prompt-responses-table th:nth-child(2),
+    .prompt-responses-table td:nth-child(2),
+    .prompt-responses-table th:nth-child(3),
+    .prompt-responses-table td:nth-child(3),
+    .prompt-responses-table th:nth-child(4),
+    .prompt-responses-table td:nth-child(4) {{
+      width: 105px;
+      white-space: nowrap;
+    }}
+    .prompt-responses-table th:nth-child(5),
+    .prompt-responses-table td:nth-child(5) {{ width: 615px; }}
+    .response-details {{ min-width: 0; }}
+    .response-details summary {{
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: start;
+      cursor: pointer;
+      color: var(--ink);
+    }}
+    .response-details summary::marker {{ color: var(--accent-2); }}
+    .response-preview {{
+      min-width: 0;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+      line-clamp: 3;
+    }}
+    .response-expand {{
+      color: var(--accent-2);
+      font-size: 12px;
+      white-space: nowrap;
+    }}
+    .response-full {{
+      max-height: 560px;
+      margin: 12px 0 0;
+      padding: 14px;
+      overflow: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }}
+    .ab-responses-table {{
+      table-layout: fixed;
+      min-width: 1320px;
+    }}
+    .ab-responses-table th:nth-child(1),
+    .ab-responses-table td:nth-child(1) {{ width: 180px; }}
+    .ab-responses-table th:nth-child(2),
+    .ab-responses-table td:nth-child(2),
+    .ab-responses-table th:nth-child(3),
+    .ab-responses-table td:nth-child(3) {{ width: 570px; }}
+    .ab-responses-table th code {{
+      display: block;
+      width: fit-content;
+      max-width: 100%;
+      margin-top: 5px;
+      white-space: normal;
+      text-transform: none;
+      letter-spacing: 0;
+    }}
+    .ab-run-label {{ display: block; }}
+    .ab-response-cell {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }}
+    .response-metrics {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }}
+    .response-metrics span {{
+      padding: 4px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel-soft);
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }}
     .section-heading-row {{
       display: flex;
       justify-content: space-between;
@@ -1678,6 +1803,7 @@ def _layout(title, current_path, body):
     }}
     @media (max-width: 780px) {{
       .filters {{ grid-template-columns: 1fr; }}
+      .ab-picker {{ grid-template-columns: 1fr; }}
       .filter-actions {{ justify-content: flex-start; }}
       .split {{ grid-template-columns: 1fr; }}
       .section-heading-row {{ display: grid; }}

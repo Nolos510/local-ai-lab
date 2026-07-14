@@ -29,7 +29,10 @@ from .pages.actions import (
     _run_candidate_test,
     _start_candidate_test,
 )
-from .pages.artifact import _artifact_detail as _artifact_detail_page
+from .pages.artifact import (
+    _artifact_compare as _artifact_compare_page,
+    _artifact_detail as _artifact_detail_page,
+)
 from .pages.capability import _capability
 from .pages.compare import _compare
 from .pages.demo import _demo
@@ -95,7 +98,9 @@ def _artifact_detail(
     database_path=DEFAULT_DASHBOARD_DB,
     enable_import_actions=False,
     action_token="",
+    eval_results_dir=None,
 ):
+    eval_results_dir = EVAL_RESULTS_DIR if eval_results_dir is None else eval_results_dir
     return _artifact_detail_page(
         conn,
         benchmark_run_id,
@@ -103,8 +108,13 @@ def _artifact_detail(
         database_path=database_path,
         enable_import_actions=enable_import_actions,
         action_token=action_token,
-        eval_results_dir=EVAL_RESULTS_DIR,
+        eval_results_dir=eval_results_dir,
     )
+
+
+def _artifact_compare(conn, query=None, eval_results_dir=None):
+    eval_results_dir = EVAL_RESULTS_DIR if eval_results_dir is None else eval_results_dir
+    return _artifact_compare_page(conn, query, eval_results_dir=eval_results_dir)
 
 
 def _delete_model_action(remove_key, confirm_delete, inventory_result, action_token, timeout=60):
@@ -313,6 +323,8 @@ def make_handler(
                 )
             if path == "/compare":
                 return _compare(conn, query)
+            if path == "/artifacts/compare":
+                return _artifact_compare(conn, query, eval_results_dir=eval_results_dir)
             if path == "/inventory":
                 return _inventory(
                     query=query,
@@ -351,6 +363,7 @@ def make_handler(
                     database_path=database_path,
                     enable_import_actions=enable_import_actions,
                     action_token=action_token,
+                    eval_results_dir=eval_results_dir,
                 )
             if path.startswith("/models/"):
                 model_id = int(path.rsplit("/", 1)[-1])

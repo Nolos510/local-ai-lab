@@ -1,0 +1,2 @@
+{"benchmark_run_id":"s1-run-b","prompt_set_id":"s1-shared-prompts","prompt_id":"S1-PROMPT-001","latency_ms":20,"input_tokens":8,"output_tokens":11,"raw_response":"Response from model B for prompt one."}
+{"benchmark_run_id":"s1-run-b","prompt_set_id":"s1-shared-prompts","prompt_id":"S1-PROMPT-002","latency_ms":25,"input_tokens":6,"output_tokens":13,"raw_response":"Response from model B for prompt two."}
