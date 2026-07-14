@@ -241,6 +241,16 @@ runner, run id, and approval flag. Without approval it stops before any harness,
 subprocess, endpoint, import, or score export occurs. Live model execution should
 be run only after confirming the exact local model id and runtime.
 
+`ai-lab bench queue` applies that same execution flow sequentially to two or
+more `ready_for_eval` candidates. Repeat `--candidate` to choose an exact
+subset, or omit it to select every ready candidate. Before any run, the command
+prints the complete candidate/model-id/runner/run-id batch and requires one
+`--i-approve-local-run` flag scoped only to that enumeration. A missing or
+unsupported runner, missing exact local model id, invalid run id, or missing
+required local endpoint blocks the entire batch. Individual run failures do not
+stop later candidates; the final table reports status and any captured latency
+and tokens/sec.
+
 `ai-lab hardware snapshot` prints sanitized local hardware/runtime context as
 JSON. Use `--out docs/lab-notes/<name>.json` to write a repo-local copy for
 benchmark evidence. It does not include usernames, home directories,

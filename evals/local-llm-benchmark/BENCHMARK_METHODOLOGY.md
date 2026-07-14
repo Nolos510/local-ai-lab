@@ -18,13 +18,19 @@ Supported runner values:
 - `mlx-lm`
 - `llama-cpp`
 
-Every live run is a separate operator-approved action. Implementation and test
-loops use fake subprocesses or fake endpoints only.
+Every live run is operator-approved, either as a single explicitly enumerated
+run or as part of one explicitly enumerated batch. Implementation and test loops
+use fake subprocesses or fake endpoints only.
 
 The approval gate covers all current runner lanes: `openai-compatible`,
 `lmstudio-cli`, `ollama`, `mlx-lm`, and `llama-cpp`. A command that lacks
 `--i-approve-local-run` must refuse before shelling out to local runtimes or
 posting to a local endpoint.
+
+For `ai-lab bench queue`, one `--i-approve-local-run` flag covers only the
+candidate/model-id/runner/run-id rows printed in that batch preflight. The queue
+must finish enumeration and validate every selected row before starting the
+first run.
 
 ## Preflight
 
@@ -104,6 +110,26 @@ uv run ai-lab bench execute \
   --run-id <run_id> \
   --i-approve-local-run
 ```
+
+Approved batch of ready candidates:
+
+```bash
+uv run ai-lab bench queue \
+  --candidate <first_ready_candidate_id> \
+  --candidate <second_ready_candidate_id> \
+  --i-approve-local-run
+```
+
+The queue reads each exact local model id, runner, run id, and any required
+default local endpoint from the candidate registry. It refuses the entire batch
+before execution when any selected row is not `ready_for_eval`, lacks an exact
+local model id or runner, names an unsupported runner, has an invalid or
+duplicate run id, or lacks the default endpoint required by an
+`openai-compatible` runner. At least two candidates are required; use
+`ai-lab bench execute` for a single run. A nonzero result for one candidate does
+not abort the remaining rows. The final summary reports each candidate and run
+id, status, and captured latency/tokens-per-second when present in the local
+artifact.
 
 llama.cpp:
 

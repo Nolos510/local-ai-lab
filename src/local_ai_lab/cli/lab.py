@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
+import math
 import re
 import shlex
 import sqlite3
@@ -51,6 +53,13 @@ DASHBOARD_ENTRYPOINT = REPO_ROOT / "apps" / "model-dashboard" / "run_dashboard.p
 PROMPT_SET_ID = "ai-lab-local-llm-core-v0.1"
 DEFAULT_OLLAMA_ENDPOINT = "http://127.0.0.1:11434"
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+SUPPORTED_BENCH_RUNNERS = (
+    "llama-cpp",
+    "lmstudio-cli",
+    "mlx-lm",
+    "ollama",
+    "openai-compatible",
+)
 
 
 def _read_candidates(path: Path) -> list[dict[str, str]]:
@@ -450,14 +459,11 @@ def _bench_execute_import_command(args: argparse.Namespace, run_dir: Path) -> li
     ]
 
 
-def command_bench_execute(args: argparse.Namespace) -> int:
-    candidate = _candidate_by_id(args.registry, args.candidate)
-    args.run_id = _safe_id(args.run_id, label="benchmark run id")
+def _run_approved_bench_execute(
+    args: argparse.Namespace,
+    candidate: dict[str, str],
+) -> int:
     run_dir = args.output_root / args.run_id
-    preflight = _bench_execute_preflight(args, candidate, run_dir)
-    if not _confirm_bench_execution(args, preflight):
-        return 2
-
     commands = [
         _bench_execute_init_command(args, candidate),
         _bench_execute_capture_command(args, run_dir),
@@ -472,6 +478,225 @@ def command_bench_execute(args: argparse.Namespace) -> int:
         if exit_code != 0:
             return exit_code
     return 0
+
+
+def command_bench_execute(args: argparse.Namespace) -> int:
+    candidate = _candidate_by_id(args.registry, args.candidate)
+    args.run_id = _safe_id(args.run_id, label="benchmark run id")
+    run_dir = args.output_root / args.run_id
+    preflight = _bench_execute_preflight(args, candidate, run_dir)
+    if not _confirm_bench_execution(args, preflight):
+        return 2
+    return _run_approved_bench_execute(args, candidate)
+
+
+def _queue_selected_candidates(args: argparse.Namespace) -> list[dict[str, str]]:
+    rows = _read_candidates(args.registry)
+    if not args.candidate:
+        return [row for row in rows if (row.get("status") or "").strip() == "ready_for_eval"]
+
+    by_id = {row.get("candidate_id"): row for row in rows}
+    selected: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for candidate_id in args.candidate:
+        if candidate_id in seen:
+            raise SystemExit(f"Duplicate queue candidate: {candidate_id}")
+        seen.add(candidate_id)
+        candidate = by_id.get(candidate_id)
+        if candidate is None:
+            raise SystemExit(f"Unknown candidate: {candidate_id}")
+        selected.append(candidate)
+    return selected
+
+
+def _has_control_characters(value: str) -> bool:
+    return any(ord(char) < 32 or ord(char) == 127 for char in value)
+
+
+def _queue_plan(args: argparse.Namespace) -> tuple[list[dict[str, object]], list[str]]:
+    selected = _queue_selected_candidates(args)
+    plan: list[dict[str, object]] = []
+    errors: list[str] = []
+    run_ids: set[str] = set()
+
+    if len(selected) < 2:
+        errors.append(
+            "batch queue requires at least two ready_for_eval candidates; "
+            "use bench execute for one candidate"
+        )
+
+    for candidate in selected:
+        candidate_id = (candidate.get("candidate_id") or "").strip()
+        runner = (candidate.get("local_runner") or "").strip()
+        model_id = (candidate.get("local_model_id") or "").strip()
+        run_id = (candidate.get("benchmark_run_id") or "").strip()
+        if not run_id and candidate_id:
+            run_id = _default_run_id(candidate_id)
+        endpoint = (candidate.get("default_endpoint") or "").strip() or None
+        item_errors: list[str] = []
+
+        if not candidate_id or not SAFE_ID_RE.fullmatch(candidate_id):
+            item_errors.append("invalid candidate_id")
+        if (candidate.get("status") or "").strip() != "ready_for_eval":
+            item_errors.append("status is not ready_for_eval")
+        if not model_id:
+            item_errors.append("missing local_model_id")
+        elif _has_control_characters(model_id):
+            item_errors.append("invalid local_model_id")
+        if not runner:
+            item_errors.append("missing local_runner")
+        elif runner not in SUPPORTED_BENCH_RUNNERS:
+            item_errors.append(f"unsupported local_runner={runner}")
+        if not run_id or not SAFE_ID_RE.fullmatch(run_id):
+            item_errors.append("invalid benchmark_run_id")
+        elif run_id in run_ids:
+            item_errors.append(f"duplicate benchmark_run_id={run_id}")
+        else:
+            run_ids.add(run_id)
+        if runner == "openai-compatible" and not endpoint:
+            item_errors.append("missing default_endpoint for openai-compatible runner")
+
+        display_id = candidate_id or "<missing-candidate-id>"
+        errors.extend(f"{display_id}: {error}" for error in item_errors)
+        plan.append(
+            {
+                "candidate": candidate,
+                "candidate_id": candidate_id,
+                "model_id": model_id,
+                "runner": runner,
+                "run_id": run_id,
+                "endpoint": endpoint,
+            }
+        )
+    return plan, errors
+
+
+def _queue_cell(value: object) -> str:
+    text = str(value).replace("\n", " ").replace("\r", " ").replace("|", "\\|")
+    return text or "<missing>"
+
+
+def _print_queue_preflight(plan: list[dict[str, object]]) -> None:
+    print("Benchmark queue preflight")
+    print("approval_scope: only the exact enumerated batch below")
+    print(f"batch_size: {len(plan)}")
+    print("| Candidate | Model id | Runner | Run id |")
+    print("| --- | --- | --- | --- |")
+    for item in plan:
+        print(
+            "| {} | {} | {} | {} |".format(
+                _queue_cell(item["candidate_id"]),
+                _queue_cell(item["model_id"]),
+                _queue_cell(item["runner"]),
+                _queue_cell(item["run_id"]),
+            )
+        )
+
+
+def _queue_execute_args(args: argparse.Namespace, item: dict[str, object]) -> argparse.Namespace:
+    execute_args = argparse.Namespace(**vars(args))
+    execute_args.candidate = item["candidate_id"]
+    execute_args.model_id = item["model_id"]
+    execute_args.runner = item["runner"]
+    execute_args.run_id = item["run_id"]
+    execute_args.endpoint = item["endpoint"]
+    execute_args.scores_json = None
+    execute_args.decision_json = None
+    return execute_args
+
+
+def _read_json_object(path: Path) -> dict[str, object]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _captured_bench_metrics(run_dir: Path) -> tuple[object | None, object | None]:
+    runtime_metrics = _read_json_object(run_dir / "runtime-metrics.json")
+    latency = runtime_metrics.get("total_latency_seconds")
+    tokens = runtime_metrics.get("tokens")
+    tokens_per_sec = tokens.get("tokens_per_sec") if isinstance(tokens, dict) else None
+    if latency is not None and tokens_per_sec is not None:
+        return latency, tokens_per_sec
+
+    metadata = _read_json_object(run_dir / "metadata.json")
+    run = metadata.get("run")
+    if isinstance(run, dict):
+        latency = latency if latency is not None else run.get("total_latency_seconds")
+        tokens_per_sec = tokens_per_sec if tokens_per_sec is not None else run.get("tokens_per_sec")
+    return latency, tokens_per_sec
+
+
+def _metric_cell(value: object | None) -> str:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return "-"
+    number = float(value)
+    if not math.isfinite(number):
+        return "-"
+    return f"{number:.6g}"
+
+
+def _print_queue_summary(results: list[dict[str, object]]) -> None:
+    print("Benchmark queue summary")
+    print("| Candidate | Run id | Status | Latency (s) | Tok/s |")
+    print("| --- | --- | --- | --- | --- |")
+    for result in results:
+        print(
+            "| {} | {} | {} | {} | {} |".format(
+                _queue_cell(result["candidate_id"]),
+                _queue_cell(result["run_id"]),
+                _queue_cell(result["status"]),
+                _metric_cell(result["latency"]),
+                _metric_cell(result["tokens_per_sec"]),
+            )
+        )
+
+
+def command_bench_queue(args: argparse.Namespace) -> int:
+    plan, errors = _queue_plan(args)
+    _print_queue_preflight(plan)
+    if errors:
+        for error in errors:
+            print(f"queue error: {error}", file=sys.stderr)
+        print("queue: refusing entire batch before any execution.", file=sys.stderr)
+        return 2
+    if not args.i_approve_local_run:
+        print(
+            "approval: missing; refusing enumerated batch before any harness, subprocess, "
+            "endpoint, import, or score export.",
+            file=sys.stderr,
+        )
+        return 2
+
+    print(
+        "approval: explicit --i-approve-local-run for enumerated batch of "
+        f"{len(plan)}"
+    )
+    results: list[dict[str, object]] = []
+    for item in plan:
+        execute_args = _queue_execute_args(args, item)
+        print(f"Queue run: {item['candidate_id']} ({item['run_id']})")
+        exit_code = _run_approved_bench_execute(
+            execute_args,
+            item["candidate"],  # type: ignore[arg-type]
+        )
+        latency, tokens_per_sec = _captured_bench_metrics(
+            args.output_root / str(item["run_id"])
+        )
+        results.append(
+            {
+                "candidate_id": item["candidate_id"],
+                "run_id": item["run_id"],
+                "status": "passed" if exit_code == 0 else f"failed (exit {exit_code})",
+                "latency": latency,
+                "tokens_per_sec": tokens_per_sec,
+            }
+        )
+
+    _print_queue_summary(results)
+    return 1 if any(result["status"] != "passed" for result in results) else 0
 
 
 def command_import(args: argparse.Namespace) -> int:
@@ -699,7 +924,7 @@ def build_parser() -> argparse.ArgumentParser:
     bench_execute.add_argument(
         "--runner",
         required=True,
-        choices=("llama-cpp", "lmstudio-cli", "mlx-lm", "ollama", "openai-compatible"),
+        choices=SUPPORTED_BENCH_RUNNERS,
     )
     bench_execute.add_argument("--run-id", required=True)
     bench_execute.add_argument("--output-root", type=Path, default=DEFAULT_EVAL_RESULTS)
@@ -717,6 +942,31 @@ def build_parser() -> argparse.ArgumentParser:
     bench_execute.add_argument("--force", action="store_true")
     bench_execute.add_argument("--i-approve-local-run", action="store_true")
     bench_execute.set_defaults(func=command_bench_execute)
+    bench_queue = bench_subparsers.add_parser(
+        "queue",
+        help="Run an explicitly approved batch of ready local benchmark candidates.",
+    )
+    bench_queue.add_argument(
+        "--candidate",
+        action="append",
+        help=(
+            "Ready candidate id to include; repeat for an exact subset. "
+            "Defaults to all ready_for_eval candidates."
+        ),
+    )
+    bench_queue.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
+    bench_queue.add_argument("--output-root", type=Path, default=DEFAULT_EVAL_RESULTS)
+    bench_queue.add_argument("--db", type=Path, default=DEFAULT_DASHBOARD_DB)
+    bench_queue.add_argument("--lms-path")
+    bench_queue.add_argument("--llama-cli-path")
+    bench_queue.add_argument("--mlx-python")
+    bench_queue.add_argument("--timeout", type=float, default=180.0)
+    bench_queue.add_argument("--ttl", type=int, default=3600)
+    bench_queue.add_argument("--max-tokens", type=int)
+    bench_queue.add_argument("--import-dashboard", action="store_true")
+    bench_queue.add_argument("--force", action="store_true")
+    bench_queue.add_argument("--i-approve-local-run", action="store_true")
+    bench_queue.set_defaults(func=command_bench_queue)
 
     import_parser = subparsers.add_parser("import", help="Import benchmark CSVs.")
     import_parser.add_argument("--run", required=True)

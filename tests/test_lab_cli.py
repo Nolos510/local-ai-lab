@@ -66,6 +66,49 @@ def write_registry(path: Path) -> None:
         writer.writerows(rows)
 
 
+def write_queue_registry(path: Path, *, missing_field: str | None = None) -> None:
+    fieldnames = [
+        "candidate_id",
+        "model_name",
+        "status",
+        "local_runner",
+        "local_model_id",
+        "benchmark_run_id",
+        "default_endpoint",
+        "security_review_status",
+        "download_approval",
+    ]
+    rows = [
+        {
+            "candidate_id": "queue-one",
+            "model_name": "Queue One",
+            "status": "ready_for_eval",
+            "local_runner": "lmstudio-cli",
+            "local_model_id": "local-model-one",
+            "benchmark_run_id": "20260714-queue-one-r1",
+            "security_review_status": "local_inventory_reviewed",
+            "download_approval": "not_needed_local",
+        },
+        {
+            "candidate_id": "queue-two",
+            "model_name": "Queue Two",
+            "status": "ready_for_eval",
+            "local_runner": "ollama",
+            "local_model_id": "local-model-two:latest",
+            "benchmark_run_id": "20260714-queue-two-r1",
+            "default_endpoint": "http://127.0.0.1:11434",
+            "security_review_status": "approved",
+            "download_approval": "approved",
+        },
+    ]
+    if missing_field:
+        rows[1][missing_field] = ""
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def write_dashboard_db(path: Path) -> None:
     with sqlite3.connect(path) as conn:
         conn.execute("CREATE TABLE models (id integer primary key)")
@@ -712,6 +755,196 @@ def test_bench_execute_requires_endpoint_for_openai_runner_after_approval(
         )
 
     assert exc.value.code == "--endpoint is required for --runner openai-compatible"
+
+
+def test_bench_queue_refuses_without_approval_before_any_execution(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    registry = tmp_path / "candidates.csv"
+    write_queue_registry(registry)
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("bench queue must not call subprocess without batch approval")
+
+    monkeypatch.setattr(lab.subprocess, "run", fail_if_called)
+
+    exit_code = lab.main(
+        [
+            "bench",
+            "queue",
+            "--candidate",
+            "queue-one",
+            "--candidate",
+            "queue-two",
+            "--registry",
+            str(registry),
+            "--output-root",
+            str(tmp_path / "eval_results"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "Benchmark queue preflight" in captured.out
+    assert "queue-one" in captured.out
+    assert "local-model-one" in captured.out
+    assert "lmstudio-cli" in captured.out
+    assert "20260714-queue-one-r1" in captured.out
+    assert "queue-two" in captured.out
+    assert "local-model-two:latest" in captured.out
+    assert "ollama" in captured.out
+    assert "20260714-queue-two-r1" in captured.out
+    assert "approval: missing" in captured.err
+
+
+@pytest.mark.parametrize("missing_field", ["local_model_id", "local_runner"])
+def test_bench_queue_refuses_entire_batch_when_exact_runtime_metadata_is_missing(
+    tmp_path,
+    monkeypatch,
+    capsys,
+    missing_field,
+) -> None:
+    registry = tmp_path / "candidates.csv"
+    write_queue_registry(registry, missing_field=missing_field)
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("invalid bench queue must not call subprocess")
+
+    monkeypatch.setattr(lab.subprocess, "run", fail_if_called)
+
+    exit_code = lab.main(
+        [
+            "bench",
+            "queue",
+            "--candidate",
+            "queue-one",
+            "--candidate",
+            "queue-two",
+            "--registry",
+            str(registry),
+            "--i-approve-local-run",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "Benchmark queue preflight" in captured.out
+    assert "<missing>" in captured.out
+    assert f"queue-two: missing {missing_field}" in captured.err
+    assert "refusing entire batch before any execution" in captured.err
+
+
+def test_bench_queue_enumerates_complete_batch_before_first_execution(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    registry = tmp_path / "candidates.csv"
+    write_queue_registry(registry)
+    commands = []
+    output_before_first_call = []
+
+    def fake_run(command, check=False):
+        if not commands:
+            output_before_first_call.append(capsys.readouterr().out)
+        commands.append(command)
+        assert check is False
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(lab.subprocess, "run", fake_run)
+
+    exit_code = lab.main(
+        [
+            "bench",
+            "queue",
+            "--candidate",
+            "queue-one",
+            "--candidate",
+            "queue-two",
+            "--registry",
+            str(registry),
+            "--output-root",
+            str(tmp_path / "eval_results"),
+            "--i-approve-local-run",
+        ]
+    )
+
+    assert exit_code == 0
+    assert len(output_before_first_call) == 1
+    pre_execution = output_before_first_call[0]
+    assert pre_execution.index("queue-one") < pre_execution.index("queue-two")
+    for expected in (
+        "local-model-one",
+        "lmstudio-cli",
+        "20260714-queue-one-r1",
+        "local-model-two:latest",
+        "ollama",
+        "20260714-queue-two-r1",
+        "approval: explicit --i-approve-local-run for enumerated batch of 2",
+    ):
+        assert expected in pre_execution
+    assert len(commands) == 6
+
+
+def test_bench_queue_continues_after_failure_and_prints_metric_summary(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    registry = tmp_path / "candidates.csv"
+    output_root = tmp_path / "eval_results"
+    write_queue_registry(registry)
+    for run_id, latency, tokens_per_sec in (
+        ("20260714-queue-one-r1", 8.5, 12.25),
+        ("20260714-queue-two-r1", 4.0, 33.5),
+    ):
+        run_dir = output_root / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "runtime-metrics.json").write_text(
+            json.dumps(
+                {
+                    "total_latency_seconds": latency,
+                    "tokens": {"tokens_per_sec": tokens_per_sec},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    commands = []
+
+    def fake_run(command, check=False):
+        commands.append(command)
+        assert check is False
+        exit_code = 9 if command[2] == "run-lmstudio-cli" else 0
+        return SimpleNamespace(returncode=exit_code)
+
+    monkeypatch.setattr(lab.subprocess, "run", fake_run)
+
+    exit_code = lab.main(
+        [
+            "bench",
+            "queue",
+            "--candidate",
+            "queue-one",
+            "--candidate",
+            "queue-two",
+            "--registry",
+            str(registry),
+            "--output-root",
+            str(output_root),
+            "--i-approve-local-run",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert any(command[2] == "run-ollama" for command in commands)
+    assert "Benchmark queue summary" in output
+    assert "| Candidate | Run id | Status | Latency (s) | Tok/s |" in output
+    assert "| queue-one | 20260714-queue-one-r1 | failed (exit 9) | 8.5 | 12.25 |" in output
+    assert "| queue-two | 20260714-queue-two-r1 | passed | 4 | 33.5 |" in output
 
 
 def test_import_report_and_dashboard_shell_out(tmp_path, monkeypatch) -> None:

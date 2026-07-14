@@ -88,8 +88,10 @@ scored benchmark. It does not call LM Studio, Ollama, llama.cpp, MLX, or any
 model endpoint; it does not create raw responses, scores, or keep/watch
 decisions. Stop the dashboard server with `Ctrl-C` when finished.
 
-Only `ai-lab bench execute` performs local benchmark capture, and it requires an
-exact local model id, runner, run id, and explicit approval flag.
+Local benchmark capture runs only through the approval-gated
+`ai-lab bench execute` flow, either directly for one candidate or sequentially
+through `ai-lab bench queue`. Queue mode validates and enumerates every exact
+local model id, runner, and run id before one batch-scoped explicit approval.
 
 ## TODO
 
