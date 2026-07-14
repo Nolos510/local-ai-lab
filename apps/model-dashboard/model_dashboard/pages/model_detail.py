@@ -7,12 +7,51 @@ from html import escape
 from pathlib import Path
 
 from .. import capability, charts, db
+from ..components import _metric_label
 from ..components import *
 from ..filters import *
 from ..icons import icon as render_icon
 from ..layout import _layout
 from ..reports import generate_markdown_report
 from ..scoring import METRIC_FIELDS
+
+
+PERFORMANCE_METRICS = (
+    ("tokens_per_sec", "Tokens / sec", "throughput", "{:.1f}"),
+    ("total_latency_seconds", "Total latency", "total_latency", "{:.2f} s"),
+    ("ram_usage_gb", "System RAM GB", "ram_footprint", "{:.1f} GB"),
+    ("total_score", "Confirmed total score", "total_score", "{:.2f}"),
+)
+
+
+def _performance_over_time(runs):
+    ordered = sorted(runs, key=lambda row: (row["date_tested"], row["id"]))
+    if not ordered:
+        return '<p class="empty">No runs yet — nothing to compare.</p>'
+    if len(ordered) == 1:
+        return '<p class="empty">one run — nothing to compare yet</p>'
+
+    panels = []
+    for field, title, tip_key, value_format in PERFORMANCE_METRICS:
+        items = []
+        for row in ordered:
+            value = row[field]
+            if field == "total_score" and row["score_status"] != "confirmed":
+                value = None
+            items.append((row["date_tested"], value))
+        chart = charts.sparkline(
+            items,
+            title=title,
+            value_format=value_format,
+            empty_message=f"Not enough recorded {title.lower()} values to compare",
+        )
+        panels.append(
+            '<article class="model-detail-spark">'
+            f"<h3>{_metric_label(title, tip_key, auto=False)}</h3>"
+            f"{chart}</article>"
+        )
+    return '<div class="model-detail-spark-grid">{}</div>'.format("".join(panels))
+
 
 def _model_detail(conn, model_id):
     detail = db.get_model_detail(conn, model_id)
@@ -82,6 +121,11 @@ def _model_detail(conn, model_id):
         <p>{summary}</p>
       </section>
     </div>
+    <section class="panel model-detail-performance">
+      <h2>Performance over time</h2>
+      <p class="section-note">Imported runs are ordered by date tested. Missing values are shown honestly and are not connected across gaps.</p>
+      {performance_over_time}
+    </section>
     <section class="model-detail-results-shell">
       <div class="model-detail-results-toolbar" aria-label="Model detail results controls">
         <button class="icon-button" type="button" data-scroll-target="model-detail-results" data-scroll-by="-360" aria-label="Scroll model detail results left" title="Scroll model detail results left">{left_icon}</button>
@@ -101,6 +145,7 @@ def _model_detail(conn, model_id):
         source=_external_link_or_text(model["source_url"], model["source_url"]),
         notes=_text(model["notes"]),
         summary=summary,
+        performance_over_time=_performance_over_time(detail["runs"]),
         left_icon=render_icon("ti-chevron-left"),
         right_icon=render_icon("ti-chevron-right"),
         runs=_table(

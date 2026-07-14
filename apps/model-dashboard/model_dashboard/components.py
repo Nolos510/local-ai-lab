@@ -37,6 +37,7 @@ SAFE_ARTIFACT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 METRIC_EXPLANATIONS = {
     "total_score": "Summed quality score across the benchmark rubric's dimensions (instruction-following, reasoning, coding, agent-planning, etc.). Higher is better; it's a relative ranking signal, not a percentage. See the model detail page for the per-dimension breakdown.",
     "throughput": "Output tokens generated per second during the run. Higher is faster. Depends on model size, quantization, runtime, and hardware — only compare within the same setup.",
+    "total_latency": "Wall-clock seconds for the complete benchmark run. Lower is better; compare only runs using the same prompt set and runtime setup.",
     "ram_footprint": "Whole-system RAM high-water observed during the run. For LM Studio and endpoint runners this can include other loaded models, macOS cache, and runtime overhead; it is not per-model RSS. 'No data yet' means no run captured memory.",
     "efficiency": "throughput per GB of peak RAM — higher earns its memory",
     "models": "Count of real benchmarked model records imported into the dashboard. Demo fixture rows are hidden from real result views.",
@@ -54,6 +55,7 @@ METRIC_LABEL_KEYS = {
     "throughput": "throughput",
     "tokens / sec": "throughput",
     "tok/s": "throughput",
+    "total latency": "total_latency",
     "ram footprint": "ram_footprint",
     "system ram high-water": "ram_footprint",
     "system ram gb": "ram_footprint",

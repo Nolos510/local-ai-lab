@@ -20,7 +20,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from local_ai_lab.cli import bench_judge
+from local_ai_lab.cli import bench_diff, bench_judge
 from local_ai_lab.cli.bench_matrix import (
     build_matrix,
     format_json,
@@ -232,6 +232,27 @@ def command_bench_matrix(args: argparse.Namespace) -> int:
         print(format_json(matrix))
     else:
         print(format_markdown(matrix))
+    return 0
+
+
+def command_bench_diff(args: argparse.Namespace) -> int:
+    if len(args.run) != 2:
+        print("error: bench diff requires exactly two --run values", file=sys.stderr)
+        return 2
+    run_ids = [_safe_id(run_id, label="benchmark run id") for run_id in args.run]
+    try:
+        run_a = bench_diff.load_run(args.db, run_ids[0])
+        run_b = bench_diff.load_run(args.db, run_ids[1])
+    except bench_diff.BenchDiffError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if run_a.model_id != run_b.model_id:
+        print(
+            "warning: runs use different models: "
+            f"{run_a.model_name} vs {run_b.model_name}",
+            file=sys.stderr,
+        )
+    print(bench_diff.format_diff(run_a, run_b), end="")
     return 0
 
 
@@ -1002,6 +1023,18 @@ def build_parser() -> argparse.ArgumentParser:
     bench_matrix.add_argument("--limit", type=int, default=0)
     bench_matrix.add_argument("--json", action="store_true")
     bench_matrix.set_defaults(func=command_bench_matrix)
+    bench_diff_parser = bench_subparsers.add_parser(
+        "diff",
+        help="Compare two imported benchmark runs without running a model.",
+    )
+    bench_diff_parser.add_argument(
+        "--run",
+        action="append",
+        required=True,
+        help="Imported benchmark run id; provide exactly twice in A, B order.",
+    )
+    bench_diff_parser.add_argument("--db", type=Path, default=DEFAULT_DASHBOARD_DB)
+    bench_diff_parser.set_defaults(func=command_bench_diff)
     bench_execute = bench_subparsers.add_parser(
         "execute",
         help="Run an explicitly approved local benchmark capture flow.",

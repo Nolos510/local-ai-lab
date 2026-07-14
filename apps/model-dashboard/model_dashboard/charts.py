@@ -24,6 +24,12 @@ SCATTER_LEGEND_X = 780
 SCATTER_MIN_RADIUS = 6
 SCATTER_MAX_RADIUS = 22
 SCATTER_LEGEND_ROW_HEIGHT = 30
+SPARK_WIDTH = 440
+SPARK_HEIGHT = 132
+SPARK_PLOT_LEFT = 42
+SPARK_PLOT_TOP = 28
+SPARK_PLOT_RIGHT = 398
+SPARK_PLOT_BOTTOM = 82
 
 
 def _coerce_value(value: object) -> float | None:
@@ -263,6 +269,94 @@ def scatter(
             f'<text class="chart-legend-value" x="{width - PADDING_X}" y="{legend_y}" '
             f'text-anchor="end">{x_value:.1f} tok/s · {y_value:.2f} score · '
             f"{bubble_value:.1f} GB</text>"
+        )
+
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def sparkline(
+    items: list[tuple[str, object]],
+    *,
+    title: str = "Performance over time",
+    value_format: str = "{:.1f}",
+    empty_message: str = "Not enough recorded values to compare",
+) -> str:
+    """Render a deterministic, labeled trend line without filling missing values."""
+
+    values = [(str(label), _finite_number(value)) for label, value in items]
+    valid_values = [value for _, value in values if value is not None]
+    if len(values) < 2 or len(valid_values) < 2:
+        return placeholder(empty_message)
+
+    minimum = min(valid_values)
+    maximum = max(valid_values)
+    span = maximum - minimum
+    x_span = SPARK_PLOT_RIGHT - SPARK_PLOT_LEFT
+    y_span = SPARK_PLOT_BOTTOM - SPARK_PLOT_TOP
+
+    points: list[tuple[float, float] | None] = []
+    for index, (_, value) in enumerate(values):
+        fraction = index / (len(values) - 1)
+        x = SPARK_PLOT_LEFT + fraction * x_span
+        if value is None:
+            points.append(None)
+            continue
+        y = (
+            (SPARK_PLOT_TOP + SPARK_PLOT_BOTTOM) / 2
+            if span == 0
+            else SPARK_PLOT_BOTTOM - ((value - minimum) / span) * y_span
+        )
+        points.append((round(x, 2), round(y, 2)))
+
+    parts = [
+        (
+            f'<svg class="chart chart-sparkline" viewBox="0 0 {SPARK_WIDTH} '
+            f'{SPARK_HEIGHT}" role="img" aria-label="{escape(title)}">'
+        ),
+        (
+            f'<line class="chart-gridline" x1="{SPARK_PLOT_LEFT}" '
+            f'y1="{SPARK_PLOT_BOTTOM}" x2="{SPARK_PLOT_RIGHT}" '
+            f'y2="{SPARK_PLOT_BOTTOM}"></line>'
+        ),
+    ]
+
+    segment: list[tuple[float, float]] = []
+    for point in [*points, None]:
+        if point is not None:
+            segment.append(point)
+            continue
+        if len(segment) >= 2:
+            coordinates = " ".join(f"{x},{y}" for x, y in segment)
+            parts.append(
+                f'<polyline class="chart-spark-line" points="{coordinates}"></polyline>'
+            )
+        segment = []
+
+    for index, (label, value) in enumerate(values):
+        point = points[index]
+        x = round(SPARK_PLOT_LEFT + index / (len(values) - 1) * x_span, 2)
+        safe_label = escape(label)
+        parts.append(
+            f'<text class="chart-spark-date" x="{x}" y="{SPARK_HEIGHT - 12}" '
+            f'text-anchor="middle">{safe_label}</text>'
+        )
+        if value is None or point is None:
+            parts.append(
+                f'<text class="chart-spark-value" x="{x}" y="{SPARK_PLOT_TOP + 20}" '
+                f'text-anchor="middle">—</text>'
+            )
+            continue
+        point_x, point_y = point
+        formatted = escape(_format_value(value, value_format))
+        value_y = max(14, point_y - 9)
+        parts.append(
+            f'<circle class="chart-spark-point" cx="{point_x}" cy="{point_y}" r="4">'
+            f"<title>{safe_label}: {formatted}</title></circle>"
+        )
+        parts.append(
+            f'<text class="chart-spark-value" x="{point_x}" y="{value_y}" '
+            f'text-anchor="middle">{formatted}</text>'
         )
 
     parts.append("</svg>")

@@ -291,10 +291,29 @@ def _layout(title, current_path, body):
       stroke-width: 2;
       filter: drop-shadow(0 0 8px rgba(42, 212, 238, 0.32));
     }}
+    .chart-spark-line {{
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }}
+    .chart-spark-point {{
+      fill: var(--accent-2);
+      stroke: var(--panel);
+      stroke-width: 2;
+    }}
     .chart-label, .chart-value, .chart-empty-text,
-    .chart-tick, .chart-axis-label, .chart-legend-label, .chart-legend-value {{
+    .chart-tick, .chart-axis-label, .chart-legend-label, .chart-legend-value,
+    .chart-spark-date, .chart-spark-value {{
       fill: var(--muted);
       font-size: 14px;
+    }}
+    .chart-spark-date {{ font-size: 10px; }}
+    .chart-spark-value {{
+      fill: var(--ink);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
     }}
     .chart-tick {{ font-size: 12px; }}
     .chart-axis-label, .chart-legend-label {{
@@ -1577,6 +1596,35 @@ def _layout(title, current_path, body):
     .model-detail-card p {{
       margin: 0;
     }}
+    .model-detail-performance {{
+      display: grid;
+      gap: 12px;
+      margin-bottom: 18px;
+    }}
+    .model-detail-performance h2,
+    .model-detail-performance p {{
+      margin: 0;
+    }}
+    .model-detail-spark-grid {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }}
+    .model-detail-spark {{
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel-soft);
+      overflow-x: auto;
+    }}
+    .model-detail-spark h3 {{
+      margin: 0 0 6px;
+      font-size: 15px;
+    }}
+    .model-detail-spark .chart {{
+      min-width: 360px;
+    }}
     .model-detail-results-shell {{
       display: grid;
       gap: 8px;
@@ -1824,6 +1872,7 @@ def _layout(title, current_path, body):
       .ab-picker {{ grid-template-columns: 1fr; }}
       .filter-actions {{ justify-content: flex-start; }}
       .split {{ grid-template-columns: 1fr; }}
+      .model-detail-spark-grid {{ grid-template-columns: 1fr; }}
       .section-heading-row {{ display: grid; }}
       .stat-breakdown {{ grid-column: auto; }}
       .chart-grid {{ gap: 10px; margin-bottom: 14px; }}
