@@ -24,6 +24,9 @@
   and Ollama inventory entries.
 - [x] Midnight Neon dashboard redesign with offline icons, collapsible sidebar,
   and inline SVG performance charts.
+- [x] Dashboard information architecture consolidated from 11 primary
+  destinations into Home, Discover, My Models, and Benchmark, with legacy
+  detail routes retained.
 - [x] Portfolio case study and resume evidence pack.
 
 ## v0: Runnable Local RAG Baseline
@@ -61,7 +64,22 @@
   ruff in CI.
 - [x] Convert current work into portfolio/resume evidence.
 - [x] Add approval-gated local benchmark execution to the unified `ai-lab` CLI.
-- [ ] Tag a pushed v1 release with validation evidence.
+- [x] Tag v1.0.0 at the committed Dolphin benchmark validation-evidence state.
+
+## v1.1 Candidate: Answers, Not Data
+
+- [x] Add a local Fit Advisor with labeled memory estimates, explicit unknown
+  states, machine-memory context, and observed throughput only from imported
+  benchmark evidence.
+- [x] Add confirmed-score-only task leaders to Home and Benchmark, including
+  omission when no confirmed evidence exists, an honest single-model warning,
+  and deterministic tie handling.
+- [x] Add an approval-gated `ai-lab bench queue` that enumerates an exact batch,
+  refuses incomplete preflight metadata, continues after per-run failures, and
+  summarizes captured results.
+- [ ] Grow the confirmed scored set beyond the current Qwen3 Coder and
+  Dolphin-Mistral 24B evidence before treating task leaders as broadly
+  representative recommendations.
 
 ## v2: Retrieval Quality
 
@@ -114,4 +132,4 @@
 - [ ] Add agent workflows only after the non-agent RAG backbone is measured and
   reliable.
 - [ ] Add LangGraph/DSPy only after stable eval targets exist.
-- [ ] Turn completed tasks into portfolio and resume evidence.
+- [x] Turn completed tasks into portfolio and resume evidence.

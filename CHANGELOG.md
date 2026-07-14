@@ -1,13 +1,72 @@
 # Changelog
 
-## v1.0.0 - 2026-06-23
+## Unreleased - v1.1.0 Candidate
 
-AI Lab OS v1.0.0 is prepared as a local-first, single-model baseline release.
-The release definition is explicitly the Qwen3 Coder baseline plus the local
-product loop around radar candidates, benchmark artifacts, dashboard import, and
-operator decisions. A second unique confirmed benchmark is still pending exact
-local runtime identity and approval; no second-model score or live performance
-claim is included in this release.
+This candidate turns more of the repo's existing local evidence into direct,
+auditable answers. It does not create a `v1.1.0` tag and does not expand the
+project beyond its local-first runtime boundaries.
+
+### Answers Sprint
+
+- Added a dependency-free Fit Advisor to Home, Discover, and My Models. It
+  labels model-memory results as estimates, returns `unknown` when parameter or
+  quantization metadata is missing, and shows observed tokens/sec only when an
+  imported benchmark run provides it. The estimate uses parameter count and
+  quantization bits with a 10% weight allowance, an 8 GB context/runtime
+  allowance, and a 16 GB system reserve.
+- Added Home and Benchmark task-leader panels for Coding, Reasoning & agents,
+  Research & writing, Long context, and Fast & practical. Leaders use confirmed
+  eval rows only, keep exact ties visible, ignore draft scores, and expose an
+  honest single-model state. The repository currently has confirmed scored
+  evidence for only two unique models, so these leaders are not broad market
+  recommendations.
+- Added `ai-lab bench queue` for an explicitly enumerated batch of at least two
+  `ready_for_eval` candidates. The command prints every candidate, exact local
+  model id, runner, and run id before one batch-scoped approval; refuses the
+  entire batch when required metadata is invalid or missing; continues after an
+  individual run failure; and prints a final status/runtime summary.
+
+### Dashboard Experience
+
+- Restructured the dashboard from 11 primary navigation destinations to four
+  workflow surfaces: Home, Discover, My Models, and Benchmark. Existing detail
+  routes remain reachable, while reports are presented as an export action.
+- Polished the dependency-light Midnight Neon interface across the consolidated
+  views, including responsive layout, clearer section rhythm, local inventory
+  matching, table/chart overflow handling, metric explainers, offline icons,
+  and inline-only client behavior with no external dashboard assets.
+
+### Retrieval, Benchmarking, And Experiment Scaffolds
+
+- Recorded the RAG v2 real-corpus retrieval run using local BGE-M3 embeddings:
+  `recall@5 = 1.0` and `MRR = 1.0`. This result covers only four queries in the
+  tiny repo-docs v0.1 corpus; it verifies the local eval path but is not evidence
+  of general retrieval quality.
+- Added v3 benchmark `runtime-metrics.json` artifacts and sanitized Markdown
+  report rendering for captured prompt/error counts, latency, tokens, observed
+  RAM high-water, and macOS memory/swap counters when available. Missing
+  measurements remain null rather than inferred.
+- Added the v4 offline MLX-LM LoRA experiment scaffold: dataset manifest and
+  adapter registry conventions, command and before/after eval templates, and a
+  stdlib metadata validator. No fine-tuning, model download, install, or private
+  dataset processing was performed.
+
+### Confirmed Benchmark Evidence Baseline
+
+- The v1.1 candidate's task-leader views build on the second unique confirmed
+  benchmark model recorded on 2026-06-25:
+  Dolphin-Mistral-24B-Venice-Edition, exact local LM Studio CLI id
+  `dolphin-mistral-24b-venice-edition`. The official 12-prompt run completed
+  without runtime errors and was confirmed at `65.45` with a `WATCHLIST`
+  label. Together with Qwen3 Coder, this brings the locally evidenced comparison
+  set to two unique scored models.
+
+## v1.0.0 - 2026-06-25
+
+AI Lab OS v1.0.0 is the tagged local-first product-loop release. The annotated
+tag points to commit `73732a5`, which includes the Qwen3 Coder baseline and the
+2026-06-25 Dolphin-Mistral 24B validation evidence, plus the local loop around
+radar candidates, benchmark artifacts, dashboard import, and operator decisions.
 
 ### Shipped
 
@@ -30,11 +89,16 @@ claim is included in this release.
   candidate records kept separate from eval scores, raw retrieved chunks not
   returned by default, dashboard action buttons disabled unless explicitly
   enabled.
+- A second unique confirmed benchmark for Dolphin-Mistral-24B-Venice-Edition,
+  captured through exact local LM Studio CLI identity, imported into the
+  dashboard, and retained as a watchlist result.
 
 ### Validation Evidence
 
-Local O3 gate was run on `codex/onboarding-v1` after bumping the project version
-to `1.0.0`.
+The following local O3 gate was run on `codex/onboarding-v1` after bumping the
+project version to `1.0.0`. It is release-prep evidence from before the final
+Dolphin benchmark commit; final tag-state evidence is recorded in
+`docs/lab-notes/v1-validation-evidence.md`.
 
 ```text
 $ uv sync
@@ -216,11 +280,11 @@ a push or PR.
 
 ### Known Limits
 
-- No new live benchmark was run for v1.0.0.
-- No live performance numbers are claimed beyond already committed benchmark
-  evidence.
+- v1.0.0 contains confirmed evidence for only two unique models; it does not
+  support broad model-market conclusions.
+- Live performance claims are limited to the committed Qwen3 Coder and
+  Dolphin-Mistral 24B benchmark evidence.
 - The default live `local-ai-lab doctor` path still requires an installed local
   model matching the configured provider/model.
-- The `v1.0.0` tag is prepared locally only; it is not pushed until explicitly
-  approved.
-
+- The annotated `v1.0.0` tag exists locally at commit `73732a5`; repository-local
+  evidence does not establish whether that tag was pushed.

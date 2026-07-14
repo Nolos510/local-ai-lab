@@ -16,10 +16,23 @@ claims aligned with the current repository state.
   for local AI benchmark review.
 - Delivered a dark "Midnight Neon" dashboard redesign with a collapsible
   sidebar, offline icon set, inline SVG charts, and no external dashboard assets.
+- Consolidated 11 dashboard navigation destinations into four workflow surfaces
+  (Home, Discover, My Models, and Benchmark) while retaining stable detail
+  routes and local-only behavior.
+- Built a dependency-free Fit Advisor that labels parameter/quantization-based
+  memory estimates, preserves unknown states, incorporates sanitized machine
+  memory, and distinguishes observed benchmark throughput from estimated fit.
+- Built confirmed-score-only task leader views across five practical task groups
+  with deterministic ties, no panel when confirmed evidence is absent, and an
+  honest single-model warning; current comparative evidence remains limited to
+  two confirmed models.
 - Built a unified `ai-lab` CLI for repo-local lab operations including status,
   radar listing, sanitized hardware snapshots, benchmark matrix planning,
   approval-gated benchmark execution, benchmark artifact prep, dashboard
   import/report, and dashboard launch.
+- Added an approval-gated batch benchmark queue that enumerates exact local model
+  ids, runners, and run ids before execution, refuses incomplete batches, keeps
+  later runs moving after a per-model failure, and emits a final result summary.
 - Added a read-only dashboard capability view that summarizes hardware profile
   examples, candidate readiness, benchmark artifact counts, score/run signals,
   performance signals, and next benchmark commands without runtime network
@@ -30,9 +43,8 @@ claims aligned with the current repository state.
 - Added a disabled-by-default, recoverable model removal path that sends LM
   Studio folders to macOS Trash, calls `ollama rm` for Ollama, and rejects
   out-of-root filesystem targets.
-- Maintained a validation gate covering 122 dashboard unit tests, 15 benchmark
-  harness tests, 239 repo tests plus 58 subtests, dashboard smoke, and
-  repo-wide Ruff lint.
+- Maintained a full validation gate covering dashboard and benchmark unittests,
+  dashboard smoke, repo-wide pytest, and Ruff lint.
 
 ## AI / Evaluation Engineering
 
@@ -42,6 +54,15 @@ claims aligned with the current repository state.
 - Completed confirmed local benchmark imports for Qwen3 Coder and
   Dolphin-Mistral 24B, including preserved raw-response evidence, performance
   metadata, score status, and keep/watchlist decision records.
+- Measured local BGE-M3 retrieval at `recall@5 = 1.0` and `MRR = 1.0` on a
+  four-query repo-docs corpus, explicitly documenting that the tiny sample
+  validates the evaluation path rather than general retrieval quality.
+- Added versioned runtime-metric artifacts and sanitized benchmark reports for
+  captured latency, token counts, RAM high-water, and available macOS
+  memory/swap counters without inferring missing observations.
+- Added a metadata-only MLX-LM LoRA experiment scaffold with dataset manifests,
+  adapter registry, command/eval templates, and an offline validator; no
+  fine-tuning run or private dataset processing is claimed.
 - Separated radar candidates, installed runtime inventory, demo fixtures,
   benchmark artifacts, imported runs, and confirmed model decisions to prevent
   false rankings.
@@ -49,6 +70,9 @@ claims aligned with the current repository state.
   targets can be reviewed before any model execution occurs.
 - Added approval-gated local benchmark execution requiring explicit model id,
   runner, run id, and approval before any local model call is made.
+- Scoped batch benchmark approval to a printed candidate/model/runner/run-id
+  enumeration and blocked the entire queue when required local metadata was
+  incomplete.
 - Surfaced imported benchmark performance metadata in Compare and Capability
   views for tokens/sec, TTFT, and total latency with empty states when no
   approved run has provided those values.
@@ -90,3 +114,6 @@ claims aligned with the current repository state.
 - What v1.0.0 proves: a local-first product loop from approved candidate to
   benchmark artifact, confirmed score, dashboard import, model comparison, and
   release evidence.
+- How fit estimates, observed throughput, and confirmed task leaders answer
+  different questions without presenting estimates or a two-model sample as
+  broad comparative truth.
