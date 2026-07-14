@@ -59,6 +59,7 @@ data/eval_results/<benchmark_run_id>/
   metadata.json
   response-template.jsonl
   raw_responses.jsonl
+  runtime-metrics.json
   scores-template.json
   decision-template.json
   evidence.md
@@ -150,6 +151,13 @@ macOS `vm_stat` around each prompt. Subprocess runners also sample child RSS via
 `ps` while the command is running. These are local measurements only; the harness
 does not install profilers or infer missing model memory.
 
+Every run also writes `runtime-metrics.json`. This artifact preserves richer
+local-only operational measurements without changing the dashboard CSV schema:
+raw prompt count, error count, latency min/max/sum, input/output token totals,
+observed RAM high-water, `vm_stat` used memory, and `vm_stat` swap counters when
+available. Missing values stay `null`; do not infer swap or memory pressure from
+model size.
+
 If LM Studio's OpenAI-compatible server is reachable but returns `401
 Unauthorized`, use the installed-model CLI lane for models that appear in local
 LM Studio inventory:
@@ -209,6 +217,18 @@ python3 evals/local-llm-benchmark/harness.py export-dashboard \
 `eval_scores.csv` and `decisions.csv` are header-only until filled score and
 decision files are provided. This avoids importing placeholder zero scores as
 real benchmark results.
+
+Generate a sanitized Markdown report for review or release evidence:
+
+```bash
+python3 evals/local-llm-benchmark/harness.py render-report \
+  --run-dir data/eval_results/20260603-example-model-llamacpp-q4
+```
+
+The default output is `benchmark-report.md` inside the run directory. It reports
+artifact paths, raw-response counts, SHA256 hashes, dashboard CSV row counts,
+runtime metrics, scores, and decisions. It intentionally does not paste raw
+model responses into the report.
 
 ## Dependency Posture
 

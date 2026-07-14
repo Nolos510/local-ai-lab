@@ -1,0 +1,2 @@
+adapter_id,base_model,adapter_path,dataset_manifest_path,prompt_template_version,eval_report_path,approval_state,created_at,notes
+example-structured-extraction-lora-v0.1,local/base/model/path-or-id,data/fine-tune/adapters/example-structured-extraction-lora-v0.1,evals/mlx-finetune/templates/dataset-manifest.example.json,ai-lab-local-llm-core-v0.1,evals/mlx-finetune/templates/eval-before-after-report.md,planned,2026-06-26,Template row only; do not train until dataset/base model/runtime approval is recorded.

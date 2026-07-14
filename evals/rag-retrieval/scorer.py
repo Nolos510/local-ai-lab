@@ -13,12 +13,14 @@ class QueryLabel:
     query_id: str
     query: str
     relevant_chunk_ids: frozenset[str]
+    relevant_sources: frozenset[str]
 
 
 @dataclass(frozen=True)
 class QueryResult:
     query_id: str
     retrieved_chunk_ids: tuple[str, ...]
+    retrieved_sources: tuple[str, ...]
 
 
 def load_labels(path: Path) -> list[QueryLabel]:
@@ -39,15 +41,17 @@ def load_labels(path: Path) -> list[QueryLabel]:
             raise ValueError(msg)
         seen.add(query_id)
         query = _required_string(item, "query", context=query_id)
-        relevant_ids = _required_string_list(item, "relevant_chunk_ids", context=query_id)
-        if not relevant_ids:
-            msg = f"{query_id} must have at least one relevant chunk id"
+        relevant_ids = _optional_string_list(item, "relevant_chunk_ids", context=query_id)
+        relevant_sources = _source_keys_from_rows(item.get("relevant"), context=query_id)
+        if not relevant_ids and not relevant_sources:
+            msg = f"{query_id} must have at least one relevant chunk id or source"
             raise ValueError(msg)
         labels.append(
             QueryLabel(
                 query_id=query_id,
                 query=query,
                 relevant_chunk_ids=frozenset(relevant_ids),
+                relevant_sources=frozenset(relevant_sources),
             )
         )
     return labels
@@ -69,8 +73,18 @@ def load_results_jsonl(path: Path) -> list[QueryResult]:
             msg = f"duplicate query_id in results: {query_id}"
             raise ValueError(msg)
         seen.add(query_id)
-        retrieved_ids = _required_string_list(payload, "retrieved_chunk_ids", context=query_id)
-        results.append(QueryResult(query_id=query_id, retrieved_chunk_ids=tuple(retrieved_ids)))
+        retrieved_ids = _optional_string_list(payload, "retrieved_chunk_ids", context=query_id)
+        retrieved_sources = _source_keys_from_rows(payload.get("retrieved"), context=query_id)
+        if not retrieved_ids and not retrieved_sources:
+            msg = f"{query_id} must include retrieved_chunk_ids or retrieved source rows"
+            raise ValueError(msg)
+        results.append(
+            QueryResult(
+                query_id=query_id,
+                retrieved_chunk_ids=tuple(retrieved_ids),
+                retrieved_sources=tuple(retrieved_sources),
+            )
+        )
     return results
 
 
@@ -89,21 +103,30 @@ def score_results(
     reciprocal_rank_total = 0.0
 
     for label in labels:
-        result = result_by_query.get(label.query_id, QueryResult(label.query_id, ()))
+        result = result_by_query.get(label.query_id, QueryResult(label.query_id, (), ()))
         ranked_ids = _dedupe_preserving_order(result.retrieved_chunk_ids[:k])
-        relevant_hits = [
+        ranked_sources = _dedupe_preserving_order(result.retrieved_sources[:k])
+        id_hits = [
             chunk_id for chunk_id in ranked_ids if chunk_id in label.relevant_chunk_ids
         ]
-        recall = len(set(relevant_hits)) / len(label.relevant_chunk_ids)
-        reciprocal_rank = _reciprocal_rank(ranked_ids, label.relevant_chunk_ids)
+        source_hits = [
+            source_key for source_key in ranked_sources if source_key in label.relevant_sources
+        ]
+        relevant_count = len(label.relevant_chunk_ids) + len(label.relevant_sources)
+        hit_count = len(set(id_hits)) + len(set(source_hits))
+        recall = hit_count / relevant_count
+        reciprocal_rank = max(
+            _reciprocal_rank(ranked_ids, label.relevant_chunk_ids),
+            _reciprocal_rank(ranked_sources, label.relevant_sources),
+        )
         recall_total += recall
         reciprocal_rank_total += reciprocal_rank
         per_query.append(
             {
                 "query_id": label.query_id,
-                "relevant_count": len(label.relevant_chunk_ids),
-                "retrieved_count_at_k": len(ranked_ids),
-                "hit_count_at_k": len(set(relevant_hits)),
+                "relevant_count": relevant_count,
+                "retrieved_count_at_k": max(len(ranked_ids), len(ranked_sources)),
+                "hit_count_at_k": hit_count,
                 "recall_at_k": recall,
                 "reciprocal_rank": reciprocal_rank,
             }
@@ -151,7 +174,39 @@ def _required_string_list(payload: dict[str, Any], key: str, *, context: str) ->
     return value
 
 
-def _dedupe_preserving_order(values: tuple[str, ...]) -> tuple[str, ...]:
+def _optional_string_list(payload: dict[str, Any], key: str, *, context: str) -> list[str]:
+    value = payload.get(key, [])
+    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+        msg = f"{context} must include a list of non-empty strings in '{key}'"
+        raise ValueError(msg)
+    return value
+
+
+def _source_keys_from_rows(value: Any, *, context: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        msg = f"{context} source rows must be a list"
+        raise ValueError(msg)
+    keys: list[str] = []
+    for index, item in enumerate(value, start=1):
+        if not isinstance(item, dict):
+            msg = f"{context} source row {index} must be an object"
+            raise ValueError(msg)
+        source_name = _required_string(item, "source_name", context=f"{context} source row {index}")
+        chunk_index = item.get("chunk_index")
+        if not isinstance(chunk_index, (int, str)) or str(chunk_index) == "":
+            msg = f"{context} source row {index} must include chunk_index"
+            raise ValueError(msg)
+        keys.append(_source_key(source_name, chunk_index))
+    return keys
+
+
+def _source_key(source_name: str, chunk_index: int | str) -> str:
+    return f"{source_name}#chunk_{chunk_index}"
+
+
+def _dedupe_preserving_order(values: tuple[str, ...] | list[str]) -> tuple[str, ...]:
     seen: set[str] = set()
     deduped: list[str] = []
     for value in values:

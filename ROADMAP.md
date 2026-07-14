@@ -73,35 +73,38 @@
 - [x] Add reranker abstraction with an identity default.
 - [x] Add source-aware default citation rendering plus explicit local retrieval
   inspection.
-- [ ] Run the retrieval scorer on a real local corpus with BGE-M3 embeddings and
+- [x] Run the retrieval scorer on a real local corpus with BGE-M3 embeddings and
   record the measured recall/MRR evidence.
-- [ ] Add a reviewed real local cross-encoder reranker backend behind the
+- [x] Add a reviewed real local cross-encoder reranker backend behind the
   optional `[rerank]` extra.
-- [ ] Add RAG answer/citation evaluation set format and scoring scripts.
-- [ ] Track retrieval scores, model/provider choices, and command outputs.
+- [x] Add RAG answer/citation evaluation set format and scoring scripts.
+- [x] Track retrieval scores, model/provider choices, and command outputs.
 
 ## v3: Benchmarking Lab
 
 - [ ] Benchmark Ollama, MLX-LM, LM Studio, and llama.cpp where practical.
 - [x] Track imported TTFT, tokens/sec, and total latency in dashboard compare and
   capability charts.
-- [ ] Track memory pressure and swap behavior for approved local benchmark runs.
-- [ ] Add benchmark report templates and plotting utilities.
-- [ ] Publish reproducible benchmark methodology.
-- [ ] Expand the model registry for large 24B, 30B, 70B-class, and specialty
-  abliterated/Dolphin candidates that fit the 256 GB RAM environment.
-- [ ] Add an evaluation harness for RAG answers and citations.
+- [x] Track memory pressure and swap behavior for approved local benchmark runs.
+- [x] Add benchmark report templates and a sanitized report renderer.
+- [ ] Add benchmark plotting utilities after more stable multi-run data exists.
+- [x] Publish reproducible benchmark methodology.
+- [x] Expand metadata-only registry planning for large 24B, 30B, 70B-class,
+  and specialty abliterated/Dolphin candidates that fit the 256 GB RAM
+  environment.
+- [x] Add an evaluation harness for RAG answers and citations.
 - [x] Add a second unique model benchmark after security and exact local
   runtime-id approval.
 
 ## v4: MLX-LM Fine-Tuning Experiments
 
-- [ ] Add dataset manifest conventions.
-- [ ] Add LoRA/adapter experiment templates.
-- [ ] Track dataset hash, base model, adapter config, prompt version, and eval
+- [x] Add dataset manifest conventions.
+- [x] Add LoRA/adapter experiment templates.
+- [x] Track dataset hash, base model, adapter path, prompt version, and eval
   results.
-- [ ] Document adapter export and serving options.
-- [ ] Keep fine-tuning experiments separate from the v0 RAG harness.
+- [ ] Document adapter export and serving options after an approved local
+  experiment exists.
+- [x] Keep fine-tuning experiments separate from the v0 RAG harness.
 
 ## Later
 
