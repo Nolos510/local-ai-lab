@@ -90,10 +90,18 @@ def build_parser():
         action="store_true",
         help="Enable local run-test buttons for candidates with exact runner metadata.",
     )
-    serve_parser.add_argument(
+    import_action_group = serve_parser.add_mutually_exclusive_group()
+    import_action_group.add_argument(
         "--enable-import-actions",
+        dest="enable_import_actions",
         action="store_true",
-        help="Enable local artifact import buttons for existing dashboard CSV artifacts.",
+        help="Enable local artifact import sync and buttons (the loopback default).",
+    )
+    import_action_group.add_argument(
+        "--disable-import-actions",
+        dest="enable_import_actions",
+        action="store_false",
+        help="Disable startup/refresh artifact sync and local import buttons.",
     )
     serve_parser.add_argument(
         "--enable-delete-actions",
@@ -112,7 +120,7 @@ def build_parser():
         default=5,
         help="Maximum seconds allowed for each local inventory command.",
     )
-    serve_parser.set_defaults(func=command_serve)
+    serve_parser.set_defaults(func=command_serve, enable_import_actions=None)
 
     import_parser = subparsers.add_parser("import-csv", help="Import table-shaped CSV files.")
     import_parser.add_argument("--db", type=Path, default=DEFAULT_DB)

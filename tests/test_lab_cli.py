@@ -1232,6 +1232,7 @@ def test_import_report_and_dashboard_shell_out(tmp_path, monkeypatch) -> None:
                 "--port",
                 "9999",
                 "--demo",
+                "--disable-import-actions",
                 "--enable-delete-actions",
             ]
         )
@@ -1247,6 +1248,7 @@ def test_import_report_and_dashboard_shell_out(tmp_path, monkeypatch) -> None:
     assert "--port" in dashboard_command
     assert "9999" in dashboard_command
     assert "--demo" in dashboard_command
+    assert "--disable-import-actions" in dashboard_command
     assert "--enable-delete-actions" in dashboard_command
 
 

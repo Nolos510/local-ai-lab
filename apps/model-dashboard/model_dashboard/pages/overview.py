@@ -42,8 +42,18 @@ def _workflow_step(label, count, detail, href):
     """
 
 
-def _home_next_action(ready_count, installed_count, artifact_counts, real_counts):
-    importable_gap = max(0, artifact_counts["with_dashboard_import"] - real_counts["model_runs"])
+def _home_next_action(
+    ready_count,
+    installed_count,
+    artifact_counts,
+    real_counts,
+    pending_import_count=None,
+):
+    importable_gap = (
+        max(0, artifact_counts["with_dashboard_import"] - real_counts["model_runs"])
+        if pending_import_count is None
+        else pending_import_count
+    )
     score_decision_gap = max(0, real_counts["eval_scores"] - real_counts["decisions"])
     if importable_gap:
         artifact_word = "set is" if importable_gap == 1 else "sets are"
@@ -52,6 +62,7 @@ def _home_next_action(ready_count, installed_count, artifact_counts, real_counts
             "detail": f"{importable_gap} dashboard-import artifact {artifact_word} not reflected in the active dashboard database yet.",
             "href": "/runs",
             "label": "Open Benchmark",
+            "kind": "import",
         }
     if score_decision_gap:
         return {
@@ -82,7 +93,16 @@ def _home_next_action(ready_count, installed_count, artifact_counts, real_counts
     }
 
 
-def _home_action_card(action):
+def _home_action_card(action, enable_import_actions=False, action_token=""):
+    import_control = (
+        _artifact_import_all_control(
+            action.get("pending_import_count", 0),
+            enable_import_actions=enable_import_actions,
+            action_token=action_token,
+        )
+        if action.get("kind") == "import"
+        else ""
+    )
     return """
     <section class="panel do-next">
       <h2>Do This Next</h2>
@@ -90,6 +110,7 @@ def _home_action_card(action):
       <p class="empty">{detail}</p>
       <div class="home-actions">
         <a class="action-link" href="{href}">{label}</a>
+        {import_control}
         <a class="action-link secondary" href="/reports">Export report</a>
       </div>
     </section>
@@ -98,6 +119,7 @@ def _home_action_card(action):
         detail=_text(action["detail"]),
         href=_text(action["href"]),
         label=_text(action["label"]),
+        import_control=import_control,
     )
 
 
@@ -189,6 +211,9 @@ def _overview(
     hardware_profiles_dir=REPO_ROOT / "docs" / "lab-notes",
     local_inventory_path=LOCAL_INVENTORY_REGISTRY_PATH,
     current_hardware_profile=None,
+    enable_import_actions=False,
+    action_token="",
+    import_sync_result=None,
 ):
     counts = _real_counts(conn)
     all_summaries = db.list_model_summaries(conn)
@@ -203,10 +228,19 @@ def _overview(
     ready_count = sum(1 for row in candidates if row.get("status") == "ready_for_eval")
     installed_count = _count_local_inventory_models(local_inventory_path)
     artifact_counts = capability.benchmark_artifact_counts(Path(eval_results_dir))
+    pending_import_count = len(_pending_artifact_run_ids(conn, eval_results_dir))
     hardware_profiles = capability.load_hardware_profiles(Path(hardware_profiles_dir), limit=1)
-    action = _home_next_action(ready_count, installed_count, artifact_counts, counts)
+    action = _home_next_action(
+        ready_count,
+        installed_count,
+        artifact_counts,
+        counts,
+        pending_import_count=pending_import_count,
+    )
+    action["pending_import_count"] = pending_import_count
     top_rows = _top_result_rows(summaries)
     body = """
+    {import_sync_notice}
     {notice}
     <section class="panel home-hero">
       <p class="home-intro">Benchmark and decide on local models, privately on your Mac.</p>
@@ -235,6 +269,7 @@ def _overview(
       {machine_card}
     </section>
     """.format(
+        import_sync_notice=_import_sync_notice(import_sync_result),
         notice=_real_data_notice(counts["demo_models"]),
         discover_step=_workflow_step("Discover", ready_count, "ready candidates", "/radar"),
         install_step=_workflow_step("Install", installed_count, "detected local models", "/inventory"),
@@ -242,7 +277,11 @@ def _overview(
         compare_step=_workflow_step("Compare", counts["eval_scores"], "imported scores", "/runs"),
         decide_step=_workflow_step("Decide", counts["decisions"], "recorded decisions", "/inventory"),
         task_leaders=_task_leaders(task_summary, surface_class="task-leaders-home"),
-        next_action=_home_action_card(action),
+        next_action=_home_action_card(
+            action,
+            enable_import_actions=enable_import_actions,
+            action_token=action_token,
+        ),
         models_stat=_stat_card("Models", counts["models"], "ti-cube"),
         runs_stat=_stat_card("Runs", counts["model_runs"], "ti-player-play"),
         avg_stat=_stat_card("Average Score", _number(avg_score, 1, "0.0"), "ti-chart-line"),

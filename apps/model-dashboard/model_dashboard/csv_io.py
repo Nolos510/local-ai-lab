@@ -214,13 +214,12 @@ def _benchmark_run_id_from_notes(notes):
 def _existing_run_id(conn, row):
     benchmark_run_id = _benchmark_run_id_from_notes(row.get("run_notes"))
     if benchmark_run_id:
-        like_value = f"%benchmark_run_id={benchmark_run_id}%"
-        match = conn.execute(
-            "SELECT id FROM model_runs WHERE run_notes LIKE ?",
-            (like_value,),
-        ).fetchone()
-        if match:
-            return int(match["id"])
+        matches = conn.execute(
+            "SELECT id, run_notes FROM model_runs WHERE run_notes LIKE '%benchmark_run_id=%'"
+        ).fetchall()
+        for match in matches:
+            if _benchmark_run_id_from_notes(match["run_notes"]) == benchmark_run_id:
+                return int(match["id"])
     existing = conn.execute("SELECT id FROM model_runs WHERE id = ?", (row.get("id"),)).fetchone()
     if existing is None:
         return row.get("id")

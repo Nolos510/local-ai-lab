@@ -400,6 +400,104 @@ class DashboardHttpHandlerTests(unittest.TestCase):
             self.assertEqual(imported["model_name"], "Ready Local 7B")
             self.assertEqual(imported["tokens_per_sec"], 22.5)
 
+    def test_inventory_refresh_runs_pending_artifact_sync(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            eval_results = tmp_path / "eval_results"
+            run_id = "20260714-refresh-sync"
+            import_dir = eval_results / run_id / "dashboard-import"
+            write_table(
+                import_dir / "models.csv",
+                "models",
+                [{"id": 1, "model_name": "Refresh Sync Model", "provider": "local"}],
+            )
+            write_table(
+                import_dir / "model_runs.csv",
+                "model_runs",
+                [
+                    {
+                        "id": 1,
+                        "model_id": 1,
+                        "date_tested": "2026-07-14",
+                        "backend": "LM Studio CLI",
+                        "run_notes": f"benchmark_run_id={run_id}",
+                    }
+                ],
+            )
+            write_table(import_dir / "eval_scores.csv", "eval_scores", [])
+            write_table(import_dir / "decisions.csv", "decisions", [])
+            db.init_db(db_path, reset=True)
+            inventory = {"checked_at": "2026-07-14T10:00:00Z", "checks": [], "models": []}
+
+            with mock.patch.object(server, "_refresh_inventory", return_value=inventory):
+                base_url = self.start_server(
+                    db_path,
+                    action_token="test-token",
+                    enable_import_actions=True,
+                    eval_results_dir=eval_results,
+                )
+                with self.post(
+                    f"{base_url}/actions/refresh-inventory",
+                    {"token": "test-token"},
+                ) as response:
+                    response.read()
+
+            self.assertEqual(response.status, 200)
+            with db.connect(db_path) as conn:
+                self.assertEqual(server._pending_artifact_run_ids(conn, eval_results), [])
+                self.assertEqual(db.table_count(conn, "model_runs"), 1)
+
+    def test_import_all_action_requires_token_and_renders_post_sync_queue(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            eval_results = tmp_path / "eval_results"
+            run_id = "20260714-manual-sync"
+            import_dir = eval_results / run_id / "dashboard-import"
+            write_table(
+                import_dir / "models.csv",
+                "models",
+                [{"id": 1, "model_name": "Manual Sync Model", "provider": "local"}],
+            )
+            write_table(
+                import_dir / "model_runs.csv",
+                "model_runs",
+                [
+                    {
+                        "id": 1,
+                        "model_id": 1,
+                        "date_tested": "2026-07-14",
+                        "backend": "LM Studio CLI",
+                        "run_notes": f"benchmark_run_id={run_id}",
+                    }
+                ],
+            )
+            write_table(import_dir / "eval_scores.csv", "eval_scores", [])
+            write_table(import_dir / "decisions.csv", "decisions", [])
+            db.init_db(db_path, reset=True)
+            base_url = self.start_server(
+                db_path,
+                action_token="test-token",
+                enable_import_actions=True,
+                eval_results_dir=eval_results,
+            )
+
+            with self.assertRaises(HTTPError) as raised:
+                self.post(f"{base_url}/actions/import-all", {"token": "wrong"})
+            self.assertEqual(raised.exception.code, 400)
+
+            with self.post(
+                f"{base_url}/actions/import-all",
+                {"token": "test-token"},
+            ) as response:
+                body = response.read().decode("utf-8")
+
+            self.assertEqual(response.status, 200)
+            self.assertIn("Manual artifact sync imported 1 set", body)
+            self.assertIn("imported model", body)
+            self.assertNotIn('action="/actions/import-all"', body)
+
     def test_delete_model_lmstudio_requires_confirm_then_uses_trash(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

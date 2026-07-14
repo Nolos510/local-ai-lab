@@ -7,7 +7,7 @@ import sys
 import threading
 from pathlib import Path
 
-from .. import csv_io
+from .. import csv_io, db
 from ..components import *
 from ..layout import _layout
 
@@ -161,11 +161,45 @@ def _import_dashboard_artifact(run_id, database_path, eval_results_dir):
     return csv_io.import_all(database_path, paths)
 
 
+def _sync_pending_artifacts(database_path, eval_results_dir, source="automatic"):
+    db.init_db(database_path, reset=False)
+    with db.connect(database_path) as conn:
+        pending_run_ids = _pending_artifact_run_ids(conn, eval_results_dir)
+    result = {"source": source, "imported": [], "skipped": []}
+    for run_id in pending_run_ids:
+        if not _artifact_import_ready(run_id, eval_results_dir):
+            result["skipped"].append(
+                {
+                    "benchmark_run_id": run_id,
+                    "reason": "incomplete dashboard CSV set",
+                }
+            )
+            continue
+        try:
+            imported = _import_artifact(run_id, database_path, eval_results_dir)
+        except Exception:
+            result["skipped"].append(
+                {
+                    "benchmark_run_id": run_id,
+                    "reason": "invalid dashboard CSV set",
+                }
+            )
+            continue
+        result["imported"].append(imported)
+    return result
+
+
+def _startup_import_sync(database_path, eval_results_dir, *, enabled):
+    if not enabled:
+        return {"source": "automatic", "imported": [], "skipped": []}
+    return _sync_pending_artifacts(database_path, eval_results_dir, source="automatic")
+
+
 def _background_candidate_test(row, run_id, eval_results_dir, timeout, database_path):
     try:
         _run_candidate_test_for_row(row, run_id, eval_results_dir, timeout)
         _export_dashboard_import(run_id, eval_results_dir, timeout)
-        _import_dashboard_artifact(run_id, database_path, eval_results_dir)
+        _sync_pending_artifacts(database_path, eval_results_dir, source="automatic")
     except Exception as exc:  # pragma: no cover - defensive worker guard
         _write_background_error(Path(eval_results_dir) / run_id, exc)
 
@@ -258,6 +292,11 @@ def _import_artifact(benchmark_run_id, database_path, eval_results_dir=None):
     missing = [name for name, path in paths.items() if not path.exists()]
     if missing:
         raise ValueError("Artifact is missing dashboard CSVs: {}".format(", ".join(missing)))
+    run_rows = csv_io._read_import_rows("model_runs", paths["model_runs"])
+    if benchmark_run_id not in {
+        _benchmark_run_id_from_notes(row.get("run_notes")) for row in run_rows
+    }:
+        raise ValueError("Artifact model_runs.csv does not contain its benchmark run id.")
     counts = csv_io.import_all(database_path, paths)
     return {"benchmark_run_id": benchmark_run_id, "counts": counts}
 
@@ -276,4 +315,4 @@ def _import_action_page(result):
     )
     return _layout("Artifact Imported", "", body)
 
-__all__ = ('_build_candidate_commands', '_candidate_test_plan', '_run_candidate_test_for_row', '_run_candidate_test', '_start_candidate_test', '_result_block', '_run_action_page', '_run_action_started_page', '_import_artifact', '_import_action_page')
+__all__ = ('_build_candidate_commands', '_candidate_test_plan', '_run_candidate_test_for_row', '_run_candidate_test', '_start_candidate_test', '_result_block', '_run_action_page', '_run_action_started_page', '_import_artifact', '_import_action_page', '_sync_pending_artifacts', '_startup_import_sync')

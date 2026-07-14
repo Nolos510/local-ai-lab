@@ -800,6 +800,63 @@ def _artifact_import_control(
     """
 
 
+def _artifact_import_all_control(
+    pending_count,
+    enable_import_actions=False,
+    action_token="",
+):
+    if pending_count <= 0:
+        return ""
+    if not enable_import_actions:
+        return (
+            '<div class="cell-stack">'
+            '<button type="button" disabled>Import all pending</button>'
+            '<div class="empty">Import actions are disabled with '
+            '<code>--disable-import-actions</code>.</div>'
+            "</div>"
+        )
+    return f"""
+    <form class="inline-form" method="post" action="/actions/import-all">
+      <input type="hidden" name="token" value="{_text(action_token)}">
+      <button type="submit">Import all pending</button>
+    </form>
+    """
+
+
+def _import_sync_notice(result):
+    if not result:
+        return ""
+    imported = result.get("imported", [])
+    skipped = result.get("skipped", [])
+    if not imported and not skipped:
+        return ""
+    source = "Manual" if result.get("source") == "manual" else "Automatic"
+    messages = []
+    if imported:
+        noun = "set" if len(imported) == 1 else "sets"
+        messages.append(f"{source} artifact sync imported {len(imported)} {noun}.")
+    if skipped:
+        noun = "set" if len(skipped) == 1 else "sets"
+        items = ", ".join(
+            "{} ({})".format(
+                _text(row.get("benchmark_run_id")),
+                _text(row.get("reason")),
+            )
+            for row in skipped
+        )
+        messages.append(
+            f"Skipped {len(skipped)} corrupt or incomplete artifact {noun}: {items}."
+        )
+    return """
+    <section class="panel import-sync-note">
+      <h2>Artifact import sync</h2>
+      {messages}
+    </section>
+    """.format(
+        messages="".join(f"<p>{message}</p>" for message in messages),
+    )
+
+
 def _safe_artifact_dir(benchmark_run_id, eval_results_dir=None):
     benchmark_run_id = str(benchmark_run_id or "")
     if not SAFE_ARTIFACT_ID_RE.fullmatch(benchmark_run_id):
@@ -868,6 +925,20 @@ def _dashboard_run_ids(conn):
     return run_ids
 
 
+def _pending_artifact_run_ids(conn, eval_results_dir=EVAL_RESULTS_DIR):
+    imported_run_ids = {
+        run_id
+        for row in db.list_runs(conn)
+        if (run_id := _benchmark_run_id_from_notes(row["run_notes"]))
+    }
+    return [
+        row["benchmark_run_id"]
+        for row in _artifact_summaries(eval_results_dir)
+        if row["dashboard_import"] == "yes"
+        and row["benchmark_run_id"] not in imported_run_ids
+    ]
+
+
 def _dashboard_runs_by_benchmark_id(conn):
     runs = {}
     for row in _real_rows(db.list_runs(conn)):
@@ -903,4 +974,4 @@ def _import_state_for_run(run, decisions_by_model):
         decision=decision_state,
     )
 
-__all__ = ('_text', '_number', '_pill', '_status_pill', '_fit_summary', '_fit_capacity_summary', '_fit_memory_gb', '_task_leaders', '_stat_card', '_chart_panel', '_model_chart_label', '_average_metric_items', '_performance_items', '_performance_chart', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_run_note_value', '_benchmark_run_id_from_notes', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_import_guidance', '_artifact_import_control', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_fit_evidence', '_dashboard_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'LOCAL_INVENTORY_REGISTRY_PATH', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE', 'METRIC_EXPLANATIONS', 'METRIC_LABEL_KEYS', 'RESULT_TABLE_HEADER_TIPS')
+__all__ = ('_text', '_number', '_pill', '_status_pill', '_fit_summary', '_fit_capacity_summary', '_fit_memory_gb', '_task_leaders', '_stat_card', '_chart_panel', '_model_chart_label', '_average_metric_items', '_performance_items', '_performance_chart', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_run_note_value', '_benchmark_run_id_from_notes', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_import_guidance', '_artifact_import_control', '_artifact_import_all_control', '_import_sync_notice', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_fit_evidence', '_dashboard_run_ids', '_pending_artifact_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'LOCAL_INVENTORY_REGISTRY_PATH', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE', 'METRIC_EXPLANATIONS', 'METRIC_LABEL_KEYS', 'RESULT_TABLE_HEADER_TIPS')

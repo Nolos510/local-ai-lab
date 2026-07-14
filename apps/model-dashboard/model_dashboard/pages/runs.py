@@ -91,6 +91,7 @@ def _runs(
     eval_results_dir=EVAL_RESULTS_DIR,
     enable_import_actions=False,
     action_token="",
+    import_sync_result=None,
 ):
     rows = []
     all_runs = db.list_runs(conn)
@@ -124,6 +125,7 @@ def _runs(
     artifact_rows = []
     dashboard_runs = _dashboard_runs_by_benchmark_id(conn)
     decisions_by_model = _latest_decisions_by_model_id(conn)
+    pending_import_count = len(_pending_artifact_run_ids(conn, eval_results_dir))
     for artifact in sorted(
         _artifact_summaries(eval_results_dir),
         key=lambda row: row["benchmark_run_id"],
@@ -149,6 +151,7 @@ def _runs(
             ]
         )
     body = """
+    {import_sync_notice}
     {notice}
     <section class="panel page-intro">
       <p>Benchmark runs and side-by-side comparisons. Higher score and throughput are better; lower latency is better when latency fields exist.</p>
@@ -171,9 +174,11 @@ def _runs(
     <section class="runs-section runs-artifact-section">
       <h2>Local Artifact Import Queue</h2>
       <p class="section-note">Use this queue for benchmark artifacts already written under <code>data/eval_results</code>. Importing a raw run updates model/run/performance data; labels and stability reports appear only after reviewed score and decision files exist.</p>
+      {import_all_control}
       {artifact_table}
     </section>
     """.format(
+        import_sync_notice=_import_sync_notice(import_sync_result),
         notice=_real_data_notice(len(_demo_rows(all_runs))),
         task_leaders=_task_leaders(task_summary, surface_class="task-leaders-benchmark"),
         frontier_panel=_chart_panel("Efficiency Frontier", frontier_chart),
@@ -185,6 +190,11 @@ def _runs(
             include_notice=False,
             include_filters=False,
             include_deep_link=True,
+        ),
+        import_all_control=_artifact_import_all_control(
+            pending_import_count,
+            enable_import_actions=enable_import_actions,
+            action_token=action_token,
         ),
         table=_table(
             [

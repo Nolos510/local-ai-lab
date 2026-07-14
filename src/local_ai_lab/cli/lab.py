@@ -858,8 +858,10 @@ def command_dashboard(args: argparse.Namespace) -> int:
     ]
     if args.demo:
         command.append("--demo")
-    if args.enable_import_actions:
+    if args.enable_import_actions is True:
         command.append("--enable-import-actions")
+    elif args.enable_import_actions is False:
+        command.append("--disable-import-actions")
     if args.enable_run_tests:
         command.append("--enable-run-tests")
     if args.enable_delete_actions:
@@ -1130,10 +1132,20 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard_parser.add_argument("--host", default="127.0.0.1")
     dashboard_parser.add_argument("--port", type=int, default=8765)
     dashboard_parser.add_argument("--demo", action="store_true")
-    dashboard_parser.add_argument("--enable-import-actions", action="store_true")
+    dashboard_import_group = dashboard_parser.add_mutually_exclusive_group()
+    dashboard_import_group.add_argument(
+        "--enable-import-actions",
+        dest="enable_import_actions",
+        action="store_true",
+    )
+    dashboard_import_group.add_argument(
+        "--disable-import-actions",
+        dest="enable_import_actions",
+        action="store_false",
+    )
     dashboard_parser.add_argument("--enable-run-tests", action="store_true")
     dashboard_parser.add_argument("--enable-delete-actions", action="store_true")
-    dashboard_parser.set_defaults(func=command_dashboard)
+    dashboard_parser.set_defaults(func=command_dashboard, enable_import_actions=None)
 
     return parser
 

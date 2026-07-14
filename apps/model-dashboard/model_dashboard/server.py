@@ -28,6 +28,8 @@ from .pages.actions import (
     _run_action_started_page,
     _run_candidate_test,
     _start_candidate_test,
+    _startup_import_sync,
+    _sync_pending_artifacts,
 )
 from .pages.artifact import (
     _artifact_compare as _artifact_compare_page,
@@ -129,6 +131,14 @@ def _delete_model_action(remove_key, confirm_delete, inventory_result, action_to
     )
 
 
+def _resolve_import_actions(host, configured):
+    if not _is_loopback_host(host):
+        return False
+    if configured is not None:
+        return bool(configured)
+    return True
+
+
 def make_handler(
     database_path,
     enable_run_tests=False,
@@ -142,6 +152,7 @@ def make_handler(
     local_inventory_registry_path=None,
     eval_results_dir=None,
     project_registry_path=None,
+    import_sync_result=None,
 ):
     candidate_registry_path = (
         CANDIDATE_REGISTRY_PATH if candidate_registry_path is None else candidate_registry_path
@@ -156,6 +167,7 @@ def make_handler(
         PROJECT_REGISTRY_PATH if project_registry_path is None else project_registry_path
     )
     inventory_cache = {"result": None}
+    import_sync_cache = {"result": import_sync_result}
 
     class DashboardHandler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -181,6 +193,7 @@ def make_handler(
                     "/actions/run-test",
                     "/actions/refresh-inventory",
                     "/actions/import-artifact",
+                    "/actions/import-all",
                     "/actions/delete-model",
                 ):
                     html = _layout("Not Found", "", "<h2>Page not found</h2>")
@@ -210,6 +223,12 @@ def make_handler(
                                     local_inventory_registry_path,
                                 )
                             )
+                            if enable_import_actions:
+                                import_sync_cache["result"] = _sync_pending_artifacts(
+                                    database_path,
+                                    eval_results_dir,
+                                    source="automatic",
+                                )
                             html = _inventory(
                                 inventory_result=inventory_cache["result"],
                                 action_token=action_token,
@@ -221,7 +240,10 @@ def make_handler(
                                 run_history=self._inventory_run_history(),
                             )
                             self.send_response(200)
-                    elif parsed.path == "/actions/import-artifact":
+                    elif parsed.path in (
+                        "/actions/import-artifact",
+                        "/actions/import-all",
+                    ):
                         if not enable_import_actions:
                             html = _layout(
                                 "Import Actions Disabled",
@@ -230,13 +252,31 @@ def make_handler(
                             )
                             self.send_response(403)
                         else:
-                            benchmark_run_id = _query_value(form, "benchmark_run_id")
-                            result = _import_artifact(
-                                benchmark_run_id,
-                                database_path,
-                                eval_results_dir,
-                            )
-                            html = _import_action_page(result)
+                            if parsed.path == "/actions/import-all":
+                                result = _sync_pending_artifacts(
+                                    database_path,
+                                    eval_results_dir,
+                                    source="manual",
+                                )
+                                import_sync_cache["result"] = result
+                                with db.connect(database_path) as conn:
+                                    db.create_schema(conn)
+                                    html = _runs(
+                                        conn,
+                                        database_path=database_path,
+                                        eval_results_dir=eval_results_dir,
+                                        enable_import_actions=enable_import_actions,
+                                        action_token=action_token,
+                                        import_sync_result=result,
+                                    )
+                            else:
+                                benchmark_run_id = _query_value(form, "benchmark_run_id")
+                                result = _import_artifact(
+                                    benchmark_run_id,
+                                    database_path,
+                                    eval_results_dir,
+                                )
+                                html = _import_action_page(result)
                             self.send_response(200)
                     elif parsed.path == "/actions/delete-model":
                         if not enable_delete_actions:
@@ -311,6 +351,9 @@ def make_handler(
                     registry_path=candidate_registry_path,
                     eval_results_dir=eval_results_dir,
                     local_inventory_path=local_inventory_registry_path,
+                    enable_import_actions=enable_import_actions,
+                    action_token=action_token,
+                    import_sync_result=import_sync_cache["result"],
                 )
             if path == "/runs":
                 return _runs(
@@ -320,6 +363,7 @@ def make_handler(
                     eval_results_dir=eval_results_dir,
                     enable_import_actions=enable_import_actions,
                     action_token=action_token,
+                    import_sync_result=import_sync_cache["result"],
                 )
             if path == "/compare":
                 return _compare(conn, query)
@@ -383,14 +427,22 @@ def serve(
     host="127.0.0.1",
     port=8765,
     enable_run_tests=False,
-    enable_import_actions=False,
+    enable_import_actions=None,
     enable_delete_actions=False,
     run_test_timeout=3600,
     inventory_timeout=5,
+    eval_results_dir=None,
 ):
+    enable_import_actions = _resolve_import_actions(host, enable_import_actions)
     if not _is_loopback_host(host):
         raise ValueError("Dashboard serving requires a localhost or loopback bind host.")
+    eval_results_dir = EVAL_RESULTS_DIR if eval_results_dir is None else eval_results_dir
     enable_inventory_refresh = _is_loopback_host(host)
+    import_sync_result = _startup_import_sync(
+        database_path,
+        eval_results_dir,
+        enabled=enable_import_actions,
+    )
     action_token = secrets.token_urlsafe(24)
     server = ThreadingHTTPServer(
         (host, port),
@@ -403,6 +455,8 @@ def serve(
             run_test_timeout=run_test_timeout,
             inventory_timeout=inventory_timeout,
             enable_inventory_refresh=enable_inventory_refresh,
+            eval_results_dir=eval_results_dir,
+            import_sync_result=import_sync_result,
         ),
     )
     print(f"Serving Local Model Dashboard at http://{host}:{port}", flush=True)
