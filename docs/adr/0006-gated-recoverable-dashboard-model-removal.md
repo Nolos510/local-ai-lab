@@ -24,10 +24,13 @@ Add model removal as an explicitly gated dashboard action:
   second confirmed POST performs removal;
 - resolved server-side from the current inventory cache by a generated row key,
   never from a client-supplied absolute path;
-- path-contained to `~/.lmstudio/models` for LM Studio and `~/.ollama/models`
-  for Ollama manifest paths before any subprocess runs;
+- path-contained to `~/.lmstudio/models` for LM Studio and the Hugging Face hub
+  cache root for MLX-LM snapshots before any subprocess runs;
 - LM Studio folders are moved to macOS Trash through Finder via `osascript`;
-- Ollama models are removed through `ollama rm <model_id>`;
+- MLX-LM snapshot folders are moved to macOS Trash through the same guarded
+  path;
+- Ollama models are removed through `ollama rm <model_id>` using the validated
+  exact inventory id and do not require a manifest path;
 - no direct recursive delete or `rm -rf` is used.
 
 The scanner also skips LM Studio filesystem-only folders that contain no real
@@ -37,9 +40,9 @@ weight file, such as `.DS_Store`-only or metadata-only leftovers.
 
 The dashboard remains safe-by-default. Operators must opt in at server start,
 refresh inventory manually, review an exact confirmation page, and then confirm
-the removal. LM Studio removal is recoverable through Trash. Ollama removal is
-delegated to the runtime CLI so its index and shared blob store remain
-consistent.
+the removal. LM Studio and MLX-LM removal is recoverable through Trash. Ollama
+removal is delegated to the runtime CLI so its index and shared blob store
+remain consistent.
 
 This action does not download models, run benchmarks, call cloud APIs, use
 secrets, or add dependencies. Tests fake all subprocesses and do not remove real

@@ -12,7 +12,15 @@ from unittest import mock
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
 
-from model_dashboard import capability, components, csv_io, db, reports, server  # noqa: E402
+from model_dashboard import (  # noqa: E402
+    capability,
+    components,
+    csv_io,
+    db,
+    removal,
+    reports,
+    server,
+)
 from model_dashboard.scoring import METRIC_FIELDS  # noqa: E402
 
 FIXTURE_DIR = APP_DIR / "fixtures"
@@ -2289,7 +2297,7 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("<title>My Models - Local Model Dashboard</title>", html)
         self.assertIn("What's installed locally.", html)
         self.assertIn("Keep / Watch Decisions", html)
-        self.assertIn("My Models reads local LM Studio and Ollama inventory", html)
+        self.assertIn("My Models reads local LM Studio, Ollama, and MLX-LM inventory", html)
         self.assertIn('action="/actions/refresh-inventory"', html)
         self.assertIn("Last refresh: not checked yet", html)
         self.assertIn('method="get" action="/inventory"', html)
@@ -2986,7 +2994,115 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("20260603-qwen3-coder-30b-a3b-lmstudio-mlx-4bit", html)
         self.assertNotIn('action="/actions/run-test"', html)
 
-    def test_inventory_stale_lmstudio_path_does_not_show_remove_button(self):
+    def test_lmstudio_stale_path_re_resolves_indexed_segments_before_trash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            lmstudio_root = tmp_path / "lmstudio"
+            model_dir = lmstudio_root / "google" / "Gemma-4-12B-QAT"
+            model_dir.mkdir(parents=True)
+            (model_dir / "model.safetensors").write_text("weights", encoding="utf-8")
+            stale_path = tmp_path / "old-model-root" / "google" / "Gemma-4-12B-QAT"
+            models = server._parse_lmstudio_inventory(
+                json.dumps(
+                    {
+                        "models": [
+                            {
+                                "type": "llm",
+                                "modelKey": "gemma-4-12b-qat",
+                                "modelId": "Gemma-4-12B-QAT",
+                                "publisher": "google",
+                                "displayName": "Gemma 4 12B QAT",
+                                "path": str(stale_path),
+                            }
+                        ]
+                    }
+                ),
+                root=lmstudio_root,
+            )
+            result = {
+                "checked_at": "2026-06-05T12:00:00-07:00",
+                "checks": [],
+                "models": models,
+            }
+            completed = subprocess.CompletedProcess(
+                args=("osascript",),
+                returncode=0,
+                stdout="trashed",
+                stderr="",
+            )
+
+            with (
+                mock.patch("model_dashboard.pages.inventory.LMSTUDIO_MODELS_ROOT", lmstudio_root),
+                mock.patch.object(server, "LMSTUDIO_MODELS_ROOT", lmstudio_root),
+                mock.patch("model_dashboard.removal.platform.system", return_value="Darwin"),
+                mock.patch(
+                    "model_dashboard.removal.subprocess.run",
+                    return_value=completed,
+                ) as run,
+            ):
+                html = server._inventory(
+                    inventory_result=result,
+                    action_token="fixture-token",
+                    enable_delete_actions=True,
+                )
+                remove_key = server._inventory_model_key(models[0])
+                confirm_html, removal_result = server._delete_model_action(
+                    remove_key,
+                    "",
+                    result,
+                    "fixture-token",
+                )
+                self.assertIsNone(removal_result)
+                self.assertIn(str(model_dir), confirm_html)
+                self.assertNotIn(str(stale_path), confirm_html)
+                run.assert_not_called()
+
+                result_html, removal_result = server._delete_model_action(
+                    remove_key,
+                    "yes",
+                    result,
+                    "fixture-token",
+                )
+
+        self.assertEqual(models[0]["indexed_model_id"], "Gemma-4-12B-QAT")
+        self.assertEqual(models[0]["publisher"], "google")
+        self.assertIn("Gemma 4 12B QAT", html)
+        self.assertIn('action="/actions/delete-model"', html)
+        self.assertNotIn("Removal unavailable for this row", html)
+        self.assertEqual(removal_result.returncode, 0)
+        self.assertIn("Model Removal succeeded", result_html)
+        command = run.call_args.args[0]
+        self.assertIn(str(model_dir), command[4])
+        self.assertNotIn(str(stale_path), command[4])
+
+    def test_inventory_lmstudio_missing_path_re_resolves_indexed_segments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lmstudio_root = Path(tmp) / "lmstudio"
+            model_dir = lmstudio_root / "qwen" / "Qwen3.6-35B"
+            model_dir.mkdir(parents=True)
+            (model_dir / "model.safetensors").write_text("weights", encoding="utf-8")
+            model = {
+                "runtime": "LM Studio",
+                "model_id": "qwen3.6-35b",
+                "indexed_model_id": "Qwen3.6-35B",
+                "publisher": "qwen",
+                "display_name": "Qwen3.6 35B",
+                "status": "indexed",
+                "source_path": "",
+                "local_path": "",
+            }
+
+            with mock.patch("model_dashboard.pages.inventory.LMSTUDIO_MODELS_ROOT", lmstudio_root):
+                control = server._remove_model_control(
+                    model,
+                    enable_delete_actions=True,
+                    action_token="fixture-token",
+                )
+
+        self.assertIn('action="/actions/delete-model"', control)
+        self.assertNotIn("Removal unavailable for this row", control)
+
+    def test_inventory_stale_lmstudio_path_shows_specific_reason(self):
         with tempfile.TemporaryDirectory() as tmp:
             lmstudio_root = Path(tmp) / "lmstudio"
             result = {
@@ -3014,8 +3130,242 @@ class ModelDashboardQaTests(unittest.TestCase):
                 )
 
         self.assertIn("Nomic Embed Text", html)
-        self.assertIn("Removal unavailable for this row", html)
+        self.assertIn("Path not found under LM Studio root", html)
+        self.assertNotIn("Removal unavailable for this row", html)
         self.assertNotIn('action="/actions/delete-model"', html)
+
+    def test_inventory_unavailable_rows_show_runtime_specific_reasons(self):
+        result = {
+            "checked_at": "2026-06-05T12:00:00-07:00",
+            "checks": [],
+            "models": [
+                {
+                    "runtime": "LM Studio",
+                    "model_id": "text-embedding-missing",
+                    "display_name": "Missing Embedding",
+                    "status": "indexed",
+                    "model_type": "embedding",
+                },
+                {
+                    "runtime": "llama.cpp",
+                    "model_id": "standalone.gguf",
+                    "display_name": "Standalone GGUF",
+                    "status": "installed",
+                },
+            ],
+        }
+
+        html = server._inventory(
+            inventory_result=result,
+            action_token="fixture-token",
+            enable_delete_actions=True,
+        )
+
+        self.assertIn("Embedding row — remove via LM Studio", html)
+        self.assertIn("llama.cpp removal is not supported by this dashboard", html)
+        self.assertNotIn("Removal unavailable for this row", html)
+
+    def test_inventory_ollama_exact_id_and_mlx_snapshot_show_remove_buttons(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            hf_root = Path(tmp) / "hub"
+            snapshot = hf_root / "models--mlx-community--Qwen" / "snapshots" / "abc123"
+            snapshot.mkdir(parents=True)
+            (snapshot / "config.json").write_text("{}", encoding="utf-8")
+            (snapshot / "model.safetensors").write_text("weights", encoding="utf-8")
+            result = {
+                "checked_at": "2026-06-05T12:00:00-07:00",
+                "checks": [],
+                "models": [
+                    {
+                        "runtime": "Ollama",
+                        "model_id": "qwen3:30b",
+                        "display_name": "qwen3:30b",
+                        "status": "installed",
+                        "source_path": "",
+                        "local_path": "",
+                    },
+                    {
+                        "runtime": "MLX-LM",
+                        "model_id": str(snapshot),
+                        "display_name": "mlx-community/Qwen",
+                        "status": "cached",
+                        "source_path": "mlx-community/Qwen",
+                        "local_path": str(snapshot),
+                    },
+                ],
+            }
+
+            with mock.patch("model_dashboard.pages.inventory.HF_HUB_CACHE_ROOT", hf_root):
+                html = server._inventory(
+                    inventory_result=result,
+                    action_token="fixture-token",
+                    enable_delete_actions=True,
+                )
+
+        self.assertEqual(html.count('action="/actions/delete-model"'), 2)
+        self.assertNotIn("Removal unavailable for this row", html)
+
+    def test_ollama_removal_uses_exact_id_without_manifest_path(self):
+        model = {
+            "runtime": "Ollama",
+            "model_id": "qwen3:30b",
+            "display_name": "qwen3:30b",
+            "status": "installed",
+            "source_path": "",
+            "local_path": "",
+        }
+        inventory_result = {"checks": [], "models": [model]}
+        remove_key = server._inventory_model_key(model)
+        completed = subprocess.CompletedProcess(
+            args=("/bin/ollama", "rm", "qwen3:30b"),
+            returncode=0,
+            stdout="removed",
+            stderr="",
+        )
+
+        with (
+            mock.patch("model_dashboard.removal.shutil.which", return_value="/bin/ollama"),
+            mock.patch("model_dashboard.removal.subprocess.run", return_value=completed) as run,
+        ):
+            confirm_html, result = server._delete_model_action(
+                remove_key,
+                "",
+                inventory_result,
+                "fixture-token",
+            )
+            self.assertIsNone(result)
+            self.assertIn("Not required — exact runtime id", confirm_html)
+            run.assert_not_called()
+
+            result_html, result = server._delete_model_action(
+                remove_key,
+                "yes",
+                inventory_result,
+                "fixture-token",
+            )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Model Removal succeeded", result_html)
+        self.assertEqual(run.call_args.args[0], ("/bin/ollama", "rm", "qwen3:30b"))
+
+    def test_invalid_ollama_id_shows_specific_reason(self):
+        html = server._remove_model_control(
+            {"runtime": "Ollama", "model_id": "--unsafe"},
+            enable_delete_actions=True,
+            action_token="fixture-token",
+        )
+
+        self.assertIn("Ollama model id is invalid", html)
+        self.assertNotIn('action="/actions/delete-model"', html)
+
+    def test_mlx_removal_requires_confirm_and_trashes_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            hf_root = Path(tmp) / "hub"
+            snapshot = hf_root / "models--mlx-community--Qwen" / "snapshots" / "abc123"
+            snapshot.mkdir(parents=True)
+            (snapshot / "config.json").write_text("{}", encoding="utf-8")
+            (snapshot / "model.safetensors").write_text("weights", encoding="utf-8")
+            model = {
+                "runtime": "MLX-LM",
+                "model_id": str(snapshot),
+                "display_name": "mlx-community/Qwen",
+                "status": "cached",
+                "source_path": "mlx-community/Qwen",
+                "local_path": str(snapshot),
+            }
+            inventory_result = {"checks": [], "models": [model]}
+            remove_key = server._inventory_model_key(model)
+            completed = subprocess.CompletedProcess(
+                args=("osascript",),
+                returncode=0,
+                stdout="trashed",
+                stderr="",
+            )
+
+            with (
+                mock.patch.object(server, "HF_HUB_CACHE_ROOT", hf_root),
+                mock.patch("model_dashboard.removal.platform.system", return_value="Darwin"),
+                mock.patch(
+                    "model_dashboard.removal.subprocess.run",
+                    return_value=completed,
+                ) as run,
+            ):
+                confirm_html, result = server._delete_model_action(
+                    remove_key,
+                    "",
+                    inventory_result,
+                    "fixture-token",
+                )
+                self.assertIsNone(result)
+                self.assertIn(str(snapshot), confirm_html)
+                self.assertIn(str(hf_root), confirm_html)
+                run.assert_not_called()
+
+                result_html, result = server._delete_model_action(
+                    remove_key,
+                    "yes",
+                    inventory_result,
+                    "fixture-token",
+                )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Model Removal succeeded", result_html)
+        command = run.call_args.args[0]
+        self.assertEqual(command[:3], ("osascript", "-l", "JavaScript"))
+        self.assertIn(str(snapshot), command[4])
+        self.assertIn("trashItemAtURLResultingItemURLError", command[4])
+        self.assertNotIn("rm", command)
+
+    def test_mlx_removal_refuses_out_of_root_and_non_macos(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            hf_root = tmp_path / "hub"
+            inside = hf_root / "models--mlx-community--Qwen" / "snapshots" / "inside"
+            outside = tmp_path / "outside" / "models--mlx-community--Qwen" / "snapshots" / "bad"
+            inside.mkdir(parents=True)
+            outside.mkdir(parents=True)
+            for snapshot in (inside, outside):
+                (snapshot / "config.json").write_text("{}", encoding="utf-8")
+                (snapshot / "model.safetensors").write_text("weights", encoding="utf-8")
+
+            def model_for(snapshot):
+                return {
+                    "runtime": "MLX-LM",
+                    "model_id": str(snapshot),
+                    "display_name": "mlx-community/Qwen",
+                    "status": "cached",
+                    "source_path": "mlx-community/Qwen",
+                    "local_path": str(snapshot),
+                }
+
+            outside_model = model_for(outside)
+            with (
+                mock.patch.object(server, "HF_HUB_CACHE_ROOT", hf_root),
+                mock.patch("model_dashboard.removal.subprocess.run") as run,
+                self.assertRaisesRegex(removal.RemovalError, "outside the Hugging Face"),
+            ):
+                server._delete_model_action(
+                    server._inventory_model_key(outside_model),
+                    "yes",
+                    {"checks": [], "models": [outside_model]},
+                    "fixture-token",
+                )
+            run.assert_not_called()
+
+            inside_model = model_for(inside)
+            with (
+                mock.patch.object(server, "HF_HUB_CACHE_ROOT", hf_root),
+                mock.patch("model_dashboard.removal.platform.system", return_value="Linux"),
+                mock.patch("model_dashboard.removal.subprocess.run") as run,
+                self.assertRaisesRegex(removal.RemovalError, "available only on macOS"),
+            ):
+                server._delete_model_action(
+                    server._inventory_model_key(inside_model),
+                    "yes",
+                    {"checks": [], "models": [inside_model]},
+                    "fixture-token",
+                )
+            run.assert_not_called()
 
     def test_inventory_existing_lmstudio_folder_shows_remove_button(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -695,18 +695,13 @@ class DashboardHttpHandlerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             ollama_root = tmp_path / "ollama"
-            manifest_path = (
-                ollama_root / "manifests" / "registry.ollama.ai" / "library" / "qwen3" / "30b"
-            )
-            manifest_path.parent.mkdir(parents=True)
-            manifest_path.write_text("manifest", encoding="utf-8")
             model = {
                 "runtime": "Ollama",
                 "model_id": "qwen3:30b",
                 "display_name": "qwen3:30b",
                 "status": "installed",
                 "source_path": "",
-                "local_path": str(manifest_path),
+                "local_path": "",
             }
             result = {
                 "checked_at": "2026-06-18T10:00:00-07:00",
@@ -745,6 +740,125 @@ class DashboardHttpHandlerTests(unittest.TestCase):
             self.assertEqual(response.status, 200)
             self.assertIn("Model Removal succeeded", body)
             self.assertEqual(run.call_args.args[0], ("/bin/ollama", "rm", "qwen3:30b"))
+
+    def test_delete_model_mlx_requires_confirm_then_trashes_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            hf_root = tmp_path / "hub"
+            snapshot = hf_root / "models--mlx-community--Qwen" / "snapshots" / "abc123"
+            snapshot.mkdir(parents=True)
+            (snapshot / "config.json").write_text("{}", encoding="utf-8")
+            (snapshot / "model.safetensors").write_text("weights", encoding="utf-8")
+            model = {
+                "runtime": "MLX-LM",
+                "model_id": str(snapshot),
+                "display_name": "mlx-community/Qwen",
+                "status": "cached",
+                "source_path": "mlx-community/Qwen",
+                "local_path": str(snapshot),
+            }
+            result = {
+                "checked_at": "2026-06-18T10:00:00-07:00",
+                "checks": [],
+                "models": [model],
+            }
+
+            def fake_run(command, **_kwargs):
+                return SimpleNamespace(returncode=0, stdout="trashed", stderr="", args=command)
+
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with (
+                mock.patch.object(server, "HF_HUB_CACHE_ROOT", hf_root),
+                mock.patch.object(server, "_refresh_inventory", lambda _timeout=5: result),
+                mock.patch("model_dashboard.removal.platform.system", return_value="Darwin"),
+                mock.patch("model_dashboard.removal.subprocess.run", side_effect=fake_run) as run,
+            ):
+                base_url = self.start_server(
+                    db_path,
+                    action_token="test-token",
+                    enable_delete_actions=True,
+                )
+                self.post(f"{base_url}/actions/refresh-inventory", {"token": "test-token"}).read()
+                remove_key = server._inventory_model_key(model)
+
+                with self.post(
+                    f"{base_url}/actions/delete-model",
+                    {"token": "test-token", "remove_key": remove_key},
+                ) as response:
+                    confirm_body = response.read().decode("utf-8")
+
+                self.assertIn("Confirm Model Removal", confirm_body)
+                self.assertIn(str(snapshot), confirm_body)
+                self.assertIn(str(hf_root), confirm_body)
+                run.assert_not_called()
+
+                with self.post(
+                    f"{base_url}/actions/delete-model",
+                    {
+                        "token": "test-token",
+                        "remove_key": remove_key,
+                        "confirm_delete": "yes",
+                    },
+                ) as response:
+                    body = response.read().decode("utf-8")
+
+            self.assertEqual(response.status, 200)
+            self.assertIn("Model Removal succeeded", body)
+            command = run.call_args.args[0]
+            self.assertEqual(command[:3], ("osascript", "-l", "JavaScript"))
+            self.assertIn(str(snapshot), command[4])
+            self.assertIn("trashItemAtURLResultingItemURLError", command[4])
+            self.assertNotIn("rm", command)
+
+    def test_delete_model_mlx_refuses_snapshot_outside_hf_cache_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            hf_root = tmp_path / "hub"
+            outside = tmp_path / "outside" / "models--mlx-community--Qwen" / "snapshots" / "abc123"
+            outside.mkdir(parents=True)
+            (outside / "config.json").write_text("{}", encoding="utf-8")
+            (outside / "model.safetensors").write_text("weights", encoding="utf-8")
+            model = {
+                "runtime": "MLX-LM",
+                "model_id": str(outside),
+                "display_name": "mlx-community/Qwen",
+                "status": "cached",
+                "source_path": "mlx-community/Qwen",
+                "local_path": str(outside),
+            }
+            result = {
+                "checked_at": "2026-06-18T10:00:00-07:00",
+                "checks": [],
+                "models": [model],
+            }
+            db_path = tmp_path / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+
+            with (
+                mock.patch.object(server, "HF_HUB_CACHE_ROOT", hf_root),
+                mock.patch.object(server, "_refresh_inventory", lambda _timeout=5: result),
+                mock.patch("model_dashboard.removal.subprocess.run") as run,
+            ):
+                base_url = self.start_server(
+                    db_path,
+                    action_token="test-token",
+                    enable_delete_actions=True,
+                )
+                self.post(f"{base_url}/actions/refresh-inventory", {"token": "test-token"}).read()
+                remove_key = server._inventory_model_key(model)
+                with self.assertRaises(HTTPError) as raised:
+                    self.post(
+                        f"{base_url}/actions/delete-model",
+                        {
+                            "token": "test-token",
+                            "remove_key": remove_key,
+                            "confirm_delete": "yes",
+                        },
+                    )
+
+            self.assertEqual(raised.exception.code, 400)
+            run.assert_not_called()
 
     def test_delete_model_refuses_out_of_root_path(self):
         with tempfile.TemporaryDirectory() as tmp:

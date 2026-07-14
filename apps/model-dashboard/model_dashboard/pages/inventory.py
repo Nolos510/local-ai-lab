@@ -63,26 +63,37 @@ def _inventory_model_key(model):
 
 
 def _inventory_model_removable(model):
+    return not _inventory_removal_blocked_reason(model)
+
+
+def _inventory_removal_blocked_reason(model, lmstudio_root=None, hf_cache_root=None):
+    lmstudio_root = LMSTUDIO_MODELS_ROOT if lmstudio_root is None else lmstudio_root
+    hf_cache_root = HF_HUB_CACHE_ROOT if hf_cache_root is None else hf_cache_root
     runtime = model.get("runtime")
     if model.get("removal_blocked_reason"):
-        return False
-    if runtime == "LM Studio":
-        raw_path = model.get("local_path") or model.get("source_path")
-        if not raw_path:
-            return False
-        try:
-            target_path, _root = removal._lmstudio_folder_target(raw_path, LMSTUDIO_MODELS_ROOT)
-        except removal.RemovalError:
-            return False
-        return target_path.exists()
-    if runtime == "Ollama":
-        return bool(model.get("model_id") and model.get("local_path"))
-    return False
+        return str(model["removal_blocked_reason"])
+    try:
+        if runtime == "LM Studio":
+            removal._resolve_lmstudio_folder(model, lmstudio_root)
+            return ""
+        if runtime == "Ollama":
+            removal._validated_ollama_model_id(model.get("model_id"))
+            return ""
+        if runtime == "MLX-LM":
+            raw_path = model.get("local_path") or model.get("model_id")
+            removal._hf_snapshot_target(raw_path, hf_cache_root)
+            return ""
+    except removal.RemovalError as exc:
+        if runtime == "LM Studio" and str(model.get("model_type") or "").lower() == "embedding":
+            return "Embedding row — remove via LM Studio."
+        return str(exc)
+    label = str(runtime or "Unknown runtime")
+    return f"{label} removal is not supported by this dashboard."
 
 
 def _remove_model_control(model, enable_delete_actions=False, action_token=""):
-    if not _inventory_model_removable(model):
-        reason = model.get("removal_blocked_reason") or "Removal unavailable for this row"
+    reason = _inventory_removal_blocked_reason(model)
+    if reason:
         return f'<span class="empty">{_text(reason)}</span>'
     if not enable_delete_actions:
         return """
@@ -376,6 +387,14 @@ def _parse_lmstudio_inventory(ls_stdout, ps_stdout="", root=LMSTUDIO_MODELS_ROOT
             {
                 "runtime": "LM Studio",
                 "model_id": model_id,
+                "indexed_model_id": _first_value(
+                    row,
+                    ("modelId", "model_id", "indexedModelIdentifier", "identifier"),
+                ),
+                "publisher": _first_value(
+                    row,
+                    ("publisher", "provider", "organization", "owner"),
+                ),
                 "display_name": display_name or model_id,
                 "status": status,
                 "source_path": source_path,
@@ -1179,13 +1198,13 @@ def _inventory(
     body = """
     <section class="panel page-intro">
       <p>What's installed locally. Run a benchmark, then keep, watchlist, retest, or skip each model.</p>
-      <p class="empty">My Models reads local LM Studio and Ollama inventory on demand and keeps decisions tied to imported local benchmark evidence.</p>
+      <p class="empty">My Models reads local LM Studio, Ollama, and MLX-LM inventory on demand and keeps decisions tied to imported local benchmark evidence.</p>
     </section>
     <section class="panel inventory-refresh-panel">
       <h2>Installed Models</h2>
       <p>This page checks local runtime inventory on demand. It does not download, install, benchmark, score, or import models.</p>
       <p>LM Studio rows distinguish <code>loaded</code>, <code>indexed</code>, and <code>filesystem_only</code>. Filesystem-only folders are visible on disk but are not runnable from the dashboard until LM Studio indexes or loads them.</p>
-      <p>Use <strong>Local file path</strong> to locate leftover model folders in Finder. Remove actions are disabled unless the server is started with <code>--enable-delete-actions</code>, and confirmed LM Studio removals move folders to macOS Trash.</p>
+      <p>Use <strong>Local file path</strong> to locate model folders in Finder. Remove actions are disabled unless the server is started with <code>--enable-delete-actions</code>. Confirmed LM Studio folders and MLX-LM snapshots move to macOS Trash; Ollama removal uses the exact inventory id with <code>ollama rm</code>.</p>
       <form class="inline-form" method="post" action="/actions/refresh-inventory">
         <input type="hidden" name="token" value="{token}">
         <button type="submit"{disabled}>Refresh Inventory</button>
@@ -1282,12 +1301,20 @@ def _removal_target_from_key(
     remove_key,
     lmstudio_root=LMSTUDIO_MODELS_ROOT,
     ollama_root=OLLAMA_MODELS_ROOT,
+    hf_cache_root=HF_HUB_CACHE_ROOT,
 ):
     model = _inventory_model_by_key(inventory_result, remove_key)
-    return removal.resolve_target(model, lmstudio_root, ollama_root)
+    return removal.resolve_target(
+        model,
+        lmstudio_root,
+        ollama_root,
+        hf_cache_root=hf_cache_root,
+    )
 
 
 def _delete_confirm_page(target, remove_key, action_token):
+    path = target.path if target.path is not None else "Not required — exact runtime id"
+    root = target.root if target.root is not None else "Not applicable — no filesystem path used"
     body = f"""
     <section class="panel">
       <h2>Confirm Model Removal</h2>
@@ -1295,8 +1322,8 @@ def _delete_confirm_page(target, remove_key, action_token):
       <div class="cell-stack">
         <div><strong>Runtime</strong><br>{_text(target.runtime)}</div>
         <div><strong>Model id</strong><br><code>{_text(target.model_id)}</code></div>
-        <div><strong>Resolved path</strong><br><code>{_text(target.path)}</code></div>
-        <div><strong>Contained under</strong><br><code>{_text(target.root)}</code></div>
+        <div><strong>Resolved path</strong><br><code>{_text(path)}</code></div>
+        <div><strong>Contained under</strong><br><code>{_text(root)}</code></div>
         <div><strong>Size</strong><br>{_text(_format_bytes(target.size_bytes))}</div>
         <div><strong>Action</strong><br>{_text(target.action)}</div>
       </div>
@@ -1314,13 +1341,14 @@ def _delete_confirm_page(target, remove_key, action_token):
 
 def _delete_result_page(result):
     status = "succeeded" if result.returncode == 0 else "failed"
+    path = result.target.path if result.target.path is not None else "Not required — exact runtime id"
     body = f"""
     <section class="panel">
       <h2>Model Removal {_text(status)}</h2>
       <p><strong>Runtime:</strong> {_text(result.target.runtime)}</p>
       <p><strong>Model id:</strong> <code>{_text(result.target.model_id)}</code></p>
       <p><strong>Action:</strong> {_text(result.target.action)}</p>
-      <p><strong>Resolved path:</strong> <code>{_text(result.target.path)}</code></p>
+      <p><strong>Resolved path:</strong> <code>{_text(path)}</code></p>
       <p><strong>Exit code:</strong> <code>{_text(result.returncode)}</code></p>
       <pre class="command">{_text(_command_lines(result.command))}</pre>
       <pre class="command">{_text(result.stdout)}{_text(result.stderr)}</pre>
@@ -1338,16 +1366,18 @@ def _delete_model_action(
     timeout=60,
     lmstudio_root=LMSTUDIO_MODELS_ROOT,
     ollama_root=OLLAMA_MODELS_ROOT,
+    hf_cache_root=HF_HUB_CACHE_ROOT,
 ):
     target = _removal_target_from_key(
         inventory_result,
         remove_key,
         lmstudio_root=lmstudio_root,
         ollama_root=ollama_root,
+        hf_cache_root=hf_cache_root,
     )
     if confirm_delete != "yes":
         return _delete_confirm_page(target, remove_key, action_token), None
     result = removal.remove_target(target, timeout=timeout)
     return _delete_result_page(result), result
 
-__all__ = ('_inventory_model_key', '_inventory_model_removable', '_remove_model_control', '_inventory_action_cell', '_lmstudio_cli_path', '_collect_json_objects', '_first_value', '_looks_like_lmstudio_model', '_lmstudio_identity_values', '_local_path_from_source', '_lmstudio_local_path_and_removal_reason', '_ollama_manifest_path', '_parse_lmstudio_inventory', '_scan_lmstudio_filesystem_models', '_has_lmstudio_weight_file', '_parse_ollama_inventory', '_refresh_inventory', '_match_inventory_model', '_inventory_run_allowed', '_inventory_filter_values', '_matches_inventory_search', '_filter_inventory_entries', '_inventory_filters', '_inventory_paths_cell', '_inventory', '_format_bytes', '_inventory_model_by_key', '_removal_target_from_key', '_delete_confirm_page', '_delete_result_page', '_delete_model_action', 'LMSTUDIO_MODELS_ROOT', 'LMSTUDIO_BUNDLED_MODELS_ROOT', 'OLLAMA_MODELS_ROOT', 'LMSTUDIO_WEIGHT_SUFFIXES')
+__all__ = ('_inventory_model_key', '_inventory_model_removable', '_inventory_removal_blocked_reason', '_remove_model_control', '_inventory_action_cell', '_lmstudio_cli_path', '_collect_json_objects', '_first_value', '_looks_like_lmstudio_model', '_lmstudio_identity_values', '_local_path_from_source', '_lmstudio_local_path_and_removal_reason', '_ollama_manifest_path', '_parse_lmstudio_inventory', '_scan_lmstudio_filesystem_models', '_has_lmstudio_weight_file', '_parse_ollama_inventory', '_refresh_inventory', '_match_inventory_model', '_inventory_run_allowed', '_inventory_filter_values', '_matches_inventory_search', '_filter_inventory_entries', '_inventory_filters', '_inventory_paths_cell', '_inventory', '_format_bytes', '_inventory_model_by_key', '_removal_target_from_key', '_delete_confirm_page', '_delete_result_page', '_delete_model_action', 'LMSTUDIO_MODELS_ROOT', 'LMSTUDIO_BUNDLED_MODELS_ROOT', 'OLLAMA_MODELS_ROOT', 'HF_HUB_CACHE_ROOT', 'LMSTUDIO_WEIGHT_SUFFIXES')

@@ -39,6 +39,7 @@ from .pages.capability import _capability
 from .pages.compare import _compare
 from .pages.demo import _demo
 from .pages.inventory import (
+    HF_HUB_CACHE_ROOT,
     LMSTUDIO_MODELS_ROOT,
     LMSTUDIO_WEIGHT_SUFFIXES,
     OLLAMA_MODELS_ROOT,
@@ -128,6 +129,7 @@ def _delete_model_action(remove_key, confirm_delete, inventory_result, action_to
         timeout=timeout,
         lmstudio_root=LMSTUDIO_MODELS_ROOT,
         ollama_root=OLLAMA_MODELS_ROOT,
+        hf_cache_root=HF_HUB_CACHE_ROOT,
     )
 
 
