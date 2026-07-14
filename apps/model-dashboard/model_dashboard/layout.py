@@ -285,9 +285,25 @@ def _layout(title, current_path, body):
       fill: url(#chart-bar-gradient);
       filter: drop-shadow(0 0 7px rgba(42, 212, 238, 0.25));
     }}
-    .chart-label, .chart-value, .chart-empty-text {{
+    .chart-point {{
+      fill: rgba(42, 212, 238, 0.30);
+      stroke: var(--accent);
+      stroke-width: 2;
+      filter: drop-shadow(0 0 8px rgba(42, 212, 238, 0.32));
+    }}
+    .chart-label, .chart-value, .chart-empty-text,
+    .chart-tick, .chart-axis-label, .chart-legend-label, .chart-legend-value {{
       fill: var(--muted);
       font-size: 14px;
+    }}
+    .chart-tick {{ font-size: 12px; }}
+    .chart-axis-label, .chart-legend-label {{
+      fill: var(--ink);
+      font-weight: 500;
+    }}
+    .chart-legend-value {{
+      fill: var(--accent-2);
+      font-size: 12px;
     }}
     .chart-value {{
       fill: var(--ink);
@@ -1291,7 +1307,7 @@ def _layout(title, current_path, body):
     }}
     .runs-table {{
       table-layout: fixed;
-      min-width: 1640px;
+      min-width: 1740px;
     }}
     .runs-table th:nth-child(1),
     .runs-table td:nth-child(1) {{
@@ -1376,25 +1392,27 @@ def _layout(title, current_path, body):
     .runs-table th:nth-child(8),
     .runs-table td:nth-child(8),
     .runs-table th:nth-child(9),
-    .runs-table td:nth-child(9) {{
+    .runs-table td:nth-child(9),
+    .runs-table th:nth-child(10),
+    .runs-table td:nth-child(10) {{
       width: 86px;
       white-space: nowrap;
       overflow-wrap: normal;
     }}
-    .runs-table th:nth-child(10),
-    .runs-table td:nth-child(10),
     .runs-table th:nth-child(11),
-    .runs-table td:nth-child(11) {{
+    .runs-table td:nth-child(11),
+    .runs-table th:nth-child(12),
+    .runs-table td:nth-child(12) {{
       width: 120px;
       white-space: nowrap;
       overflow-wrap: normal;
     }}
-    .runs-table th:nth-child(12),
-    .runs-table td:nth-child(12) {{
-      width: 190px;
-    }}
     .runs-table th:nth-child(13),
     .runs-table td:nth-child(13) {{
+      width: 190px;
+    }}
+    .runs-table th:nth-child(14),
+    .runs-table td:nth-child(14) {{
       width: 240px;
     }}
     .compare-table {{

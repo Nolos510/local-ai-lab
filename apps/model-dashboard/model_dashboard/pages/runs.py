@@ -26,6 +26,64 @@ def _artifact_score_state(row):
     return "Raw run artifact: import updates model, run, and performance fields. Label needs reviewed scores and a decision."
 
 
+def _pluralized_exclusion(count, singular, plural):
+    verb = "is" if count == 1 else "are"
+    noun = singular if count == 1 else plural
+    return f"{count} {noun} {verb} excluded."
+
+
+def _efficiency_frontier(runs):
+    latest_confirmed_by_model = {}
+    unconfirmed_count = 0
+    for row in runs:
+        if row["score_status"] != "confirmed":
+            unconfirmed_count += 1
+            continue
+        if row["model_id"] not in latest_confirmed_by_model:
+            latest_confirmed_by_model[row["model_id"]] = row
+
+    items = []
+    incomplete_count = 0
+    for row in latest_confirmed_by_model.values():
+        if charts.efficiency(row["tokens_per_sec"], row["ram_usage_gb"]) is None:
+            incomplete_count += 1
+            continue
+        items.append(
+            (
+                row["model_name"],
+                row["tokens_per_sec"],
+                row["total_score"],
+                row["ram_usage_gb"],
+            )
+        )
+
+    notes = ["One point per model from its latest confirmed run."]
+    if unconfirmed_count:
+        notes.append(
+            _pluralized_exclusion(
+                unconfirmed_count,
+                "run without confirmed scores",
+                "runs without confirmed scores",
+            )
+        )
+    else:
+        notes.append("Runs without confirmed scores are excluded.")
+    if incomplete_count:
+        notes.append(
+            _pluralized_exclusion(
+                incomplete_count,
+                "latest confirmed run missing usable throughput or peak RAM",
+                "latest confirmed runs missing usable throughput or peak RAM",
+            )
+        )
+    chart = charts.scatter(
+        items,
+        title="Efficiency frontier",
+        empty_message="No latest confirmed runs with throughput and peak RAM yet",
+    )
+    return chart, " ".join(notes)
+
+
 def _runs(
     conn,
     query=None,
@@ -40,7 +98,9 @@ def _runs(
     task_summary = recommend.task_recommendations(_real_rows(db.list_score_details(conn)))
     filters = _run_filter_values(query or {})
     filtered_runs = _filter_runs(runs, filters)
+    frontier_chart, frontier_note = _efficiency_frontier(filtered_runs)
     for row in filtered_runs:
+        efficiency_value = charts.efficiency(row["tokens_per_sec"], row["ram_usage_gb"])
         rows.append(
             [
                 _text(row["date_tested"]),
@@ -51,10 +111,11 @@ def _runs(
                 _text(row["format"]),
                 _text(row["quantization"]),
                 _text(row["context_window"]),
-                _number(row["tokens_per_sec"]),
-                _number(row["ram_usage_gb"]),
-                _number(row["total_score"], 2),
-                _status_pill(row["score_status"]),
+                _number(row["tokens_per_sec"], fallback="—"),
+                _number(row["ram_usage_gb"], fallback="—"),
+                _number(efficiency_value, 2, "—"),
+                _number(row["total_score"], 2, "—"),
+                _status_pill(row["score_status"]) if row["score_status"] else "—",
                 _pill(row["final_label"]),
                 _artifact_link_from_notes(row["run_notes"]),
                 _text(row["stability_notes"]),
@@ -94,6 +155,10 @@ def _runs(
       <p class="empty">Benchmark reads local dashboard imports and artifact folders only. It does not download, install, run, or score a model by itself.</p>
     </section>
     {task_leaders}
+    <section class="runs-section efficiency-frontier-section">
+      {frontier_panel}
+      <p class="section-note">{frontier_note}</p>
+    </section>
     <section class="runs-section">
       <h2>Model Runs{filtered_count}</h2>
       <p class="section-note">Model Runs are imported local benchmark run records. A row may have raw performance fields before reviewed scores or keep/watch decisions exist.</p>
@@ -111,6 +176,8 @@ def _runs(
     """.format(
         notice=_real_data_notice(len(_demo_rows(all_runs))),
         task_leaders=_task_leaders(task_summary, surface_class="task-leaders-benchmark"),
+        frontier_panel=_chart_panel("Efficiency Frontier", frontier_chart),
+        frontier_note=_text(frontier_note),
         filters=_runs_filters(runs, filters),
         filtered_count=(f" ({len(filtered_runs)} of {len(runs)})" if any(filters.values()) else ""),
         compare_section=_compare_section(
@@ -129,6 +196,7 @@ def _runs(
                 "Context",
                 "Tok/s",
                 "RAM GB",
+                "Efficiency",
                 "Score",
                 "Status",
                 "Label",

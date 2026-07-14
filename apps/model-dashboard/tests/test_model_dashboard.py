@@ -2177,10 +2177,10 @@ class ModelDashboardQaTests(unittest.TestCase):
 
         self.assertIn(".runs-table {", html)
         self.assertIn("table-layout: fixed", html)
-        self.assertIn("min-width: 1640px", html)
+        self.assertIn("min-width: 1740px", html)
         self.assertIn(".runs-table th:nth-child(1)", html)
-        self.assertIn(".runs-table th:nth-child(12)", html)
         self.assertIn(".runs-table th:nth-child(13)", html)
+        self.assertIn(".runs-table th:nth-child(14)", html)
         self.assertIn("white-space: nowrap", html)
         self.assertIn("overflow-wrap: normal", html)
         self.assertIn(".runs-section {", html)

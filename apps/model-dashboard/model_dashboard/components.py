@@ -38,6 +38,7 @@ METRIC_EXPLANATIONS = {
     "total_score": "Summed quality score across the benchmark rubric's dimensions (instruction-following, reasoning, coding, agent-planning, etc.). Higher is better; it's a relative ranking signal, not a percentage. See the model detail page for the per-dimension breakdown.",
     "throughput": "Output tokens generated per second during the run. Higher is faster. Depends on model size, quantization, runtime, and hardware — only compare within the same setup.",
     "ram_footprint": "Whole-system RAM high-water observed during the run. For LM Studio and endpoint runners this can include other loaded models, macOS cache, and runtime overhead; it is not per-model RSS. 'No data yet' means no run captured memory.",
+    "efficiency": "throughput per GB of peak RAM — higher earns its memory",
     "models": "Count of real benchmarked model records imported into the dashboard. Demo fixture rows are hidden from real result views.",
     "runs": "Count of real benchmark runs imported into the dashboard.",
     "average_score": "Mean Total Score across the models you've benchmarked.",
@@ -56,6 +57,8 @@ METRIC_LABEL_KEYS = {
     "ram footprint": "ram_footprint",
     "system ram high-water": "ram_footprint",
     "system ram gb": "ram_footprint",
+    "efficiency": "efficiency",
+    "efficiency frontier": "efficiency",
     "models": "models",
     "runs": "runs",
     "average score": "average_score",
@@ -67,6 +70,7 @@ METRIC_LABEL_KEYS = {
 }
 RESULT_TABLE_HEADER_TIPS = {
     "System RAM GB": "ram_footprint",
+    "Efficiency": "efficiency",
     "Score": "score",
     "Status": "status",
     "Decision": "decision",
