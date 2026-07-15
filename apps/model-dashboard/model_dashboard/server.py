@@ -21,12 +21,17 @@ from .components import (
 from .filters import *
 from .layout import NAV_ICONS, NAV_ITEMS, _layout
 from .pages.actions import (
+    _background_candidate_batch,
     _build_candidate_commands,
     _import_action_page,
     _import_artifact,
+    _new_run_all_status,
     _run_action_page,
     _run_action_started_page,
+    _run_all_started_page,
+    _run_all_status_page,
     _run_candidate_test,
+    _start_candidate_batch,
     _start_candidate_test,
     _startup_import_sync,
     _sync_pending_artifacts,
@@ -55,6 +60,7 @@ from .pages.inventory import (
     _inventory_model_removable,
     _inventory_paths_cell,
     _inventory_run_allowed,
+    _inventory_run_all_plan,
     _inventory_run_history,
     _lmstudio_cli_path,
     _match_inventory_model,
@@ -63,6 +69,8 @@ from .pages.inventory import (
     _refresh_inventory,
     _remove_model_control,
     _removal_target_from_key,
+    _run_all_confirm_page,
+    _run_all_fingerprint,
     _scan_lmstudio_filesystem_models,
     _scan_mlx_lm_cached_models,
     _sync_local_inventory_candidates,
@@ -141,6 +149,29 @@ def _resolve_import_actions(host, configured):
     return True
 
 
+def _start_confirmed_candidate_batch(
+    form,
+    action_token,
+    plan,
+    eval_results_dir,
+    run_test_timeout,
+    database_path,
+    starter,
+):
+    if _query_value(form, "token") != action_token:
+        raise ValueError("Invalid action token.")
+    if _query_value(form, "confirm_run_all") != "yes":
+        raise ValueError("Run-all confirmation is required before execution.")
+    if _query_value(form, "approval_scope") != _run_all_fingerprint(plan):
+        raise ValueError("Run-all preflight changed; review the exact batch again before execution.")
+    return starter(
+        plan["runnable"],
+        eval_results_dir,
+        run_test_timeout,
+        database_path,
+    )
+
+
 def make_handler(
     database_path,
     enable_run_tests=False,
@@ -170,6 +201,7 @@ def make_handler(
     )
     inventory_cache = {"result": None}
     import_sync_cache = {"result": import_sync_result}
+    batch_run_cache = {}
 
     class DashboardHandler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -197,6 +229,7 @@ def make_handler(
                     "/actions/import-artifact",
                     "/actions/import-all",
                     "/actions/delete-model",
+                    "/actions/run-all",
                 ):
                     html = _layout("Not Found", "", "<h2>Page not found</h2>")
                     self.send_response(404)
@@ -302,6 +335,35 @@ def make_handler(
                                     inventory_timeout
                                 )
                             self.send_response(200)
+                    elif parsed.path == "/actions/run-all":
+                        if not enable_run_tests:
+                            html = _layout(
+                                "Run Tests Disabled",
+                                "",
+                                "<h2>Run tests disabled</h2><p>Restart the dashboard with <code>--enable-run-tests</code>.</p>",
+                            )
+                            self.send_response(403)
+                        else:
+                            plan = _inventory_run_all_plan(
+                                inventory_cache["result"],
+                                candidate_registry_path,
+                                local_inventory_registry_path,
+                                eval_results_dir,
+                            )
+                            started = _start_confirmed_candidate_batch(
+                                form,
+                                action_token,
+                                plan,
+                                eval_results_dir,
+                                run_test_timeout,
+                                database_path,
+                                _start_candidate_batch,
+                            )
+                            batch_run_cache[started["batch_id"]] = started["status"]
+                            while len(batch_run_cache) > 20:
+                                batch_run_cache.pop(next(iter(batch_run_cache)))
+                            html = _run_all_started_page(started)
+                            self.send_response(200)
                     elif not enable_run_tests:
                         html = _layout(
                             "Run Tests Disabled",
@@ -384,6 +446,30 @@ def make_handler(
                     run_history=_inventory_run_history(conn),
                     decisions=db.list_decisions(conn),
                 )
+            if path == "/inventory/run-all":
+                if not enable_run_tests:
+                    return _layout(
+                        "Run Tests Disabled",
+                        "/inventory",
+                        "<h2>Run tests disabled</h2><p>Restart the dashboard with <code>--enable-run-tests</code>.</p>",
+                    )
+                plan = _inventory_run_all_plan(
+                    inventory_cache["result"],
+                    candidate_registry_path,
+                    local_inventory_registry_path,
+                    eval_results_dir,
+                )
+                return _run_all_confirm_page(plan, action_token)
+            if path == "/inventory/run-all/status":
+                batch_id = _query_value(query, "batch_id")
+                status = batch_run_cache.get(batch_id)
+                if status is None:
+                    return _layout(
+                        "Run All Summary",
+                        "/inventory",
+                        "<section class=\"panel\"><h2>Batch summary unavailable</h2><p>The batch id is missing, unknown, or no longer retained by this dashboard process.</p><p><a href=\"/inventory\">Back to My Models</a></p></section>",
+                    )
+                return _run_all_status_page(status)
             if path == "/radar":
                 return _radar(
                     conn,

@@ -970,6 +970,185 @@ def _inventory_run_allowed(model, candidate):
     return model.get("status") != "filesystem_only"
 
 
+def _inventory_run_all_blocked_reason(model, match_state, candidate):
+    if str(model.get("model_type") or "").lower() == "embedding":
+        return "embedding model — LLM benchmark not applicable"
+    if model.get("status") == "filesystem_only":
+        return "filesystem-only — index/load in the local runtime first"
+    if candidate is None:
+        if match_state == "ambiguous":
+            return "ambiguous registry match"
+        return "no registered candidate with an exact local id and runner"
+
+    model_id = str(candidate.get("local_model_id") or "").strip()
+    runner = str(candidate.get("local_runner") or "").strip()
+    if not candidate.get("candidate_id"):
+        return "missing candidate id"
+    if not model_id:
+        return "missing exact local model id"
+    if not runner:
+        return "missing local runner"
+    if runner not in SUPPORTED_LOCAL_RUNNERS:
+        return f"unsupported local runner: {runner}"
+    if runner == "openai-compatible" and not candidate.get("default_endpoint"):
+        return "missing loopback endpoint for openai-compatible runner"
+    if not _inventory_run_allowed(model, candidate):
+        return "local runtime status is not runnable"
+    return ""
+
+
+def _inventory_run_all_plan(
+    inventory_result,
+    registry_path=CANDIDATE_REGISTRY_PATH,
+    local_inventory_path=None,
+    eval_results_dir=EVAL_RESULTS_DIR,
+):
+    candidates = _load_radar_candidates(registry_path, local_inventory_path)
+    runnable = []
+    skipped = []
+    used_run_ids = set()
+    seen_targets = set()
+    for model in (inventory_result or {}).get("models", []):
+        match_state, candidate = _match_inventory_model(model, candidates)
+        reason = _inventory_run_all_blocked_reason(model, match_state, candidate)
+        model_id = str((candidate or {}).get("local_model_id") or "").strip()
+        runner = str((candidate or {}).get("local_runner") or "").strip()
+        if not reason:
+            target = (runner, model_id)
+            if target in seen_targets:
+                reason = "duplicate exact local id and runner"
+            else:
+                seen_targets.add(target)
+        if reason:
+            skipped.append(
+                {
+                    "model_name": model.get("display_name") or model.get("model_id") or "",
+                    "model_id": model_id or _inventory_exact_model_id(model),
+                    "runner": runner,
+                    "reason": reason,
+                }
+            )
+            continue
+
+        run_id = _next_dashboard_run_id(candidate, eval_results_dir)
+        if run_id in used_run_ids:
+            base = run_id
+            suffix = 2
+            while run_id in used_run_ids or (Path(eval_results_dir) / run_id).exists():
+                run_id = f"{base}-{suffix}"
+                suffix += 1
+        used_run_ids.add(run_id)
+        runnable.append(
+            {
+                "candidate": candidate,
+                "candidate_id": candidate.get("candidate_id", ""),
+                "model_name": candidate.get("model_name")
+                or model.get("display_name")
+                or model.get("model_id")
+                or "",
+                "model_id": model_id,
+                "runner": runner,
+                "run_id": run_id,
+            }
+        )
+    return {"runnable": runnable, "skipped": skipped}
+
+
+def _run_all_fingerprint(plan):
+    fields = ("candidate_id", "model_id", "runner", "run_id")
+    approval_scope = {
+        "runnable": [
+            {field: str(item.get(field) or "") for field in fields}
+            for item in plan.get("runnable", [])
+        ],
+        "skipped": [
+            {
+                field: str(item.get(field) or "")
+                for field in ("model_name", "model_id", "runner", "reason")
+            }
+            for item in plan.get("skipped", [])
+        ],
+    }
+    payload = json.dumps(approval_scope, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _run_all_control(enable_run_tests=False):
+    if not enable_run_tests:
+        return ""
+    return """
+    <form class="inline-form" method="get" action="/inventory/run-all">
+      <button type="submit">Run all runnable</button>
+    </form>
+    """
+
+
+def _run_all_confirm_page(plan, action_token=""):
+    runnable_rows = [
+        [
+            f'<code>{_text(item.get("candidate_id") or "—")}</code>',
+            _text(item.get("model_name") or "—"),
+            f'<code>{_text(item.get("model_id") or "—")}</code>',
+            f'<code>{_text(item.get("runner") or "—")}</code>',
+            f'<code>{_text(item.get("run_id") or "—")}</code>',
+        ]
+        for item in plan.get("runnable", [])
+    ]
+    skipped_rows = [
+        [
+            _text(item.get("model_name") or "—"),
+            f'<code>{_text(item.get("model_id") or "—")}</code>',
+            f'<code>{_text(item.get("runner") or "—")}</code>',
+            _text(item.get("reason") or "—"),
+        ]
+        for item in plan.get("skipped", [])
+    ]
+    confirm = ""
+    if runnable_rows:
+        token = _text(action_token)
+        approval_scope = _text(_run_all_fingerprint(plan))
+        confirm = f"""
+        <form class="inline-form" method="post" action="/actions/run-all">
+          <input type="hidden" name="token" value="{token}">
+          <input type="hidden" name="confirm_run_all" value="yes">
+          <input type="hidden" name="approval_scope" value="{approval_scope}">
+          <button type="submit">Confirm and run sequentially</button>
+          <a class="action-link secondary" href="/inventory">Cancel</a>
+        </form>
+        """
+    body = """
+    <section class="panel page-intro">
+      <h2>Run All Preflight</h2>
+      <p>Approval scope: only the exact enumerated runnable batch below.</p>
+      <p class="empty">No model executes on this page. Confirmation starts one background worker, runs each model sequentially, and continues after per-model failures.</p>
+      {confirm}
+    </section>
+    <section class="inventory-section">
+      <h2>Runnable models ({runnable_count})</h2>
+      {runnable_table}
+    </section>
+    <section class="inventory-section">
+      <h2>Skipped models ({skipped_count})</h2>
+      {skipped_table}
+    </section>
+    """.format(
+        confirm=confirm,
+        runnable_count=len(runnable_rows),
+        skipped_count=len(skipped_rows),
+        runnable_table=_table(
+            ["Candidate", "Model", "Exact model id", "Runner", "Run id"],
+            runnable_rows,
+            empty_message="No detected model is currently runnable.",
+        ),
+        skipped_table=_table(
+            ["Model", "Local id", "Runner", "Reason"],
+            skipped_rows,
+            empty_message="No detected models were skipped.",
+        ),
+    )
+    return _layout("Run All Preflight", "/inventory", body)
+
+
 def _inventory_filter_values(query):
     return {
         "q": _query_value(query, "q"),
@@ -1352,6 +1531,7 @@ def _inventory(
         <input type="hidden" name="token" value="{token}">
         <button type="submit"{disabled}>Refresh Inventory</button>
       </form>
+      {run_all_control}
       {disabled_note}
       <p class="empty">Last refresh: {checked_at}</p>
       {registration_note}
@@ -1368,6 +1548,7 @@ def _inventory(
     </section>
     """.format(
         token=_text(action_token),
+        run_all_control=_run_all_control(enable_run_tests),
         disabled="" if enable_refresh else " disabled",
         disabled_note=(
             ""

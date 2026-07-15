@@ -3,6 +3,7 @@
 # ruff: noqa: E501,F403,F405,I001
 from __future__ import annotations
 
+import secrets
 import sys
 import threading
 from pathlib import Path
@@ -197,11 +198,52 @@ def _startup_import_sync(database_path, eval_results_dir, *, enabled):
 
 def _background_candidate_test(row, run_id, eval_results_dir, timeout, database_path):
     try:
-        _run_candidate_test_for_row(row, run_id, eval_results_dir, timeout)
-        _export_dashboard_import(run_id, eval_results_dir, timeout)
-        _sync_pending_artifacts(database_path, eval_results_dir, source="automatic")
+        run_result = _run_candidate_test_for_row(row, run_id, eval_results_dir, timeout)
+        export_result = _export_dashboard_import(run_id, eval_results_dir, timeout)
+        sync_result = _sync_pending_artifacts(
+            database_path,
+            eval_results_dir,
+            source="automatic",
+        )
+        failures = []
+        if run_result["init"].returncode != 0:
+            failures.append(f'init exited {run_result["init"].returncode}')
+        elif run_result["capture"] is None:
+            failures.append("capture did not run")
+        elif run_result["capture"].returncode != 0:
+            failures.append(f'capture exited {run_result["capture"].returncode}')
+        if export_result.returncode != 0:
+            failures.append(f"dashboard export exited {export_result.returncode}")
+        skipped_import = next(
+            (
+                item
+                for item in sync_result.get("skipped", [])
+                if item.get("benchmark_run_id") == run_id
+            ),
+            None,
+        )
+        if skipped_import:
+            failures.append(f'auto-import skipped: {skipped_import.get("reason") or "unknown reason"}')
+        return {
+            "candidate_id": row.get("candidate_id", ""),
+            "model_name": row.get("model_name", ""),
+            "model_id": row.get("local_model_id", ""),
+            "runner": row.get("local_runner", ""),
+            "run_id": run_id,
+            "status": "failed" if failures else "passed",
+            "reason": "; ".join(failures),
+        }
     except Exception as exc:  # pragma: no cover - defensive worker guard
         _write_background_error(Path(eval_results_dir) / run_id, exc)
+        return {
+            "candidate_id": row.get("candidate_id", ""),
+            "model_name": row.get("model_name", ""),
+            "model_id": row.get("local_model_id", ""),
+            "runner": row.get("local_runner", ""),
+            "run_id": run_id,
+            "status": "failed",
+            "reason": f"{type(exc).__name__}: {exc}",
+        }
 
 
 def _start_candidate_test(candidate_id, registry_path, eval_results_dir, timeout, database_path):
@@ -218,6 +260,74 @@ def _start_candidate_test(candidate_id, registry_path, eval_results_dir, timeout
         "candidate": row,
         "run_id": run_id,
         "run_dir": str(run_dir),
+        "thread_name": thread.name,
+    }
+
+
+def _new_run_all_status(batch_id, plan):
+    return {
+        "batch_id": batch_id,
+        "state": "queued",
+        "plan": [
+            {
+                key: item.get(key, "")
+                for key in (
+                    "candidate_id",
+                    "model_name",
+                    "model_id",
+                    "runner",
+                    "run_id",
+                )
+            }
+            for item in plan
+        ],
+        "results": [],
+    }
+
+
+def _background_candidate_batch(plan, eval_results_dir, timeout, database_path, status):
+    status["state"] = "running"
+    try:
+        for item in plan:
+            try:
+                result = _background_candidate_test(
+                    item["candidate"],
+                    item["run_id"],
+                    eval_results_dir,
+                    timeout,
+                    database_path,
+                )
+            except Exception as exc:  # pragma: no cover - defensive batch guard
+                result = {
+                    "candidate_id": item.get("candidate_id", ""),
+                    "model_name": item.get("model_name", ""),
+                    "model_id": item.get("model_id", ""),
+                    "runner": item.get("runner", ""),
+                    "run_id": item.get("run_id", ""),
+                    "status": "failed",
+                    "reason": f"{type(exc).__name__}: {exc}",
+                }
+            status["results"].append(result)
+    finally:
+        status["state"] = "complete"
+    return status
+
+
+def _start_candidate_batch(plan, eval_results_dir, timeout, database_path):
+    if not plan:
+        raise ValueError("No runnable models were confirmed.")
+    batch_id = f"dashboard-batch-{secrets.token_urlsafe(9)}"
+    status = _new_run_all_status(batch_id, plan)
+    thread = threading.Thread(
+        target=_background_candidate_batch,
+        args=(plan, eval_results_dir, timeout, database_path, status),
+        daemon=True,
+        name=f"dashboard-run-all-{batch_id[-24:]}",
+    )
+    thread.start()
+    return {
+        "batch_id": batch_id,
+        "status": status,
         "thread_name": thread.name,
     }
 
@@ -284,6 +394,69 @@ def _run_action_started_page(result):
     return _layout("Run Test Started", "", body)
 
 
+def _run_all_started_page(started):
+    status = started["status"]
+    batch_id = started["batch_id"]
+    count = len(status.get("plan", []))
+    body = """
+    <section class="panel page-intro">
+      <h2>Run All Started</h2>
+      <p><strong>Approved batch:</strong> {count} models</p>
+      <p><strong>Batch id:</strong> <code>{batch_id}</code></p>
+      <p class="empty">One background worker is running the approved models sequentially. Each completed run refreshes dashboard CSVs and U1 auto-imports them; a failure does not stop the remaining models.</p>
+      <p><a href="/inventory/run-all/status?batch_id={batch_id}">View / refresh batch summary</a></p>
+    </section>
+    """.format(
+        count=count,
+        batch_id=_text(batch_id),
+    )
+    return _layout("Run All Started", "/inventory", body)
+
+
+def _run_all_status_page(status):
+    results = {item.get("run_id"): item for item in status.get("results", [])}
+    rows = []
+    for item in status.get("plan", []):
+        result = results.get(item.get("run_id"), {})
+        state = result.get("status") or "queued"
+        rows.append(
+            [
+                _text(item.get("model_name") or "—"),
+                f'<code>{_text(item.get("model_id") or "—")}</code>',
+                f'<code>{_text(item.get("runner") or "—")}</code>',
+                f'<code>{_text(item.get("run_id") or "—")}</code>',
+                _pill(state),
+                _text(result.get("reason") or "—"),
+            ]
+        )
+    passed = sum(item.get("status") == "passed" for item in status.get("results", []))
+    failed = sum(item.get("status") == "failed" for item in status.get("results", []))
+    remaining = max(len(status.get("plan", [])) - passed - failed, 0)
+    body = """
+    <section class="panel page-intro">
+      <h2>Run All Summary</h2>
+      <p><strong>Batch state:</strong> {state}</p>
+      <p><strong>{passed} succeeded</strong> &middot; <strong>{failed} failed</strong> &middot; <strong>{remaining} remaining</strong></p>
+      <p class="empty">Refresh this page to see later sequential runs. Completed run artifacts are auto-imported into run history when their dashboard CSVs are valid.</p>
+      <p><a href="/inventory">Back to My Models</a></p>
+    </section>
+    <section class="inventory-section">
+      {table}
+    </section>
+    """.format(
+        state=_text(status.get("state") or "unknown"),
+        passed=passed,
+        failed=failed,
+        remaining=remaining,
+        table=_table(
+            ["Model", "Exact model id", "Runner", "Run id", "Status", "Reason"],
+            rows,
+            empty_message="No run-all batch entries were recorded.",
+        ),
+    )
+    return _layout("Run All Summary", "/inventory", body)
+
+
 def _import_artifact(benchmark_run_id, database_path, eval_results_dir=None):
     artifact_dir = _safe_artifact_dir(benchmark_run_id, eval_results_dir)
     if not artifact_dir.exists() or not artifact_dir.is_dir():
@@ -315,4 +488,4 @@ def _import_action_page(result):
     )
     return _layout("Artifact Imported", "", body)
 
-__all__ = ('_build_candidate_commands', '_candidate_test_plan', '_run_candidate_test_for_row', '_run_candidate_test', '_start_candidate_test', '_result_block', '_run_action_page', '_run_action_started_page', '_import_artifact', '_import_action_page', '_sync_pending_artifacts', '_startup_import_sync')
+__all__ = ('_build_candidate_commands', '_candidate_test_plan', '_run_candidate_test_for_row', '_run_candidate_test', '_start_candidate_test', '_new_run_all_status', '_background_candidate_batch', '_start_candidate_batch', '_result_block', '_run_action_page', '_run_action_started_page', '_run_all_started_page', '_run_all_status_page', '_import_artifact', '_import_action_page', '_sync_pending_artifacts', '_startup_import_sync')
