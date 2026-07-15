@@ -185,7 +185,7 @@ All checks passed!
 $ uv run pytest
 ============================= test session starts ==============================
 platform darwin -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0
-rootdir: /Users/nolos/Desktop/ai-lab-os-onboarding-v1
+rootdir: ~/Desktop/ai-lab-os-onboarding-v1
 configfile: pyproject.toml
 testpaths: tests, apps/model-dashboard/tests, evals/local-llm-benchmark/tests
 plugins: anyio-4.13.0
@@ -240,7 +240,7 @@ $ python3 scripts/model_dashboard_smoke.py
 Smoke artifacts: /private/var/folders/1j/jfcr7sxx3ds66jm2mnn8f66m0000gn/T/model-dashboard-smoke-52fw8du6
 
 ==> Run dashboard tests
-$ /Applications/Xcode.app/Contents/Developer/usr/bin/python3 -m unittest discover -s /Users/nolos/Desktop/ai-lab-os-onboarding-v1/apps/model-dashboard/tests
+$ /Applications/Xcode.app/Contents/Developer/usr/bin/python3 -m unittest discover -s ~/Desktop/ai-lab-os-onboarding-v1/apps/model-dashboard/tests
 ............................................................................................
 ----------------------------------------------------------------------
 Ran 92 tests in 6.316s
@@ -248,12 +248,12 @@ Ran 92 tests in 6.316s
 OK
 
 ==> Initialize fixture database
-$ /Applications/Xcode.app/Contents/Developer/usr/bin/python3 /Users/nolos/Desktop/ai-lab-os-onboarding-v1/apps/model-dashboard/run_dashboard.py init-db --db /private/var/folders/1j/jfcr7sxx3ds66jm2mnn8f66m0000gn/T/model-dashboard-smoke-52fw8du6/model_dashboard.sqlite --reset --with-fixtures
+$ /Applications/Xcode.app/Contents/Developer/usr/bin/python3 ~/Desktop/ai-lab-os-onboarding-v1/apps/model-dashboard/run_dashboard.py init-db --db /private/var/folders/1j/jfcr7sxx3ds66jm2mnn8f66m0000gn/T/model-dashboard-smoke-52fw8du6/model_dashboard.sqlite --reset --with-fixtures
 Imported fixtures: {'models': 4, 'model_runs': 4, 'eval_scores': 4, 'decisions': 4}
 Database ready: /private/var/folders/1j/jfcr7sxx3ds66jm2mnn8f66m0000gn/T/model-dashboard-smoke-52fw8du6/model_dashboard.sqlite
 
 ==> Generate fixture report
-$ /Applications/Xcode.app/Contents/Developer/usr/bin/python3 /Users/nolos/Desktop/ai-lab-os-onboarding-v1/apps/model-dashboard/run_dashboard.py report --db /private/var/folders/1j/jfcr7sxx3ds66jm2mnn8f66m0000gn/T/model-dashboard-smoke-52fw8du6/model_dashboard.sqlite --out /private/var/folders/1j/jfcr7sxx3ds66jm2mnn8f66m0000gn/T/model-dashboard-smoke-52fw8du6/fixture-model-report.md
+$ /Applications/Xcode.app/Contents/Developer/usr/bin/python3 ~/Desktop/ai-lab-os-onboarding-v1/apps/model-dashboard/run_dashboard.py report --db /private/var/folders/1j/jfcr7sxx3ds66jm2mnn8f66m0000gn/T/model-dashboard-smoke-52fw8du6/model_dashboard.sqlite --out /private/var/folders/1j/jfcr7sxx3ds66jm2mnn8f66m0000gn/T/model-dashboard-smoke-52fw8du6/fixture-model-report.md
 Report written: /private/var/folders/1j/jfcr7sxx3ds66jm2mnn8f66m0000gn/T/model-dashboard-smoke-52fw8du6/fixture-model-report.md
 
 Dashboard smoke passed.

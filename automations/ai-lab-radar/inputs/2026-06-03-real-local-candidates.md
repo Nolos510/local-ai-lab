@@ -39,7 +39,7 @@ Rubric version: ai-lab-local-llm-rubric-v0.1
 
 ```text
 Candidate source: local LM Studio model files at
-/Users/nolos/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit.
+~/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit.
 
 Failure evidence: LM Studio CLI reported Timed out waiting for LM Studio daemon
 to start and Failed to start or connect to local LM Studio API server.

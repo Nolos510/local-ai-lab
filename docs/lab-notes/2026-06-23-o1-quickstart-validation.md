@@ -3,7 +3,7 @@
 Date: 2026-06-23
 
 Branch/worktree: `codex/onboarding-v1` at
-`/Users/nolos/Desktop/ai-lab-os-onboarding-v1`
+`~/Desktop/ai-lab-os-onboarding-v1`
 
 ## Scope
 
