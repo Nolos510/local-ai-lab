@@ -7,13 +7,14 @@ import secrets
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from . import db
+from . import db, discover
 from .components import (
     CANDIDATE_REGISTRY_PATH,
     DEFAULT_DASHBOARD_DB,
     EVAL_RESULTS_DIR,
     LOCAL_INVENTORY_REGISTRY_PATH,
     PROJECT_REGISTRY_PATH,
+    RADAR_UPSTREAM_STATE_PATH,
     REPO_ROOT,
     _is_loopback_host,
     _text,
@@ -185,6 +186,7 @@ def make_handler(
     local_inventory_registry_path=None,
     eval_results_dir=None,
     project_registry_path=None,
+    upstream_state_path=None,
     import_sync_result=None,
 ):
     candidate_registry_path = (
@@ -198,6 +200,9 @@ def make_handler(
     eval_results_dir = EVAL_RESULTS_DIR if eval_results_dir is None else eval_results_dir
     project_registry_path = (
         PROJECT_REGISTRY_PATH if project_registry_path is None else project_registry_path
+    )
+    upstream_state_path = (
+        RADAR_UPSTREAM_STATE_PATH if upstream_state_path is None else upstream_state_path
     )
     inventory_cache = {"result": None}
     import_sync_cache = {"result": import_sync_result}
@@ -230,6 +235,7 @@ def make_handler(
                     "/actions/import-all",
                     "/actions/delete-model",
                     "/actions/run-all",
+                    "/actions/dismiss-upstream-update",
                 ):
                     html = _layout("Not Found", "", "<h2>Page not found</h2>")
                     self.send_response(404)
@@ -241,7 +247,21 @@ def make_handler(
                     token = _query_value(form, "token")
                     if token != action_token:
                         raise ValueError("Invalid action token.")
-                    if parsed.path == "/actions/refresh-inventory":
+                    if parsed.path == "/actions/dismiss-upstream-update":
+                        candidate_id = _query_value(form, "candidate_id")
+                        discover.dismiss_upstream_update(upstream_state_path, candidate_id)
+                        with db.connect(database_path) as conn:
+                            db.create_schema(conn)
+                            html = _radar(
+                                conn,
+                                registry_path=candidate_registry_path,
+                                local_inventory_path=local_inventory_registry_path,
+                                project_registry_path=project_registry_path,
+                                upstream_state_path=upstream_state_path,
+                                action_token=action_token,
+                            )
+                        self.send_response(200)
+                    elif parsed.path == "/actions/refresh-inventory":
                         if not enable_inventory_refresh:
                             html = _layout(
                                 "Inventory Refresh Disabled",
@@ -415,6 +435,7 @@ def make_handler(
                     registry_path=candidate_registry_path,
                     eval_results_dir=eval_results_dir,
                     local_inventory_path=local_inventory_registry_path,
+                    upstream_state_path=upstream_state_path,
                     enable_import_actions=enable_import_actions,
                     action_token=action_token,
                     import_sync_result=import_sync_cache["result"],
@@ -475,7 +496,10 @@ def make_handler(
                     conn,
                     query,
                     registry_path=candidate_registry_path,
+                    local_inventory_path=local_inventory_registry_path,
                     project_registry_path=project_registry_path,
+                    upstream_state_path=upstream_state_path,
+                    action_token=action_token,
                 )
             if path == "/specialty":
                 return _specialty(conn, query, registry_path=candidate_registry_path)

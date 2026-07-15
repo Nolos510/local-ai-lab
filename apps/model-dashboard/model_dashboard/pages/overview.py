@@ -7,7 +7,7 @@ import csv
 from html import escape
 from pathlib import Path
 
-from .. import capability, charts, db, recommend
+from .. import capability, charts, db, discover, recommend
 from ..components import *
 from ..filters import *
 from ..layout import _layout
@@ -210,6 +210,7 @@ def _overview(
     eval_results_dir=EVAL_RESULTS_DIR,
     hardware_profiles_dir=REPO_ROOT / "docs" / "lab-notes",
     local_inventory_path=LOCAL_INVENTORY_REGISTRY_PATH,
+    upstream_state_path=RADAR_UPSTREAM_STATE_PATH,
     current_hardware_profile=None,
     enable_import_actions=False,
     action_token="",
@@ -225,7 +226,16 @@ def _overview(
     avg_score = sum(score_values) / len(score_values) if score_values else None
     keep_count = sum(1 for row in summaries if row["keep_installed"] == 1)
     candidates = _load_radar_candidates(registry_path, local_inventory_path)
-    ready_count = sum(1 for row in candidates if row.get("status") == "ready_for_eval")
+    candidates = discover.candidate_lifecycle_rows(
+        conn,
+        candidates,
+        upstream_state_path,
+    )
+    ungraduated_candidates = [row for row in candidates if not row.get("_graduated")]
+    discover_count = len(ungraduated_candidates)
+    ready_count = sum(
+        1 for row in ungraduated_candidates if row.get("status") == "ready_for_eval"
+    )
     installed_count = _count_local_inventory_models(local_inventory_path)
     artifact_counts = capability.benchmark_artifact_counts(Path(eval_results_dir))
     pending_import_count = len(_pending_artifact_run_ids(conn, eval_results_dir))
@@ -271,7 +281,12 @@ def _overview(
     """.format(
         import_sync_notice=_import_sync_notice(import_sync_result),
         notice=_real_data_notice(counts["demo_models"]),
-        discover_step=_workflow_step("Discover", ready_count, "ready candidates", "/radar"),
+        discover_step=_workflow_step(
+            "Discover",
+            discover_count,
+            "candidates to evaluate",
+            "/radar",
+        ),
         install_step=_workflow_step("Install", installed_count, "detected local models", "/inventory"),
         benchmark_step=_workflow_step("Benchmark", artifact_counts["total"], "artifact directories", "/runs"),
         compare_step=_workflow_step("Compare", counts["eval_scores"], "imported scores", "/runs"),

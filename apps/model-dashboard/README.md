@@ -212,10 +212,31 @@ The Radar Candidates page is available at:
 http://127.0.0.1:8765/radar
 ```
 
-It reads `data/model_registry/candidates.csv` and displays candidate-only radar
-records separately from scored eval results. Candidate rows may link to local
-source packets, radar reports, and benchmark artifact directories, but they do
-not become dashboard scores or final labels.
+It reads `data/model_registry/candidates.csv` and the ignored local-inventory
+overlay, then displays candidate-only radar records separately from scored eval
+results. A candidate graduates from the default Discover view when its linked
+`benchmark_run_id` is imported with a confirmed score or its imported model has
+a logged decision. Graduated rows remain available under the **Evaluated**
+filter. Candidate rows may link to local source packets, radar reports, and
+benchmark artifact directories, but they do not themselves become dashboard
+scores or final labels.
+
+Upstream update checking is never passive. The dashboard performs zero network
+lookups while rendering. To explicitly compare public Hugging Face
+`lastModified`/`sha` or GitHub default-branch `sha`/`pushed_at` metadata, run:
+
+```bash
+uv run ai-lab radar check-updates --lookup
+```
+
+The command uses no tokens and downloads no model files. It records only public
+metadata in the ignored local file
+`data/dashboard/radar_upstream_state.json`; per-candidate lookup failures do not
+abort the rest. A meaningful change re-surfaces an evaluated candidate with the
+old and new revision/date. Dismissing the badge, or checking again after a new
+linked evaluation is imported, returns it to the Evaluated view. Running the
+command without `--lookup` makes no network request and does not touch the state
+file.
 
 Candidate rows can also show model/source-page, GitHub, LM Studio, and Ollama
 review links plus a short runtime-availability note. These links are for

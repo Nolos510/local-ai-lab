@@ -20,7 +20,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from local_ai_lab.cli import bench_diff, bench_judge
+from local_ai_lab.cli import bench_diff, bench_judge, radar_updates
 from local_ai_lab.cli.bench_matrix import (
     build_matrix,
     format_json,
@@ -48,6 +48,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_REGISTRY = REPO_ROOT / "data" / "model_registry" / "candidates.csv"
 DEFAULT_EVAL_RESULTS = REPO_ROOT / "data" / "eval_results"
 DEFAULT_DASHBOARD_DB = REPO_ROOT / "data" / "dashboard" / "model_dashboard.sqlite"
+DEFAULT_LOCAL_INVENTORY = REPO_ROOT / "data" / "dashboard" / "local_inventory_candidates.csv"
+DEFAULT_RADAR_UPSTREAM_STATE = REPO_ROOT / "data" / "dashboard" / "radar_upstream_state.json"
 DEFAULT_REPORT = REPO_ROOT / "data" / "dashboard" / "reports" / "fixture-model-report.md"
 HARNESS_PATH = REPO_ROOT / "evals" / "local-llm-benchmark" / "harness.py"
 DASHBOARD_ENTRYPOINT = REPO_ROOT / "apps" / "model-dashboard" / "run_dashboard.py"
@@ -179,6 +181,10 @@ def command_radar_list(args: argparse.Namespace) -> int:
             )
         )
     return 0
+
+
+def command_radar_check_updates(args: argparse.Namespace) -> int:
+    return radar_updates.command_check_updates(args, _read_candidates)
 
 
 def _default_run_id(candidate_id: str) -> str:
@@ -950,6 +956,31 @@ def build_parser() -> argparse.ArgumentParser:
     radar_list.add_argument("--status")
     radar_list.add_argument("--limit", type=int, default=0)
     radar_list.set_defaults(func=command_radar_list)
+    radar_updates_parser = radar_subparsers.add_parser(
+        "check-updates",
+        help="Check supported public upstream metadata only with explicit --lookup.",
+    )
+    radar_updates_parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
+    radar_updates_parser.add_argument(
+        "--local-inventory",
+        type=Path,
+        default=DEFAULT_LOCAL_INVENTORY,
+        help="Optional ignored local-inventory candidate overlay.",
+    )
+    radar_updates_parser.add_argument("--db", type=Path, default=DEFAULT_DASHBOARD_DB)
+    radar_updates_parser.add_argument(
+        "--state",
+        type=Path,
+        default=DEFAULT_RADAR_UPSTREAM_STATE,
+        help="Local ignored upstream metadata state file.",
+    )
+    radar_updates_parser.add_argument(
+        "--lookup",
+        action="store_true",
+        help="Explicitly query public Hugging Face/GitHub metadata; no tokens or downloads.",
+    )
+    radar_updates_parser.add_argument("--timeout", type=float, default=10.0)
+    radar_updates_parser.set_defaults(func=command_radar_check_updates)
 
     hardware_parser = subparsers.add_parser("hardware", help="Inspect local hardware context.")
     hardware_subparsers = hardware_parser.add_subparsers(

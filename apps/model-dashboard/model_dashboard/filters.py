@@ -60,6 +60,7 @@ def _radar_filter_values(query):
         "runtime": _query_value(query, "runtime"),
         "security": _query_value(query, "security"),
         "lane": _query_value(query, "lane"),
+        "view": _query_value(query, "view"),
     }
 
 
@@ -251,15 +252,34 @@ def _radar_filters(candidates, filters):
             key=lambda value: value.lower(),
         )
     )
-    clear_link = '<a class="clear-link" href="/radar">Clear</a>' if any(filters.values()) else ""
+    preserved = []
+    if filters.get("view") == "evaluated":
+        preserved.append("view=evaluated")
+    if filters.get("lane"):
+        preserved.append(f"lane={_text(filters['lane'])}")
+    clear_href = "/radar" + (f"?{'&amp;'.join(preserved)}" if preserved else "")
+    clear_link = (
+        f'<a class="clear-link" href="{clear_href}">Clear</a>'
+        if any(
+            filters.get(key)
+            for key in ("q", "status", "family", "runtime", "security")
+        )
+        else ""
+    )
     lane_input = (
         f'<input type="hidden" name="lane" value="{_text(filters.get("lane", ""))}">'
         if filters.get("lane")
         else ""
     )
+    view_input = (
+        '<input type="hidden" name="view" value="evaluated">'
+        if filters.get("view") == "evaluated"
+        else ""
+    )
     return """
     <form class="filters filters-wide" method="get" action="/radar">
       {lane_input}
+      {view_input}
       <div class="field field-wide">
         <label for="radar-q">Search</label>
         <input id="radar-q" name="q" type="search" value="{q}">
@@ -308,6 +328,7 @@ def _radar_filters(candidates, filters):
         all_security=_option("", "All security states", filters["security"]),
         security_options=security_options,
         lane_input=lane_input,
+        view_input=view_input,
         clear_link=clear_link,
     )
 

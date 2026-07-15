@@ -629,6 +629,34 @@ def _layout(title, current_path, body):
       display: block;
       max-width: 100%;
     }}
+    .upstream-update {{
+      display: grid;
+      gap: 7px;
+      margin-top: 4px;
+      padding: 9px;
+      border: 1px solid rgba(42, 212, 238, 0.34);
+      border-radius: 9px;
+      background: rgba(42, 212, 238, 0.08);
+      color: var(--ink);
+      font-size: 12px;
+    }}
+    .pill.upstream-update-badge {{
+      width: fit-content;
+      max-width: 100%;
+      border: 1px solid rgba(42, 212, 238, 0.42);
+      background: rgba(42, 212, 238, 0.13);
+      color: var(--accent-2);
+      white-space: normal;
+    }}
+    .upstream-update code {{
+      display: inline;
+      overflow-wrap: anywhere;
+    }}
+    .upstream-dismiss-form button {{
+      min-height: 32px;
+      width: fit-content;
+      padding: 6px 10px;
+    }}
     .specialty-stats-grid {{
       margin-bottom: 18px;
     }}

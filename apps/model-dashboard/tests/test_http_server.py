@@ -100,7 +100,7 @@ class DashboardHttpHandlerTests(unittest.TestCase):
             self.assertEqual(response.status, 200)
             self.assertIn("<span>Discover</span>", body)
             self.assertIn("<strong>2</strong>", body)
-            self.assertIn("<em>ready candidates</em>", body)
+            self.assertIn("<em>candidates to evaluate</em>", body)
             self.assertIn("<span>Install</span>", body)
             self.assertIn("<em>detected local models</em>", body)
             self.assertIn("<span>Benchmark</span>", body)

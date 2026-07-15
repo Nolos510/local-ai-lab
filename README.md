@@ -230,6 +230,23 @@ uv run ai-lab bench matrix --limit 5
 benchmark queue without running models, inspecting private model folders, or
 initializing artifacts.
 
+Discover graduation is derived live from imported dashboard runs: a radar
+candidate leaves the default Discover view after its linked run has a confirmed
+score or a logged decision, while the **Evaluated** filter keeps it reachable.
+Public upstream metadata checks are a separate, explicit opt-in action:
+
+```bash
+uv run ai-lab radar check-updates --lookup
+```
+
+Without `--lookup`, `radar check-updates` performs no network request and does
+not read or write upstream state. With the flag, it reads public Hugging Face or
+GitHub revision/date metadata only—no tokens, model APIs, or downloads—and
+writes the ignored local state file
+`data/dashboard/radar_upstream_state.json`. The dashboard itself never performs
+these lookups; it only reads that local file to re-surface evaluated candidates
+whose upstream revision changed.
+
 Action commands dispatch to the existing benchmark harness and dashboard
 entrypoints. They do not download models or call model/cloud APIs implicitly.
 Use the repeatable `/tmp` smoke sequence below for a pasteable prepared-artifact
