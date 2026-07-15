@@ -181,41 +181,121 @@ def _run_note_value(notes, key):
     return ""
 
 
+def _normalized_model_name(value):
+    return "".join(char for char in str(value or "").casefold() if char.isalnum())
+
+
+def _normalized_local_model_id(value):
+    return str(value or "").strip().casefold()
+
+
+def _inventory_run_record(row):
+    return {
+        "dashboard_model_id": row["model_id"],
+        "date_tested": row["date_tested"] or "",
+        "benchmark_run_id": _run_note_value(row["run_notes"], "benchmark_run_id"),
+        "score_status": row["score_status"] or "",
+        "final_label": row["final_label"] or "",
+        "params_b": row["params_b"],
+        "quantization": row["quantization"],
+        "tokens_per_sec": row["tokens_per_sec"],
+    }
+
+
 def _inventory_run_history(conn):
     history = {}
     if conn is None:
         return history
 
-    def merge_run(key, row):
+    rows = _real_rows(db.list_runs(conn))
+    latest_by_model = {}
+    owners_by_key = {}
+
+    def register_owner(key, dashboard_model_id):
         if not key:
             return
-        run = history.setdefault(key, {})
-        if not run:
-            run.update(
-                {
-                    "date_tested": row["date_tested"] or "",
-                    "benchmark_run_id": _run_note_value(
-                        row["run_notes"], "benchmark_run_id"
-                    ),
-                    "score_status": row["score_status"] or "",
-                    "final_label": row["final_label"] or "",
-                    "params_b": row["params_b"],
-                    "quantization": row["quantization"],
-                    "tokens_per_sec": None,
-                }
-            )
-        if run.get("params_b") in (None, "") and row["params_b"] not in (None, ""):
-            run["params_b"] = row["params_b"]
-        if run.get("quantization") in (None, "") and row["quantization"] not in (None, ""):
-            run["quantization"] = row["quantization"]
-        if run.get("tokens_per_sec") is None and row["tokens_per_sec"] is not None:
-            run["tokens_per_sec"] = row["tokens_per_sec"]
+        owners_by_key.setdefault(key, set()).add(dashboard_model_id)
 
-    for row in _real_rows(db.list_runs(conn)):
+    for row in rows:
+        dashboard_model_id = row["model_id"]
+        latest_by_model.setdefault(dashboard_model_id, _inventory_run_record(row))
+
+        local_model_id = _normalized_local_model_id(
+            _run_note_value(row["run_notes"], "model_id")
+        )
+        if local_model_id:
+            register_owner(f"local:{local_model_id}", dashboard_model_id)
+
         candidate_id = _run_note_value(row["run_notes"], "candidate_id")
-        merge_run(candidate_id, row)
-        merge_run(f'model:{str(row["model_name"] or "").strip().lower()}', row)
+        if candidate_id:
+            register_owner(candidate_id, dashboard_model_id)
+            register_owner(f"candidate:{candidate_id}", dashboard_model_id)
+
+        model_name = str(row["model_name"] or "").strip()
+        normalized_name = _normalized_model_name(model_name)
+        if normalized_name:
+            register_owner(f"name:{normalized_name}", dashboard_model_id)
+        if model_name:
+            register_owner(f"model:{model_name.casefold()}", dashboard_model_id)
+
+    for key, owners in owners_by_key.items():
+        history[key] = latest_by_model[next(iter(owners))] if len(owners) == 1 else None
     return history
+
+
+def _inventory_matching_run(model, candidate, run_history=None):
+    history = run_history or {}
+    local_model_ids = []
+    for value in (_inventory_exact_model_id(model), model.get("model_id")):
+        normalized = _normalized_local_model_id(value)
+        if normalized and normalized not in local_model_ids:
+            local_model_ids.append(normalized)
+
+    for local_model_id in local_model_ids:
+        run = history.get(f"local:{local_model_id}")
+        if run:
+            return run
+
+    candidate_id = str((candidate or {}).get("candidate_id") or "").strip()
+    candidate_local_model_id = _normalized_local_model_id(
+        (candidate or {}).get("local_model_id")
+    )
+    if (
+        candidate_id
+        and candidate_local_model_id
+        and candidate_local_model_id in local_model_ids
+    ):
+        run = history.get(f"candidate:{candidate_id}") or history.get(candidate_id)
+        if run:
+            return run
+
+    if candidate_id:
+        run = history.get(f"candidate:{candidate_id}") or history.get(candidate_id)
+        if run:
+            return run
+
+    normalized_names = []
+    for value in (
+        model.get("display_name"),
+        (candidate or {}).get("model_name"),
+        model.get("model_id") if not model.get("display_name") else "",
+    ):
+        normalized = _normalized_model_name(value)
+        if normalized and normalized not in normalized_names:
+            normalized_names.append(normalized)
+
+    matches = []
+    for normalized_name in normalized_names:
+        key = f"name:{normalized_name}"
+        if key in history and history[key] is None:
+            return None
+        run = history.get(key)
+        if run:
+            matches.append(run)
+    model_ids = {run.get("dashboard_model_id") for run in matches}
+    if len(model_ids) == 1:
+        return matches[0]
+    return None
 
 
 def _inventory_test_status_cell(model, candidate, run_history=None):
@@ -1464,13 +1544,7 @@ def _inventory(
                 if candidate
                 else _pill(match_state)
             )
-            history = run_history or {}
-            run = history.get(candidate.get("candidate_id", "") if candidate else "")
-            if run is None and candidate:
-                run = history.get(f'model:{candidate.get("model_name", "").strip().lower()}')
-            if run is None:
-                run = history.get(f'model:{model.get("display_name", "").strip().lower()}')
-            run = run or {}
+            run = _inventory_matching_run(model, candidate, run_history) or {}
             params_b = fit.parse_parameter_count_b(
                 model.get("params_b"),
                 candidate.get("params_b") if candidate else None,
