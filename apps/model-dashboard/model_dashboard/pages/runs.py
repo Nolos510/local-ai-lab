@@ -12,7 +12,44 @@ from ..filters import *
 from ..layout import _layout
 from ..reports import generate_markdown_report
 from ..scoring import METRIC_FIELDS
+from ..sorting import _sort_rows, _sortable_headers
 from .compare import _compare_section
+
+RUN_SORT_COLUMNS = {
+    "date": (lambda row: row["date_tested"], "text"),
+    "model": (lambda row: row["model_name"], "text"),
+    "backend": (lambda row: row["backend"], "text"),
+    "format": (lambda row: row["format"], "text"),
+    "quant": (lambda row: row["quantization"], "text"),
+    "context": (lambda row: row["context_window"], "number"),
+    "tokens_per_sec": (lambda row: row["tokens_per_sec"], "number"),
+    "ram_usage_gb": (lambda row: row["ram_usage_gb"], "number"),
+    "efficiency": (
+        lambda row: charts.efficiency(row["tokens_per_sec"], row["ram_usage_gb"]),
+        "number",
+    ),
+    "score": (lambda row: row["total_score"], "number"),
+    "status": (lambda row: row["score_status"], "text"),
+    "label": (lambda row: row["final_label"], "text"),
+    "artifact": (lambda row: _benchmark_run_id_from_notes(row["run_notes"]), "text"),
+    "stability": (lambda row: row["stability_notes"], "text"),
+}
+RUN_SORT_HEADERS = {
+    "Date": "date",
+    "Model": "model",
+    "Backend": "backend",
+    "Format": "format",
+    "Quant": "quant",
+    "Context": "context",
+    "Tok/s": "tokens_per_sec",
+    "RAM GB": "ram_usage_gb",
+    "Efficiency": "efficiency",
+    "Score": "score",
+    "Status": "status",
+    "Label": "label",
+    "Artifact": "artifact",
+    "Stability": "stability",
+}
 
 
 def _artifact_score_state(row):
@@ -100,7 +137,8 @@ def _runs(
     filters = _run_filter_values(query or {})
     filtered_runs = _filter_runs(runs, filters)
     frontier_chart, frontier_note = _efficiency_frontier(filtered_runs)
-    for row in filtered_runs:
+    sorted_runs = _sort_rows(filtered_runs, query or {}, RUN_SORT_COLUMNS)
+    for row in sorted_runs:
         efficiency_value = charts.efficiency(row["tokens_per_sec"], row["ram_usage_gb"])
         rows.append(
             [
@@ -220,6 +258,11 @@ def _runs(
             scroll_id="model-runs-table-scroll",
             scroll_label="Model runs table",
             header_tip_keys=RESULT_TABLE_HEADER_TIPS,
+            sortable_headers=_sortable_headers(
+                "/runs",
+                query or {},
+                RUN_SORT_HEADERS,
+            ),
         ),
         artifact_table=_table(
             [

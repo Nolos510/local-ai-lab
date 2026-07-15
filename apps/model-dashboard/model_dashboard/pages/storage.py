@@ -12,13 +12,31 @@ from ..filters import *
 from ..layout import _layout
 from ..reports import generate_markdown_report
 from ..scoring import METRIC_FIELDS
+from ..sorting import _sort_rows, _sortable_headers
+
+DECISION_SORT_COLUMNS = {
+    "model": (lambda row: row["model_name"], "text"),
+    "decision": (lambda row: row["decision"], "text"),
+    "keep_installed": (lambda row: row["keep_installed"], "number"),
+    "best_use_case": (lambda row: row["best_use_case"], "text"),
+    "weakness": (lambda row: row["weakness"], "text"),
+    "retest": (lambda row: row["retest_condition"], "text"),
+}
+DECISION_SORT_HEADERS = {
+    "Model": "model",
+    "Decision": "decision",
+    "Keep installed": "keep_installed",
+    "Best use case": "best_use_case",
+    "Weakness": "weakness",
+    "Retest": "retest",
+}
 
 
 def _storage_decision_rows(decisions):
     rows = []
     for row in decisions:
         model = '<div class="cell-stack storage-model-identity"><div class="storage-model-name"><a href="/models/{id}">{name}</a></div></div>'.format(
-            id=row["model_id"],
+            id=_text(row["model_id"]),
             name=_text(row["model_name"]),
         )
         rows.append(
@@ -40,7 +58,11 @@ def _storage_decision_table(
     table_class="storage-decisions-table",
     scroll_id="storage-decisions-table-scroll",
     scroll_label="Decision log table",
+    query=None,
+    path="/storage",
+    fragment="",
 ):
+    decisions = _sort_rows(decisions, query or {}, DECISION_SORT_COLUMNS)
     return _table(
         ["Model", "Decision", "Keep installed", "Best use case", "Weakness", "Retest"],
         _storage_decision_rows(decisions),
@@ -49,6 +71,12 @@ def _storage_decision_table(
         scroll_controls=True,
         scroll_id=scroll_id,
         scroll_label=scroll_label,
+        sortable_headers=_sortable_headers(
+            path,
+            query or {},
+            DECISION_SORT_HEADERS,
+            fragment=fragment,
+        ),
     )
 
 
@@ -75,7 +103,7 @@ def _storage(conn, query=None):
         filtered_count=(
             f" ({len(filtered_decisions)} of {len(decisions)})" if any(filters.values()) else ""
         ),
-        table=_storage_decision_table(filtered_decisions),
+        table=_storage_decision_table(filtered_decisions, query=query or {}),
     )
     return _layout("Storage / Install Status", "/storage", body)
 

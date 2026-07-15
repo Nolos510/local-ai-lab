@@ -17,6 +17,7 @@ from .. import db, fit, removal
 from ..components import *
 from ..filters import *
 from ..layout import _layout
+from ..sorting import _sort_rows, _sortable_headers
 from .storage import _storage_decision_table
 
 LMSTUDIO_MODELS_ROOT = Path.home() / ".lmstudio" / "models"
@@ -51,6 +52,16 @@ INVENTORY_DECISION_FILTERS = {
         "href": f"/inventory?decision=skip#{INVENTORY_DECISIONS_ANCHOR}",
         "icon": "ti-circle",
     },
+}
+INVENTORY_SORT_HEADERS = {
+    "Runtime": "runtime",
+    "Model id": "model_id",
+    "Display name": "display_name",
+    "Status": "status",
+    "Paths": "paths",
+    "Registry match": "registry_match",
+    "Tested": "tested",
+    "Action": "action",
 }
 CANDIDATE_FIELDNAMES = (
     "candidate_id",
@@ -243,6 +254,47 @@ def _inventory_test_status_cell(model, candidate, run_history=None):
     return '<div class="cell-stack"><span class="pill">tested</span>{}</div>'.format(
         "".join(details)
     )
+
+
+def _inventory_test_sort_value(entry, run_history=None):
+    model = entry["model"]
+    candidate = entry.get("candidate")
+    if not candidate:
+        return "register first"
+    if str(model.get("model_type") or "").lower() == "embedding":
+        return "not applicable"
+    if not _candidate_run_ready(candidate):
+        return "not runnable"
+    return (
+        "tested"
+        if (run_history or {}).get(candidate.get("candidate_id", ""))
+        else "not tested"
+    )
+
+
+def _inventory_sort_columns(run_history=None):
+    return {
+        "runtime": (lambda entry: entry["model"].get("runtime"), "text"),
+        "model_id": (lambda entry: entry["model"].get("model_id"), "text"),
+        "display_name": (lambda entry: entry["model"].get("display_name"), "text"),
+        "status": (lambda entry: entry["model"].get("status"), "text"),
+        "paths": (
+            lambda entry: entry["model"].get("local_path")
+            or entry["model"].get("source_path"),
+            "text",
+        ),
+        "registry_match": (lambda entry: entry.get("match_state"), "text"),
+        "tested": (
+            lambda entry: _inventory_test_sort_value(entry, run_history),
+            "text",
+        ),
+        "action": (
+            lambda entry: "run"
+            if _inventory_run_allowed(entry["model"], entry.get("candidate"))
+            else _inventory_removal_blocked_reason(entry["model"]),
+            "text",
+        ),
+    }
 
 
 def _lmstudio_cli_path():
@@ -1163,6 +1215,9 @@ def _inventory_decision_section(decisions, query=None):
             ),
             scroll_id="inventory-decisions-table-scroll",
             scroll_label="Keep/watch decisions table",
+            query=query or {},
+            path="/inventory",
+            fragment=f"#{INVENTORY_DECISIONS_ANCHOR}",
         ),
     )
 
@@ -1215,7 +1270,13 @@ def _inventory(
                     "candidate": candidate,
                 }
             )
-        for entry in _filter_inventory_entries(entries, filters):
+        filtered_entries = _filter_inventory_entries(entries, filters)
+        sorted_entries = _sort_rows(
+            filtered_entries,
+            query or {},
+            _inventory_sort_columns(run_history),
+        )
+        for entry in sorted_entries:
             model = entry["model"]
             match_state = entry["match_state"]
             candidate = entry["candidate"]
@@ -1343,6 +1404,11 @@ def _inventory(
             scroll_controls=True,
             scroll_id="inventory-models-table-scroll",
             scroll_label="Detected models table",
+            sortable_headers=_sortable_headers(
+                "/inventory",
+                query or {},
+                INVENTORY_SORT_HEADERS,
+            ),
         ),
         checks=_table(
             ["Check", "Status", "Exit", "Command", "Output"],

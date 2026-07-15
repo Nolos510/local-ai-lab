@@ -12,6 +12,39 @@ from ..filters import *
 from ..layout import _layout
 from ..reports import generate_markdown_report
 from ..scoring import METRIC_FIELDS
+from ..sorting import _sort_rows, _sortable_headers
+
+CANDIDATE_SORT_COLUMNS = {
+    "candidate": (lambda row: row.get("model_name") or row.get("candidate_id"), "text"),
+    "status": (lambda row: row.get("status"), "text"),
+    "metadata": (
+        lambda row: f'{row.get("model_family", "")} {row.get("format_or_runtime", "")}',
+        "text",
+    ),
+    "availability": (lambda row: row.get("runtime_availability"), "text"),
+    "review_notes": (
+        lambda row: f'{row.get("why_interesting", "")} {row.get("risk_notes", "")}',
+        "text",
+    ),
+    "security": (lambda row: _candidate_security_status(row), "text"),
+    "proposed_eval": (lambda row: row.get("proposed_eval"), "text"),
+    "links": (
+        lambda row: row.get("benchmark_run_id")
+        or row.get("source_packet_path")
+        or row.get("report_path"),
+        "text",
+    ),
+}
+CANDIDATE_SORT_HEADERS = {
+    "Candidate": "candidate",
+    "Status": "status",
+    "Metadata": "metadata",
+    "Availability": "availability",
+    "Review notes": "review_notes",
+    "Security gate": "security",
+    "Proposed eval": "proposed_eval",
+    "Links": "links",
+}
 
 
 def _candidate_rows(conn, candidates, memory_gb=None):
@@ -231,6 +264,11 @@ def _radar(
     projects = _load_project_repos(project_registry_path)
     filters = _radar_filter_values(query or {})
     filtered_candidates = _filter_candidates(candidates, filters)
+    sorted_candidates = _sort_rows(
+        filtered_candidates,
+        query or {},
+        CANDIDATE_SORT_COLUMNS,
+    )
     ready_count = sum(1 for row in candidates if row.get("status") == "ready_for_eval")
     watchlist_count = sum(1 for row in candidates if row.get("status") == "watchlist")
     linked_count = sum(1 for row in candidates if row.get("benchmark_run_id"))
@@ -243,7 +281,7 @@ def _radar(
         current_hardware_profile=current_hardware_profile,
         read_current_hardware=read_current_hardware,
     )
-    rows = _candidate_rows(conn, filtered_candidates, memory_gb)
+    rows = _candidate_rows(conn, sorted_candidates, memory_gb)
 
     body = """
     <section class="panel page-intro radar-intro">
@@ -305,6 +343,11 @@ def _radar(
             scroll_controls=True,
             scroll_id="radar-candidates-table-scroll",
             scroll_label="Radar candidates table",
+            sortable_headers=_sortable_headers(
+                "/radar",
+                query or {},
+                CANDIDATE_SORT_HEADERS,
+            ),
         ),
         projects_section=_project_section(projects),
     )

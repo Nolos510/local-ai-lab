@@ -305,14 +305,43 @@ def _table(
     scroll_id="",
     scroll_label="Table",
     header_tip_keys=None,
+    sortable_headers=None,
 ):
     if not rows:
         return f'<p class="empty">{escape(empty_message)}</p>'
     header_tip_keys = header_tip_keys or {}
-    header_html = "".join(
-        f"<th>{_metric_label(header, header_tip_keys.get(header), auto=False)}</th>"
-        for header in headers
-    )
+    sortable_headers = sortable_headers or {}
+    header_cells = []
+    for header in headers:
+        sortable = sortable_headers.get(header)
+        if not sortable:
+            header_cells.append(
+                f"<th>{_metric_label(header, header_tip_keys.get(header), auto=False)}</th>"
+            )
+            continue
+        direction = sortable.get("direction", "")
+        aria_sort = f' aria-sort="{_text(direction + "ending")}"' if direction else ""
+        indicator = ""
+        if direction:
+            arrow = "↑" if direction == "asc" else "↓"
+            indicator = (
+                f'<span class="sort-indicator" aria-hidden="true">{arrow}</span>'
+            )
+        tip_key = header_tip_keys.get(header)
+        info = _metric_info(tip_key) if tip_key else ""
+        header_cells.append(
+            '<th{aria_sort}><span class="metric-label">'
+            '<a class="sort-link" href="{href}" aria-label="Sort {label} {next_direction}">'
+            "{label}{indicator}</a>{info}</span></th>".format(
+                aria_sort=aria_sort,
+                href=_text(sortable["href"]),
+                label=_text(header),
+                next_direction=_text(sortable["next_direction"]),
+                indicator=indicator,
+                info=info,
+            )
+        )
+    header_html = "".join(header_cells)
     row_html = []
     for row in rows:
         row_html.append(

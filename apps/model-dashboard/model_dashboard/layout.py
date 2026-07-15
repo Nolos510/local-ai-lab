@@ -1923,6 +1923,26 @@ def _layout(title, current_path, body):
       backdrop-filter: saturate(160%) blur(16px);
       border-bottom: 1px solid var(--line);
     }}
+    .sort-link {{
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: inherit;
+      text-decoration: none;
+    }}
+    .sort-link:hover,
+    .sort-link:focus-visible {{
+      color: var(--accent-2);
+      text-decoration: none;
+    }}
+    .sort-indicator {{
+      color: var(--accent-2);
+      font-size: 14px;
+      line-height: 1;
+    }}
+    th[aria-sort] {{
+      color: var(--ink);
+    }}
     h1 {{
       font-weight: 600;
       letter-spacing: -0.4px;

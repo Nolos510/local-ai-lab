@@ -897,6 +897,46 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("/artifacts/20260603-ready-local", html)
             self.assertNotIn("Watch Local 13B", html)
 
+    def test_discover_candidate_headers_sort_case_insensitively_and_toggle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            registry_path = tmp_path / "candidates.csv"
+            db.init_db(db_path, reset=True)
+            write_candidate_registry(
+                registry_path,
+                extra_rows=[
+                    {
+                        "candidate_id": "20260714-alpha-local",
+                        "model_name": "alpha Local 3B",
+                        "model_family": "Alpha",
+                        "provider_or_org": "local",
+                        "status": "ready_for_eval",
+                        "format_or_runtime": "GGUF",
+                        "why_interesting": "Small local baseline.",
+                        "risk_notes": "Fixture only.",
+                        "proposed_eval": "Run the local prompt set.",
+                    }
+                ],
+            )
+
+            with db.connect(db_path) as conn:
+                html = server._radar(
+                    conn,
+                    {"q": ["Local"], "sort": ["candidate"], "dir": ["asc"]},
+                    registry_path=registry_path,
+                )
+
+        table = html.split('<table class="radar-table"', 1)[1].split("</table>", 1)[0]
+        self.assertLess(table.index("alpha Local 3B"), table.index("Ready Local 7B"))
+        self.assertLess(table.index("Ready Local 7B"), table.index("Watch Local 13B"))
+        self.assertIn('aria-sort="ascending"', table)
+        self.assertIn('<span class="sort-indicator" aria-hidden="true">\u2191</span>', table)
+        self.assertIn(
+            'href="/radar?q=Local&amp;sort=candidate&amp;dir=desc"',
+            table,
+        )
+
     def test_radar_shows_model_store_links_and_runtime_availability(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1601,6 +1641,83 @@ class ModelDashboardQaTests(unittest.TestCase):
             self.assertIn("Decision Log (1 of 2)", storage_html)
             self.assertIn("Qwen Filter Model", storage_html)
             self.assertNotIn("Research Filter Model", storage_html)
+
+    def test_benchmark_run_sorting_is_numeric_with_missing_last_and_alpha_casefolded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "dashboard.sqlite"
+            db.init_db(db_path, reset=True)
+            with db.connect(db_path) as conn:
+                conn.executemany(
+                    """
+                    INSERT INTO models (id, model_name, model_family, provider)
+                    VALUES (?, ?, 'Sort', 'local')
+                    """,
+                    (
+                        (1, "zulu Model"),
+                        (2, "Alpha Model"),
+                        (3, "middle Model"),
+                    ),
+                )
+                conn.executemany(
+                    """
+                    INSERT INTO model_runs (
+                        id, model_id, date_tested, backend, tokens_per_sec
+                    ) VALUES (?, ?, '2026-07-14', 'Local Runner', ?)
+                    """,
+                    (
+                        (1, 1, 10.0),
+                        (2, 2, 2.0),
+                        (3, 3, None),
+                    ),
+                )
+
+                numeric_html = server._runs(
+                    conn,
+                    {
+                        "backend": ["Local Runner"],
+                        "sort": ["tokens_per_sec"],
+                        "dir": ["asc"],
+                    },
+                    eval_results_dir=Path(tmp) / "eval-results",
+                )
+                descending_html = server._runs(
+                    conn,
+                    {"sort": ["tokens_per_sec"], "dir": ["desc"]},
+                    eval_results_dir=Path(tmp) / "eval-results",
+                )
+                alpha_html = server._runs(
+                    conn,
+                    {"sort": ["model"], "dir": ["asc"]},
+                    eval_results_dir=Path(tmp) / "eval-results",
+                )
+
+        numeric_table = numeric_html.split('<table class="runs-table"', 1)[1].split(
+            "</table>", 1
+        )[0]
+        descending_table = descending_html.split('<table class="runs-table"', 1)[1].split(
+            "</table>", 1
+        )[0]
+        alpha_table = alpha_html.split('<table class="runs-table"', 1)[1].split(
+            "</table>", 1
+        )[0]
+        self.assertLess(numeric_table.index("Alpha Model"), numeric_table.index("zulu Model"))
+        self.assertLess(numeric_table.index("zulu Model"), numeric_table.index("middle Model"))
+        self.assertLess(descending_table.index("zulu Model"), descending_table.index("Alpha Model"))
+        self.assertLess(
+            descending_table.index("Alpha Model"),
+            descending_table.index("middle Model"),
+        )
+        self.assertLess(alpha_table.index("Alpha Model"), alpha_table.index("middle Model"))
+        self.assertLess(alpha_table.index("middle Model"), alpha_table.index("zulu Model"))
+        self.assertIn(
+            'href="/runs?backend=Local+Runner&amp;sort=tokens_per_sec&amp;dir=desc"',
+            numeric_table,
+        )
+        self.assertIn('aria-sort="ascending"', numeric_table)
+        self.assertIn(
+            '<span class="sort-indicator" aria-hidden="true">\u2191</span>',
+            numeric_table,
+        )
 
     def test_storage_uses_section_rhythm_and_wide_table_contracts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2464,6 +2581,100 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertNotIn("Showing filter:", all_html)
         for model_name in all_model_names:
             self.assertIn(model_name, all_html)
+
+    def test_inventory_and_decision_headers_sort_and_preserve_active_filters(self):
+        inventory_result = {
+            "checked_at": "2026-07-14T12:00:00-07:00",
+            "checks": [],
+            "models": [
+                {
+                    "runtime": "LM Studio",
+                    "model_id": "zulu-local",
+                    "display_name": "zulu Local",
+                    "status": "indexed",
+                    "source_path": "publisher/zulu-local",
+                    "local_path": "",
+                },
+                {
+                    "runtime": "LM Studio",
+                    "model_id": "alpha-local",
+                    "display_name": "Alpha Local",
+                    "status": "indexed",
+                    "source_path": "publisher/alpha-local",
+                    "local_path": "",
+                },
+            ],
+        }
+        decisions = [
+            {
+                "id": 1,
+                "model_id": 1,
+                "model_name": "zulu Decision",
+                "provider": "local",
+                "decision": "watchlist",
+                "keep_installed": 0,
+                "best_use_case": "Research",
+                "weakness": "Slow",
+                "retest_condition": "Runtime update",
+            },
+            {
+                "id": 2,
+                "model_id": 2,
+                "model_name": "Alpha Decision",
+                "provider": "local",
+                "decision": "watchlist",
+                "keep_installed": 0,
+                "best_use_case": "Coding",
+                "weakness": "Needs review",
+                "retest_condition": "New quant",
+            },
+        ]
+
+        inventory_html = server._inventory(
+            query={
+                "runtime": ["LM Studio"],
+                "decision": ["watchlist"],
+                "sort": ["display_name"],
+                "dir": ["asc"],
+            },
+            inventory_result=inventory_result,
+            decisions=decisions,
+            registry_path=Path("/missing/candidates.csv"),
+        )
+        decision_html = server._inventory(
+            query={
+                "decision": ["watchlist"],
+                "sort": ["model"],
+                "dir": ["desc"],
+            },
+            decisions=decisions,
+            registry_path=Path("/missing/candidates.csv"),
+        )
+
+        inventory_table = inventory_html.split(
+            '<table class="inventory-models-table"', 1
+        )[1].split("</table>", 1)[0]
+        decision_table = decision_html.split(
+            '<table class="storage-decisions-table"', 1
+        )[1].split("</table>", 1)[0]
+        self.assertLess(inventory_table.index("Alpha Local"), inventory_table.index("zulu Local"))
+        self.assertIn(
+            'href="/inventory?runtime=LM+Studio&amp;decision=watchlist&amp;sort=display_name&amp;dir=desc"',
+            inventory_table,
+        )
+        self.assertIn('aria-sort="ascending"', inventory_table)
+        self.assertLess(
+            decision_table.index("zulu Decision"), decision_table.index("Alpha Decision")
+        )
+        self.assertIn(
+            'href="/inventory?decision=watchlist&amp;sort=model&amp;dir=asc#inventory-decisions"',
+            decision_table,
+        )
+        self.assertIn('aria-sort="descending"', decision_table)
+        self.assertIn(
+            '<span class="sort-indicator" aria-hidden="true">\u2193</span>',
+            decision_table,
+        )
 
     def test_inventory_tables_use_horizontal_scroll_contracts(self):
         result = {
