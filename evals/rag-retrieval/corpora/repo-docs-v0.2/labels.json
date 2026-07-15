@@ -1,0 +1,223 @@
+{
+  "corpus_id": "repo-docs-v0.2",
+  "description": "Hard repo-docs retrieval corpus with stable chunk-ID relevance labels.",
+  "queries": [
+    {
+      "query_id": "REPO-RAG-v0.2-001",
+      "query": "Which storage component remains non-negotiable when keyword evidence is fused with vector similarity?",
+      "relevant_chunk_ids": [
+        "bee76052-b400-59c7-b652-2287e568347a",
+        "31dde425-91fb-5635-b7ab-acf3996a4e34"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-002",
+      "query": "A browser chat console is installed locally. What prevents it from becoming a required part of the API harness?",
+      "relevant_chunk_ids": [
+        "f3852aec-291e-57b9-a5a0-0f725b6841de",
+        "a5ea83d8-db38-517b-8cd9-184de225378e"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-003",
+      "query": "Before accepting a ranking library, what risks and eventual removal details must its review cover?",
+      "relevant_chunk_ids": [
+        "1857afd5-b6e8-5070-9dcf-313fcede2705"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-004",
+      "query": "Why should the dashboard database not be treated as the authoritative history of an evaluation?",
+      "relevant_chunk_ids": [
+        "97e86762-9f07-519c-9996-57f447fee0c7"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-005",
+      "query": "Which compatibility document deliberately redirects readers instead of duplicating the canonical system design?",
+      "relevant_chunk_ids": [
+        "4f4175c8-0310-51e3-9f8e-84fb0f6831d6"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-006",
+      "query": "Why was containerized inference rejected for the first Apple Silicon architecture?",
+      "relevant_chunk_ids": [
+        "a5ea83d8-db38-517b-8cd9-184de225378e"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-007",
+      "query": "How does the lab gain meaning-aware document search without sending passages to a remote vendor?",
+      "relevant_chunk_ids": [
+        "df32b608-7978-5759-824a-f6f0719646bc"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-008",
+      "query": "Where can an operator inspect why an answer chose its evidence without widening every normal API response?",
+      "relevant_chunk_ids": [
+        "3d69cfe1-154b-5b77-bb8a-8554dbd71b55",
+        "3ae00a6e-253a-54f4-acfa-ff61cb69fd1a",
+        "400a6704-ad77-5e33-8ff2-c4b186d83b55"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-009",
+      "query": "What is the intentionally narrow shape of a citation returned by the ordinary ask endpoint?",
+      "relevant_chunk_ids": [
+        "3d69cfe1-154b-5b77-bb8a-8554dbd71b55"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-010",
+      "query": "Which command-line layer coordinates existing tools without becoming a new benchmark engine or inference runtime?",
+      "relevant_chunk_ids": [
+        "9e3273bb-f3b1-5e7b-805c-926ab39813b0"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-011",
+      "query": "Before local compute begins, which execution identity and human authorization must both be present?",
+      "relevant_chunk_ids": [
+        "f6e4c9ff-0a2b-5b35-ae73-80dd532d0625",
+        "fa439a13-ff50-51c9-b255-98b654533b9e"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-012",
+      "query": "Does preparing a registry-backed benchmark plan authorize the model to run?",
+      "relevant_chunk_ids": [
+        "f6e4c9ff-0a2b-5b35-ae73-80dd532d0625"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-013",
+      "query": "Where is second-stage relevance judgment inserted between initial lookup and cited prompt construction?",
+      "relevant_chunk_ids": [
+        "7ef7769c-57ca-5d93-a4ed-02cf2b7eb668",
+        "9250de72-52bd-57b6-9e4e-f973378746d6"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-014",
+      "query": "Why is transformer-based passage ordering excluded from an ordinary installation?",
+      "relevant_chunk_ids": [
+        "7ef7769c-57ca-5d93-a4ed-02cf2b7eb668"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-015",
+      "query": "What combines term-frequency evidence with semantic neighbors, and how are the two ranked lists joined?",
+      "relevant_chunk_ids": [
+        "bee76052-b400-59c7-b652-2287e568347a"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-016",
+      "query": "Which lookup mode is meant to rescue exact product identifiers that an embedding may blur?",
+      "relevant_chunk_ids": [
+        "bee76052-b400-59c7-b652-2287e568347a"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-017",
+      "query": "What evidence keeps observed generation speed from becoming an undocumented impression?",
+      "relevant_chunk_ids": [
+        "d5842277-c581-51a7-9f6a-9901aed68ea6",
+        "763e4d30-925c-5b45-9c22-dfea26a605bc"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-018",
+      "query": "Why must response quality and runtime performance remain separately reproducible comparison axes?",
+      "relevant_chunk_ids": [
+        "763e4d30-925c-5b45-9c22-dfea26a605bc",
+        "d5842277-c581-51a7-9f6a-9901aed68ea6"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-019",
+      "query": "What evidence must exist before a human can assign capability scores to a model attempt?",
+      "relevant_chunk_ids": [
+        "763e4d30-925c-5b45-9c22-dfea26a605bc",
+        "2c833377-f376-5c94-ae6f-b92bdcab9e81"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-020",
+      "query": "An embedding change no longer fits the existing index. What operational response preserves measurement validity?",
+      "relevant_chunk_ids": [
+        "df32b608-7978-5759-824a-f6f0719646bc",
+        "3ae00a6e-253a-54f4-acfa-ff61cb69fd1a"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-021",
+      "query": "Which offline measure exposes that one of several labeled passages is absent from the first five results?",
+      "relevant_chunk_ids": [
+        "9250de72-52bd-57b6-9e4e-f973378746d6"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-022",
+      "query": "Why does a perfect score on the original four repo questions fail to demonstrate retrieval quality?",
+      "relevant_chunk_ids": [
+        "95af1bb4-776b-594a-a1ba-bcf1fc4680ba"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-023",
+      "query": "What prevents a scouting lead from masquerading as measured model performance?",
+      "relevant_chunk_ids": [
+        "31dde425-91fb-5635-b7ab-acf3996a4e34",
+        "97e86762-9f07-519c-9996-57f447fee0c7"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-024",
+      "query": "Which evidence chain turns approved metadata into a keep, watchlist, retest, or skip choice?",
+      "relevant_chunk_ids": [
+        "ba6b1d53-1fdf-582a-ac43-a5efff7ba356"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-025",
+      "query": "If transport overhead distorts timing while answers remain reviewable, what must a comparable run preserve?",
+      "relevant_chunk_ids": [
+        "763e4d30-925c-5b45-9c22-dfea26a605bc",
+        "d5842277-c581-51a7-9f6a-9901aed68ea6"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-026",
+      "query": "What is the reversible boundary between passive reconnaissance and work that consumes the machine's silicon?",
+      "relevant_chunk_ids": [
+        "f6e4c9ff-0a2b-5b35-ae73-80dd532d0625"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-027",
+      "query": "When lexical and geometric ranking disagree, which stages determine the order that reaches the cited prompt?",
+      "relevant_chunk_ids": [
+        "bee76052-b400-59c7-b652-2287e568347a",
+        "7ef7769c-57ca-5d93-a4ed-02cf2b7eb668",
+        "9250de72-52bd-57b6-9e4e-f973378746d6"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-028",
+      "query": "How can a maintainer abandon the heavyweight judge without dismantling first-pass search?",
+      "relevant_chunk_ids": [
+        "7ef7769c-57ca-5d93-a4ed-02cf2b7eb668"
+      ]
+    },
+    {
+      "query_id": "REPO-RAG-v0.2-029",
+      "query": "Why did the first Qwen3 Coder artifact require a retest instead of a capability label?",
+      "relevant_chunk_ids": [
+        "2c833377-f376-5c94-ae6f-b92bdcab9e81"
+      ]
+    }
+  ]
+}

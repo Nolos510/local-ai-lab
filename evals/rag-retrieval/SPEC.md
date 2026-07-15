@@ -1,6 +1,6 @@
 # RAG Retrieval Eval Spec v0.1
 
-Status: initial offline fixture
+Status: offline regression fixture plus manual real-retrieval corpora
 
 Target: Local RAG Backbone retrieval quality
 
@@ -13,15 +13,26 @@ before changing ranking behavior. This eval is intentionally tiny and fully
 offline so it can run in CI without Qdrant, Ollama, local models, or network
 access.
 
-The fixture is not a benchmark of a real corpus. It is a regression harness for
-retrieval plumbing, scorer behavior, and later RAG Quality sprint loops.
+The offline fixture is not a benchmark of a real corpus. It is a regression
+harness for retrieval plumbing and scorer behavior. Committed repo-docs corpora
+provide separate manual real-embedding comparisons:
+
+- `repo-docs-v0.1` remains the four-query regression baseline with its observed
+  BGE-M3 evidence intact.
+- `repo-docs-v0.2` adds 29 deliberately hard labels over a larger slice of
+  non-private repository documentation. It includes competing passages,
+  vocabulary gaps, paraphrases, multiple-relevance labels, and expected misses.
 
 ## Files
 
 ```text
 evals/rag-retrieval/
   SPEC.md
+  collect.py
   scorer.py
+  corpora/
+    repo-docs-v0.1/
+    repo-docs-v0.2/
   fixtures/
     labels.json
     deterministic-results.jsonl
@@ -45,6 +56,11 @@ evals/rag-retrieval/
 
 Labels use stable chunk IDs only. They must not include private source paths,
 raw document text, prompts, API keys, or model responses.
+
+The v0.1 real-retrieval corpus predates the ID-only corpus contract and retains
+source-aware rows as an unchanged regression fixture. New v0.2 relevance labels
+use `relevant_chunk_ids` only. Its README documents the fixed chunk settings and
+the exact four-way BGE-M3 collection/scoring matrix.
 
 ## Result Format
 
@@ -77,5 +93,6 @@ python3 evals/rag-retrieval/scorer.py \
 ```
 
 The command prints JSON with aggregate metrics and per-query evidence. Keep
-live Qdrant/BGE-M3 retrieval runs as manual smoke checks unless a future loop
-adds a dedicated local fixture export command.
+live Qdrant/BGE-M3 retrieval runs as manual smoke checks. `collect.py` exports
+those local results without calling an answer model; it is not part of the
+offline test gate.
