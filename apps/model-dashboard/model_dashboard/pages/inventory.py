@@ -1085,11 +1085,14 @@ def _inventory_run_all_plan(
     registry_path=CANDIDATE_REGISTRY_PATH,
     local_inventory_path=None,
     eval_results_dir=EVAL_RESULTS_DIR,
+    database_path=None,
+    *,
+    clock=None,
 ):
     candidates = _load_radar_candidates(registry_path, local_inventory_path)
     runnable = []
     skipped = []
-    used_run_ids = set()
+    used_run_ids = _existing_benchmark_run_ids(database_path, eval_results_dir)
     seen_targets = set()
     for model in (inventory_result or {}).get("models", []):
         match_state, candidate = _match_inventory_model(model, candidates)
@@ -1113,13 +1116,12 @@ def _inventory_run_all_plan(
             )
             continue
 
-        run_id = _next_dashboard_run_id(candidate, eval_results_dir)
-        if run_id in used_run_ids:
-            base = run_id
-            suffix = 2
-            while run_id in used_run_ids or (Path(eval_results_dir) / run_id).exists():
-                run_id = f"{base}-{suffix}"
-                suffix += 1
+        run_id = _next_dashboard_run_id(
+            candidate,
+            eval_results_dir,
+            existing_ids=used_run_ids,
+            clock=clock,
+        )
         used_run_ids.add(run_id)
         runnable.append(
             {

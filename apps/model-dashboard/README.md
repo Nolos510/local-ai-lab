@@ -165,7 +165,10 @@ python3 apps/model-dashboard/run_dashboard.py serve --enable-run-tests
 Run-test buttons create a benchmark artifact and capture raw responses only.
 They do not download models, create scores, or make keep/watch decisions. After
 capture, valid dashboard CSVs are exported and auto-imported into local run
-history. Native run buttons dispatch to the matching local harness runner:
+history. If the computed run ID is already imported or already names an artifact
+directory, the dashboard appends a short time/increment suffix before dispatch;
+an existing artifact directory is never reused or overwritten. Native run
+buttons dispatch to the matching local harness runner:
 `run-lmstudio-cli`, `run-ollama`, `run-mlx-lm`, `run-llama-cpp`, or `run-local`
 for OpenAI-compatible loopback endpoints. For LM Studio CLI candidates, the
 button uses `run-lmstudio-cli`, which avoids the OpenAI-compatible server path
@@ -176,8 +179,10 @@ interactive prompts or catalog fetches.
 With `--enable-run-tests`, My Models also shows **Run all runnable**. Its first
 step is a non-executing preflight that enumerates exact candidate IDs, local
 model IDs, runners, and run IDs, plus skipped models and reasons. The
-token-gated confirmation runs that exact batch sequentially in one background
-worker; per-model failures are summarized without aborting later models.
+token-gated confirmation runs those displayed IDs as that exact batch
+sequentially in one background worker; per-model failures are summarized
+without aborting later models. Re-tests receive fresh IDs before this preflight
+is rendered.
 
 Artifact import buttons are also disabled by default. Artifact pages and the Lab
 Dashboard show exact `import-csv` and `report` commands for existing

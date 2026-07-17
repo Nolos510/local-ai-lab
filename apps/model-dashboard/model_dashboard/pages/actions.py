@@ -101,14 +101,27 @@ def _build_candidate_commands(row, run_id, eval_results_dir):
     return init_command, capture_command
 
 
-def _candidate_test_plan(candidate_id, registry_path, eval_results_dir):
+def _candidate_test_plan(
+    candidate_id,
+    registry_path,
+    eval_results_dir,
+    database_path=None,
+    *,
+    clock=None,
+):
     candidates = _load_radar_candidates(registry_path)
     row = next((item for item in candidates if item.get("candidate_id") == candidate_id), None)
     if row is None:
         raise ValueError(f"Candidate not found: {candidate_id}")
     if not _candidate_run_ready(row):
         raise ValueError("Candidate is missing exact local runner metadata.")
-    run_id = _next_dashboard_run_id(row, eval_results_dir)
+    existing_ids = _existing_benchmark_run_ids(database_path, eval_results_dir)
+    run_id = _next_dashboard_run_id(
+        row,
+        eval_results_dir,
+        existing_ids=existing_ids,
+        clock=clock,
+    )
     return row, run_id
 
 
@@ -133,8 +146,22 @@ def _run_candidate_test_for_row(row, run_id, eval_results_dir, timeout):
     }
 
 
-def _run_candidate_test(candidate_id, registry_path, eval_results_dir, timeout):
-    row, run_id = _candidate_test_plan(candidate_id, registry_path, eval_results_dir)
+def _run_candidate_test(
+    candidate_id,
+    registry_path,
+    eval_results_dir,
+    timeout,
+    database_path=None,
+    *,
+    clock=None,
+):
+    row, run_id = _candidate_test_plan(
+        candidate_id,
+        registry_path,
+        eval_results_dir,
+        database_path,
+        clock=clock,
+    )
     return _run_candidate_test_for_row(row, run_id, eval_results_dir, timeout)
 
 
@@ -197,6 +224,16 @@ def _startup_import_sync(database_path, eval_results_dir, *, enabled):
 
 
 def _background_candidate_test(row, run_id, eval_results_dir, timeout, database_path):
+    if run_id in _existing_benchmark_run_ids(database_path, eval_results_dir):
+        return {
+            "candidate_id": row.get("candidate_id", ""),
+            "model_name": row.get("model_name", ""),
+            "model_id": row.get("local_model_id", ""),
+            "runner": row.get("local_runner", ""),
+            "run_id": run_id,
+            "status": "failed",
+            "reason": "benchmark run id or artifact directory already exists; run was not started",
+        }
     try:
         run_result = _run_candidate_test_for_row(row, run_id, eval_results_dir, timeout)
         export_result = _export_dashboard_import(run_id, eval_results_dir, timeout)
@@ -246,8 +283,22 @@ def _background_candidate_test(row, run_id, eval_results_dir, timeout, database_
         }
 
 
-def _start_candidate_test(candidate_id, registry_path, eval_results_dir, timeout, database_path):
-    row, run_id = _candidate_test_plan(candidate_id, registry_path, eval_results_dir)
+def _start_candidate_test(
+    candidate_id,
+    registry_path,
+    eval_results_dir,
+    timeout,
+    database_path,
+    *,
+    clock=None,
+):
+    row, run_id = _candidate_test_plan(
+        candidate_id,
+        registry_path,
+        eval_results_dir,
+        database_path,
+        clock=clock,
+    )
     run_dir = Path(eval_results_dir) / run_id
     thread = threading.Thread(
         target=_background_candidate_test,
@@ -316,6 +367,16 @@ def _background_candidate_batch(plan, eval_results_dir, timeout, database_path, 
 def _start_candidate_batch(plan, eval_results_dir, timeout, database_path):
     if not plan:
         raise ValueError("No runnable models were confirmed.")
+    run_ids = [item.get("run_id", "") for item in plan]
+    if len(run_ids) != len(set(run_ids)):
+        raise ValueError("Run-all preflight contains duplicate run ids.")
+    existing_ids = _existing_benchmark_run_ids(database_path, eval_results_dir)
+    collisions = sorted(set(run_ids) & existing_ids)
+    if collisions:
+        raise ValueError(
+            "Run-all artifact target now exists; refresh preflight before execution: "
+            + ", ".join(collisions)
+        )
     batch_id = f"dashboard-batch-{secrets.token_urlsafe(9)}"
     status = _new_run_all_status(batch_id, plan)
     thread = threading.Thread(

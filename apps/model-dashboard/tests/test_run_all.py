@@ -375,7 +375,9 @@ class RunAllHttpTests(unittest.TestCase):
             }
 
             with (
-                mock.patch.object(server, "_inventory_run_all_plan", return_value=plan),
+                mock.patch.object(
+                    server, "_inventory_run_all_plan", return_value=plan
+                ) as planner,
                 mock.patch.object(server, "_start_candidate_batch", return_value=started) as start,
             ):
                 base_url = self.start_server(
@@ -384,6 +386,8 @@ class RunAllHttpTests(unittest.TestCase):
                     enable_run_tests=True,
                     eval_results_dir=tmp_path / "eval_results",
                 )
+                with urlopen(f"{base_url}/inventory/run-all", timeout=5) as response:
+                    preflight = response.read().decode("utf-8")
                 with self.post(
                     f"{base_url}/actions/run-all",
                     {
@@ -395,9 +399,12 @@ class RunAllHttpTests(unittest.TestCase):
                     body = response.read().decode("utf-8")
 
             self.assertEqual(response.status, 200)
+            self.assertIn(plan["runnable"][0]["run_id"], preflight)
+            self.assertIn(plan["runnable"][1]["run_id"], preflight)
             self.assertIn("Run All Started", body)
             self.assertIn("2 models", body)
             self.assertIn("/inventory/run-all/status?batch_id=batch-fixture", body)
+            planner.assert_called_once()
             start.assert_called_once()
             self.assertEqual(start.call_args.args[0], plan["runnable"])
 

@@ -207,6 +207,7 @@ def make_handler(
     inventory_cache = {"result": None}
     import_sync_cache = {"result": import_sync_result}
     batch_run_cache = {}
+    run_all_preflight_cache = {}
 
     class DashboardHandler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -364,12 +365,12 @@ def make_handler(
                             )
                             self.send_response(403)
                         else:
-                            plan = _inventory_run_all_plan(
-                                inventory_cache["result"],
-                                candidate_registry_path,
-                                local_inventory_registry_path,
-                                eval_results_dir,
-                            )
+                            approval_scope = _query_value(form, "approval_scope")
+                            plan = run_all_preflight_cache.get(approval_scope)
+                            if plan is None:
+                                raise ValueError(
+                                    "Run-all preflight is missing or expired; review the exact batch again before execution."
+                                )
                             started = _start_confirmed_candidate_batch(
                                 form,
                                 action_token,
@@ -379,6 +380,7 @@ def make_handler(
                                 database_path,
                                 _start_candidate_batch,
                             )
+                            run_all_preflight_cache.pop(approval_scope, None)
                             batch_run_cache[started["batch_id"]] = started["status"]
                             while len(batch_run_cache) > 20:
                                 batch_run_cache.pop(next(iter(batch_run_cache)))
@@ -487,7 +489,12 @@ def make_handler(
                     candidate_registry_path,
                     local_inventory_registry_path,
                     eval_results_dir,
+                    database_path,
                 )
+                approval_scope = _run_all_fingerprint(plan)
+                run_all_preflight_cache[approval_scope] = plan
+                while len(run_all_preflight_cache) > 20:
+                    run_all_preflight_cache.pop(next(iter(run_all_preflight_cache)))
                 return _run_all_confirm_page(plan, action_token)
             if path == "/inventory/run-all/status":
                 batch_id = _query_value(query, "batch_id")

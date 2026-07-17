@@ -10,7 +10,7 @@ import math
 import re
 import shlex
 import subprocess
-from datetime import date
+from datetime import datetime
 from html import escape
 from pathlib import Path
 from urllib.parse import urlparse
@@ -603,18 +603,64 @@ def _run_test_control(row, enable_run_tests=False, action_token=""):
     )
 
 
-def _next_dashboard_run_id(row, eval_results_dir=EVAL_RESULTS_DIR):
+def _mint_dashboard_run_id(base_run_id, existing_ids, *, clock=None):
+    """Return ``base_run_id`` or a deterministic free re-test id."""
+    base_run_id = str(base_run_id)
+    existing = {str(run_id) for run_id in existing_ids}
+    if base_run_id not in existing:
+        return base_run_id
+
+    current = (clock or datetime.now)()
+    timestamp = current.strftime("%H%M%S")
+    suffix = f"-{timestamp}"
+    candidate = f"{base_run_id[: 128 - len(suffix)]}{suffix}"
+    increment = 2
+    while candidate in existing:
+        suffix = f"-{timestamp}-{increment}"
+        candidate = f"{base_run_id[: 128 - len(suffix)]}{suffix}"
+        increment += 1
+    return candidate
+
+
+def _artifact_directory_ids(eval_results_dir=EVAL_RESULTS_DIR):
+    root = Path(eval_results_dir)
+    if not root.exists() or not root.is_dir():
+        return set()
+    return {path.name for path in root.iterdir() if path.is_dir()}
+
+
+def _existing_benchmark_run_ids(database_path=None, eval_results_dir=EVAL_RESULTS_DIR):
+    run_ids = _artifact_directory_ids(eval_results_dir)
+    if database_path is None or not Path(database_path).exists():
+        return run_ids
+    with db.connect(database_path) as conn:
+        has_runs_table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'model_runs'"
+        ).fetchone()
+        if not has_runs_table:
+            return run_ids
+        for row in db.list_runs(conn):
+            run_id = _benchmark_run_id_from_notes(row["run_notes"])
+            if run_id:
+                run_ids.add(run_id)
+    return run_ids
+
+
+def _next_dashboard_run_id(
+    row,
+    eval_results_dir=EVAL_RESULTS_DIR,
+    *,
+    existing_ids=(),
+    clock=None,
+):
+    current = (clock or datetime.now)()
     base = "{}-{}-dashboard-test".format(
-        date.today().strftime("%Y%m%d"),
+        current.strftime("%Y%m%d"),
         _slug(row.get("model_name") or row.get("candidate_id")),
     )
-    root = Path(eval_results_dir)
-    candidate = base
-    index = 2
-    while (root / candidate).exists():
-        candidate = f"{base}-r{index}"
-        index += 1
-    return candidate
+    occupied = set(existing_ids)
+    occupied.update(_artifact_directory_ids(eval_results_dir))
+    return _mint_dashboard_run_id(base, occupied, clock=lambda: current)
 
 
 def _append_arg(command, flag, value):
@@ -1133,4 +1179,4 @@ def _import_state_for_run(run, decisions_by_model):
         decision=decision_state,
     )
 
-__all__ = ('_text', '_number', '_pill', '_status_pill', '_current_run_badge', '_fit_summary', '_fit_capacity_summary', '_fit_memory_gb', '_task_leaders', '_stat_card', '_chart_panel', '_model_chart_label', '_average_metric_items', '_performance_items', '_performance_chart', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_run_note_value', '_benchmark_run_id_from_notes', '_authoritative_run_groups', '_authoritative_model_summaries', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_import_guidance', '_artifact_import_control', '_artifact_import_all_control', '_import_sync_notice', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_fit_evidence', '_dashboard_run_ids', '_pending_artifact_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'LOCAL_INVENTORY_REGISTRY_PATH', 'RADAR_UPSTREAM_STATE_PATH', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE', 'METRIC_EXPLANATIONS', 'METRIC_LABEL_KEYS', 'RESULT_TABLE_HEADER_TIPS')
+__all__ = ('_text', '_number', '_pill', '_status_pill', '_current_run_badge', '_fit_summary', '_fit_capacity_summary', '_fit_memory_gb', '_task_leaders', '_stat_card', '_chart_panel', '_model_chart_label', '_average_metric_items', '_performance_items', '_performance_chart', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_mint_dashboard_run_id', '_artifact_directory_ids', '_existing_benchmark_run_ids', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_run_note_value', '_benchmark_run_id_from_notes', '_authoritative_run_groups', '_authoritative_model_summaries', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_import_guidance', '_artifact_import_control', '_artifact_import_all_control', '_import_sync_notice', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_fit_evidence', '_dashboard_run_ids', '_pending_artifact_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'LOCAL_INVENTORY_REGISTRY_PATH', 'RADAR_UPSTREAM_STATE_PATH', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE', 'METRIC_EXPLANATIONS', 'METRIC_LABEL_KEYS', 'RESULT_TABLE_HEADER_TIPS')

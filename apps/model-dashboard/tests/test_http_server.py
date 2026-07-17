@@ -345,30 +345,41 @@ class DashboardHttpHandlerTests(unittest.TestCase):
             run_id = "20260621-ready-local-dashboard-test"
             import_dir = eval_results / run_id / "dashboard-import"
 
-            write_table(
-                import_dir / "models.csv",
-                "models",
-                [{"id": 1, "model_name": "Ready Local 7B", "provider": "local"}],
-            )
-            write_table(
-                import_dir / "model_runs.csv",
-                "model_runs",
-                [
-                    {
-                        "id": 1,
-                        "model_id": 1,
-                        "date_tested": "2026-06-21",
-                        "backend": "LM Studio CLI",
-                        "tokens_per_sec": 22.5,
-                        "run_notes": f"benchmark_run_id={run_id} | dashboard_run_button=yes",
-                    }
-                ],
-            )
-            write_table(import_dir / "eval_scores.csv", "eval_scores", [])
-            write_table(import_dir / "decisions.csv", "decisions", [])
+            def fake_capture(*args):
+                write_table(
+                    import_dir / "models.csv",
+                    "models",
+                    [{"id": 1, "model_name": "Ready Local 7B", "provider": "local"}],
+                )
+                write_table(
+                    import_dir / "model_runs.csv",
+                    "model_runs",
+                    [
+                        {
+                            "id": 1,
+                            "model_id": 1,
+                            "date_tested": "2026-06-21",
+                            "backend": "LM Studio CLI",
+                            "tokens_per_sec": 22.5,
+                            "run_notes": (
+                                f"benchmark_run_id={run_id} | dashboard_run_button=yes"
+                            ),
+                        }
+                    ],
+                )
+                write_table(import_dir / "eval_scores.csv", "eval_scores", [])
+                write_table(import_dir / "decisions.csv", "decisions", [])
+                return {
+                    "init": SimpleNamespace(returncode=0),
+                    "capture": SimpleNamespace(returncode=0),
+                }
 
             with (
-                mock.patch.object(actions, "_run_candidate_test_for_row") as run_capture,
+                mock.patch.object(
+                    actions,
+                    "_run_candidate_test_for_row",
+                    side_effect=fake_capture,
+                ) as run_capture,
                 mock.patch.object(
                     actions,
                     "_run_subprocess",
