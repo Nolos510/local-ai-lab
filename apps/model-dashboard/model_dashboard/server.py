@@ -445,6 +445,8 @@ def make_handler(
                     conn,
                     query,
                     database_path=database_path,
+                    registry_path=candidate_registry_path,
+                    local_inventory_path=local_inventory_registry_path,
                     eval_results_dir=eval_results_dir,
                     enable_import_actions=enable_import_actions,
                     action_token=action_token,
@@ -464,7 +466,13 @@ def make_handler(
                     enable_refresh=enable_inventory_refresh,
                     registry_path=candidate_registry_path,
                     local_inventory_path=local_inventory_registry_path,
-                    run_history=_inventory_run_history(conn),
+                    run_history=_inventory_run_history(
+                        conn,
+                        _load_radar_candidates(
+                            candidate_registry_path,
+                            local_inventory_registry_path,
+                        ),
+                    ),
                     decisions=db.list_decisions(conn),
                 )
             if path == "/inventory/run-all":
@@ -529,7 +537,13 @@ def make_handler(
         def _inventory_run_history(self):
             with db.connect(database_path) as conn:
                 db.create_schema(conn)
-                return _inventory_run_history(conn)
+                return _inventory_run_history(
+                    conn,
+                    _load_radar_candidates(
+                        candidate_registry_path,
+                        local_inventory_registry_path,
+                    ),
+                )
 
     return DashboardHandler
 

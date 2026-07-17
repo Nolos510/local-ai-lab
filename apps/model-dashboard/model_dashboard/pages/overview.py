@@ -125,7 +125,13 @@ def _home_action_card(action, enable_import_actions=False, action_token=""):
 
 def _top_result_rows(summaries, *, limit=5):
     scored = [row for row in summaries if row["total_score"] not in (None, "")]
-    scored.sort(key=lambda row: float(row["total_score"]), reverse=True)
+    scored.sort(
+        key=lambda row: (
+            0 if row["score_status"] == "confirmed" else 1,
+            -float(row["total_score"]),
+            str(row["model_name"]).casefold(),
+        )
+    )
     rows = []
     for row in scored[:limit]:
         rows.append(
@@ -136,9 +142,9 @@ def _top_result_rows(summaries, *, limit=5):
                 _number(row["total_score"], 2),
                 _status_pill(row["score_status"]),
                 _pill(row["final_label"]),
-                _number(row["tokens_per_sec"]),
-                _number(row["ram_usage_gb"]),
-                _text(row["decision"]),
+                _number(row["tokens_per_sec"], fallback="—"),
+                _number(row["ram_usage_gb"], fallback="—"),
+                _text(row["decision"] if row["decision"] not in (None, "") else "—"),
             ]
         )
     return rows
@@ -217,7 +223,8 @@ def _overview(
     import_sync_result=None,
 ):
     counts = _real_counts(conn)
-    all_summaries = db.list_model_summaries(conn)
+    candidates = _load_radar_candidates(registry_path, local_inventory_path)
+    all_summaries = _authoritative_model_summaries(conn, candidates)
     summaries = _real_rows(all_summaries)
     task_summary = recommend.task_recommendations(_real_rows(db.list_score_details(conn)))
     score_values = [
@@ -225,7 +232,6 @@ def _overview(
     ]
     avg_score = sum(score_values) / len(score_values) if score_values else None
     keep_count = sum(1 for row in summaries if row["keep_installed"] == 1)
-    candidates = _load_radar_candidates(registry_path, local_inventory_path)
     candidates = discover.candidate_lifecycle_rows(
         conn,
         candidates,
@@ -299,7 +305,7 @@ def _overview(
         ),
         models_stat=_stat_card("Models", counts["models"], "ti-cube"),
         runs_stat=_stat_card("Runs", counts["model_runs"], "ti-player-play"),
-        avg_stat=_stat_card("Average Score", _number(avg_score, 1, "0.0"), "ti-chart-line"),
+        avg_stat=_stat_card("Average Score", _number(avg_score, 1, "—"), "ti-chart-line"),
         kept_stat=_stat_card("Kept Installed", keep_count, "ti-checkup-list"),
         top_results=_table(
             [

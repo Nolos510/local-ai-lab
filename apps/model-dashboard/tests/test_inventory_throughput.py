@@ -28,6 +28,7 @@ class InventoryThroughputTests(unittest.TestCase):
                             "model_name",
                             "local_model_id",
                             "local_runner",
+                            "benchmark_run_id",
                         ),
                     )
                     writer.writeheader()
@@ -63,7 +64,14 @@ class InventoryThroughputTests(unittest.TestCase):
                         ),
                     )
                 conn.commit()
-                run_history = inventory._inventory_run_history(conn)
+                registry_candidates = inventory._load_radar_candidates(
+                    registry_path,
+                    overlay_path,
+                )
+                run_history = inventory._inventory_run_history(
+                    conn,
+                    registry_candidates,
+                )
 
             return inventory._inventory(
                 inventory_result={
@@ -143,7 +151,7 @@ class InventoryThroughputTests(unittest.TestCase):
 
         self.assertNotIn('<span class="observed-performance">', html)
 
-    def test_most_recent_matching_run_controls_observed_throughput(self):
+    def test_most_recent_matching_run_controls_observed_throughput_without_designation(self):
         html = self._render(
             [self._model("runtime/latest-alpha-7b", "Latest Alpha")],
             [
@@ -164,6 +172,43 @@ class InventoryThroughputTests(unittest.TestCase):
 
         self.assertIn("Observed 29.0 tok/s", html)
         self.assertNotIn("Observed 17.0 tok/s", html)
+
+    def test_registry_designated_run_controls_observed_throughput(self):
+        html = self._render(
+            [self._model("runtime/current-alpha-7b", "Current Alpha")],
+            [
+                {
+                    "model_name": "Current Alpha Dashboard",
+                    "date_tested": "2026-07-10",
+                    "tokens_per_sec": 17.0,
+                    "run_notes": (
+                        "benchmark_run_id=designated-alpha | "
+                        "candidate_id=current-alpha | model_id=runtime/current-alpha-7b"
+                    ),
+                },
+                {
+                    "model_name": "Current Alpha Dashboard",
+                    "date_tested": "2026-07-11",
+                    "tokens_per_sec": 29.0,
+                    "run_notes": (
+                        "benchmark_run_id=newer-alpha | "
+                        "candidate_id=current-alpha | model_id=runtime/current-alpha-7b"
+                    ),
+                },
+            ],
+            candidates=[
+                {
+                    "candidate_id": "current-alpha",
+                    "model_name": "Current Alpha",
+                    "local_model_id": "runtime/current-alpha-7b",
+                    "local_runner": "lmstudio-cli",
+                    "benchmark_run_id": "designated-alpha",
+                }
+            ],
+        )
+
+        self.assertIn("Observed 17.0 tok/s", html)
+        self.assertNotIn("Observed 29.0 tok/s", html)
 
     def test_latest_matching_run_without_throughput_does_not_reuse_older_observation(self):
         html = self._render(

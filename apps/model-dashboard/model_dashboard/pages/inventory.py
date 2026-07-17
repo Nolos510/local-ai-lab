@@ -202,13 +202,17 @@ def _inventory_run_record(row):
     }
 
 
-def _inventory_run_history(conn):
+def _inventory_run_history(conn, candidates=()):
     history = {}
     if conn is None:
         return history
 
     rows = _real_rows(db.list_runs(conn))
-    latest_by_model = {}
+    authoritative_groups = _authoritative_run_groups(rows, candidates)
+    current_by_model = {
+        model_id: _inventory_run_record(group["authoritative_run"])
+        for model_id, group in authoritative_groups.items()
+    }
     owners_by_key = {}
 
     def register_owner(key, dashboard_model_id):
@@ -218,7 +222,6 @@ def _inventory_run_history(conn):
 
     for row in rows:
         dashboard_model_id = row["model_id"]
-        latest_by_model.setdefault(dashboard_model_id, _inventory_run_record(row))
 
         local_model_id = _normalized_local_model_id(
             _run_note_value(row["run_notes"], "model_id")
@@ -239,7 +242,7 @@ def _inventory_run_history(conn):
             register_owner(f"model:{model_name.casefold()}", dashboard_model_id)
 
     for key, owners in owners_by_key.items():
-        history[key] = latest_by_model[next(iter(owners))] if len(owners) == 1 else None
+        history[key] = current_by_model[next(iter(owners))] if len(owners) == 1 else None
     return history
 
 

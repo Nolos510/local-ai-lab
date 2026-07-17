@@ -149,9 +149,21 @@ def list_model_summaries(conn):
             r.quantization,
             r.tokens_per_sec,
             r.ram_usage_gb,
-            s.total_score,
-            s.final_label,
-            s.score_status,
+            CASE
+                WHEN current_score.score_status = 'confirmed'
+                    THEN current_score.total_score
+                ELSE COALESCE(confirmed_score.total_score, current_score.total_score)
+            END AS total_score,
+            CASE
+                WHEN current_score.score_status = 'confirmed'
+                    THEN current_score.final_label
+                ELSE COALESCE(confirmed_score.final_label, current_score.final_label)
+            END AS final_label,
+            CASE
+                WHEN current_score.score_status = 'confirmed'
+                    THEN current_score.score_status
+                ELSE COALESCE(confirmed_score.score_status, current_score.score_status)
+            END AS score_status,
             d.decision,
             d.keep_installed,
             d.best_use_case
@@ -163,7 +175,17 @@ def list_model_summaries(conn):
             ORDER BY mr.date_tested DESC, mr.id DESC
             LIMIT 1
         )
-        LEFT JOIN eval_scores s ON s.run_id = r.id
+        LEFT JOIN eval_scores current_score ON current_score.run_id = r.id
+        LEFT JOIN eval_scores confirmed_score ON confirmed_score.id = (
+            SELECT es.id
+            FROM eval_scores es
+            JOIN model_runs scored_run ON scored_run.id = es.run_id
+            WHERE scored_run.model_id = m.id
+              AND es.score_status = 'confirmed'
+            -- eval_scores has no timestamp; its primary key records score/import order.
+            ORDER BY es.id DESC
+            LIMIT 1
+        )
         LEFT JOIN decisions d ON d.id = (
             SELECT dd.id
             FROM decisions dd
@@ -171,7 +193,23 @@ def list_model_summaries(conn):
             ORDER BY dd.created_at DESC, dd.id DESC
             LIMIT 1
         )
-        ORDER BY COALESCE(s.total_score, 0) DESC, m.model_name ASC
+        ORDER BY
+            CASE
+                WHEN current_score.score_status = 'confirmed'
+                  OR confirmed_score.score_status = 'confirmed'
+                    THEN 0
+                ELSE 1
+            END,
+            COALESCE(
+                CASE
+                    WHEN current_score.score_status = 'confirmed'
+                        THEN current_score.total_score
+                    ELSE confirmed_score.total_score
+                END,
+                current_score.total_score,
+                0
+            ) DESC,
+            m.model_name ASC
         """
     ).fetchall()
 
@@ -212,6 +250,7 @@ def list_runs(conn):
             m.provider,
             m.source_url,
             m.params_b,
+            s.id AS score_id,
             s.total_score,
             s.final_label,
             s.score_status

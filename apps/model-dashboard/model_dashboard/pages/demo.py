@@ -25,6 +25,7 @@ def _demo(conn):
                 _text(row["provider"]),
                 _text(row["backend"]),
                 _number(row["total_score"], 2),
+                _status_pill(row["score_status"]),
                 _pill(row["final_label"]),
                 _text(row["decision"]),
             ]
@@ -37,7 +38,7 @@ def _demo(conn):
     {table}
     """.format(
         table=_table(
-            ["Model", "Provider", "Backend", "Score", "Label", "Decision"],
+            ["Model", "Provider", "Backend", "Score", "Status", "Label", "Decision"],
             rows,
             empty_message="No demo fixture rows found.",
         )

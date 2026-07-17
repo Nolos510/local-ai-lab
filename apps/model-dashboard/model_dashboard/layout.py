@@ -1028,6 +1028,70 @@ def _layout(title, current_path, body):
     .runs-section > .section-heading-row {{
       margin-top: 0;
     }}
+    .runs-view-control {{
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }}
+    .run-groups {{
+      display: grid;
+      gap: 16px;
+      min-width: 0;
+    }}
+    .run-group {{
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel-soft);
+    }}
+    .run-group-heading {{
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px 14px;
+    }}
+    .run-group-heading h3 {{
+      margin: 0;
+      font-size: 17px;
+    }}
+    .run-group .table-wrap {{
+      border-radius: 12px;
+      box-shadow: none;
+    }}
+    .run-history {{
+      min-width: 0;
+    }}
+    .run-history summary {{
+      width: fit-content;
+      cursor: pointer;
+      color: var(--accent-2);
+      font-weight: 600;
+    }}
+    .run-history summary::marker {{
+      color: var(--accent-2);
+    }}
+    .run-history[open] summary {{
+      margin-bottom: 10px;
+    }}
+    .run-model-cell,
+    .current-run-marker {{
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+    }}
+    .pill.current-run {{
+      border-color: rgba(42, 212, 238, 0.38);
+      background: rgba(42, 212, 238, 0.12);
+      color: var(--accent-2);
+      text-transform: lowercase;
+    }}
     .home-hero {{
       display: grid;
       gap: 16px;

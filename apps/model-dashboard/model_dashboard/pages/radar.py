@@ -89,7 +89,7 @@ def _upstream_update_control(row, action_token):
 
 def _candidate_rows(conn, candidates, memory_gb=None, action_token=""):
     model_links = _dashboard_model_links(conn)
-    evidence = _dashboard_fit_evidence(conn)
+    evidence = _dashboard_fit_evidence(conn, candidates)
     rows = []
     for row in candidates:
         model_id = model_links.get(row.get("model_name", "").lower())

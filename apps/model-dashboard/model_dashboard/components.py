@@ -49,6 +49,7 @@ METRIC_EXPLANATIONS = {
     "status": "Confirmed = a score you finalized after review. Draft = an auto-suggested score awaiting confirmation; drafts never overwrite confirmed scores.",
     "decision": "Your keep / watchlist / retest / skip verdict after reviewing results.",
     "fit": "Estimated memory = parameter count in billions × quantization bits ÷ 8 × 1.1 weight overhead, plus an 8 GB context/runtime allowance. Fit compares that estimate with machine memory after a 16 GB system reserve. It is an estimate, not a measured run; observed tok/s comes only from imported benchmark runs.",
+    "current_run": "latest / registry-designated run for this model; older runs are kept for history and regression diffs",
     "task_leader": "Task leaders use confirmed scores only; drafts are excluded. Coding averages instruction-following and coding/debugging. Reasoning & agents averages reasoning and agent-planning. Research & writing averages research-synthesis and creativity. Long context and Fast & practical use their matching dimensions. Equal scores remain co-leaders.",
 }
 METRIC_LABEL_KEYS = {
@@ -101,6 +102,15 @@ def _status_pill(value):
     if status == "draft":
         class_name += " draft"
     return f'<span class="{class_name}">{_text(status.upper())}</span>'
+
+
+def _current_run_badge():
+    return (
+        '<span class="current-run-marker">'
+        '<span class="pill current-run">current</span>'
+        f'{_metric_info("current_run")}'
+        "</span>"
+    )
 
 
 def _observed_tokens_per_second(value):
@@ -690,6 +700,113 @@ def _benchmark_run_id_from_notes(notes):
     return _run_note_value(notes, "benchmark_run_id")
 
 
+def _row_value(row, key):
+    if hasattr(row, "get"):
+        return row.get(key)
+    try:
+        return row[key]
+    except (IndexError, KeyError):
+        return None
+
+
+def _run_recency_key(row):
+    return (
+        str(_row_value(row, "date_tested") or ""),
+        int(_row_value(row, "id") or 0),
+    )
+
+
+def _authoritative_run_groups(runs, candidates):
+    """Return each model's live-derived current run and retained history."""
+
+    designations_by_candidate = {}
+    designations_by_model_name = {}
+    for candidate in candidates or ():
+        benchmark_run_id = str(_row_value(candidate, "benchmark_run_id") or "").strip()
+        if not benchmark_run_id:
+            continue
+        candidate_id = str(_row_value(candidate, "candidate_id") or "").strip()
+        if candidate_id:
+            designations_by_candidate[candidate_id] = benchmark_run_id
+        model_name = str(_row_value(candidate, "model_name") or "").strip().casefold()
+        if model_name:
+            designations_by_model_name[model_name] = benchmark_run_id
+    runs_by_model = {}
+    for row in runs:
+        runs_by_model.setdefault(_row_value(row, "model_id"), []).append(row)
+
+    groups = {}
+    for model_id, model_runs in runs_by_model.items():
+        designated = []
+        for row in model_runs:
+            run_notes = _row_value(row, "run_notes")
+            candidate_id = _run_note_value(run_notes, "candidate_id")
+            model_name = str(_row_value(row, "model_name") or "").strip().casefold()
+            expected_run_ids = {
+                designations_by_candidate.get(candidate_id),
+                designations_by_model_name.get(model_name),
+            }
+            benchmark_run_id = _benchmark_run_id_from_notes(run_notes)
+            if benchmark_run_id and benchmark_run_id in expected_run_ids:
+                designated.append(row)
+        if designated:
+            authoritative = max(
+                designated,
+                key=lambda row: int(_row_value(row, "id") or 0),
+            )
+        else:
+            authoritative = max(model_runs, key=_run_recency_key)
+        authoritative_id = _row_value(authoritative, "id")
+        other_runs = sorted(
+            [row for row in model_runs if _row_value(row, "id") != authoritative_id],
+            key=_run_recency_key,
+            reverse=True,
+        )
+        groups[model_id] = {
+            "authoritative_run_id": authoritative_id,
+            "authoritative_run": authoritative,
+            "other_runs": other_runs,
+        }
+    return groups
+
+
+def _authoritative_model_summaries(conn, candidates):
+    summaries = [dict(row) for row in db.list_model_summaries(conn)]
+    groups = _authoritative_run_groups(_real_rows(db.list_runs(conn)), candidates)
+    performance_fields = (
+        "backend",
+        "quantization",
+        "tokens_per_sec",
+        "ram_usage_gb",
+    )
+    score_fields = ("total_score", "final_label", "score_status")
+    for summary in summaries:
+        group = groups.get(summary["id"])
+        if not group:
+            continue
+        current = group["authoritative_run"]
+        for field in performance_fields:
+            summary[field] = _row_value(current, field)
+        score = current
+        if _row_value(current, "score_status") != "confirmed":
+            confirmed = [
+                row
+                for row in (current, *group["other_runs"])
+                if _row_value(row, "score_status") == "confirmed"
+            ]
+            if confirmed:
+                score = max(
+                    confirmed,
+                    key=lambda row: (
+                        int(_row_value(row, "score_id") or 0),
+                        _run_recency_key(row),
+                    ),
+                )
+        for field in score_fields:
+            summary[field] = _row_value(score, field)
+    return summaries
+
+
 def _artifact_link_from_notes(notes):
     return _artifact_link(_benchmark_run_id_from_notes(notes))
 
@@ -935,11 +1052,13 @@ def _merge_fit_evidence(target, row):
         target["tokens_per_sec"] = observed
 
 
-def _dashboard_fit_evidence(conn):
-    """Index latest model metadata and real observed throughput for fit pills."""
+def _dashboard_fit_evidence(conn, candidates=()):
+    """Index authoritative model metadata and observed throughput for fit pills."""
     by_name = {}
     by_candidate = {}
-    for row in _real_rows(db.list_runs(conn)):
+    run_groups = _authoritative_run_groups(_real_rows(db.list_runs(conn)), candidates)
+    for group in run_groups.values():
+        row = group["authoritative_run"]
         model_name = str(row["model_name"] or "").strip().lower()
         if model_name:
             evidence = by_name.setdefault(model_name, {})
@@ -948,7 +1067,7 @@ def _dashboard_fit_evidence(conn):
         if candidate_id:
             evidence = by_candidate.setdefault(candidate_id, {})
             _merge_fit_evidence(evidence, row)
-    for row in _real_rows(db.list_model_summaries(conn)):
+    for row in _real_rows(_authoritative_model_summaries(conn, candidates)):
         model_name = str(row["model_name"] or "").strip().lower()
         if model_name:
             evidence = by_name.setdefault(model_name, {})
@@ -1014,4 +1133,4 @@ def _import_state_for_run(run, decisions_by_model):
         decision=decision_state,
     )
 
-__all__ = ('_text', '_number', '_pill', '_status_pill', '_fit_summary', '_fit_capacity_summary', '_fit_memory_gb', '_task_leaders', '_stat_card', '_chart_panel', '_model_chart_label', '_average_metric_items', '_performance_items', '_performance_chart', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_run_note_value', '_benchmark_run_id_from_notes', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_import_guidance', '_artifact_import_control', '_artifact_import_all_control', '_import_sync_notice', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_fit_evidence', '_dashboard_run_ids', '_pending_artifact_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'LOCAL_INVENTORY_REGISTRY_PATH', 'RADAR_UPSTREAM_STATE_PATH', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE', 'METRIC_EXPLANATIONS', 'METRIC_LABEL_KEYS', 'RESULT_TABLE_HEADER_TIPS')
+__all__ = ('_text', '_number', '_pill', '_status_pill', '_current_run_badge', '_fit_summary', '_fit_capacity_summary', '_fit_memory_gb', '_task_leaders', '_stat_card', '_chart_panel', '_model_chart_label', '_average_metric_items', '_performance_items', '_performance_chart', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_run_note_value', '_benchmark_run_id_from_notes', '_authoritative_run_groups', '_authoritative_model_summaries', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_import_guidance', '_artifact_import_control', '_artifact_import_all_control', '_import_sync_notice', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_fit_evidence', '_dashboard_run_ids', '_pending_artifact_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'LOCAL_INVENTORY_REGISTRY_PATH', 'RADAR_UPSTREAM_STATE_PATH', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE', 'METRIC_EXPLANATIONS', 'METRIC_LABEL_KEYS', 'RESULT_TABLE_HEADER_TIPS')
