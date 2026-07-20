@@ -36,6 +36,14 @@ specific candidates.
 - Preserve source claims as claims; do not convert them into eval scores.
 - Record unknown license, runtime, context window, hardware, and source dates as
   unknown instead of inferring them.
+- For external daily packets, record `first_seen`, `last_seen`, `change_status`,
+  and `change_summary`; omit unchanged repeat items.
+- For model candidates, include artifact size, disk, memory, compatible local
+  runtimes, and the specific benchmark gap.
+- For project opportunities, include the complete dated cost/freshness fields
+  and one-week MVP action card required by `external-radar-runbook.md`.
+- Explain every project in plain language: what it is, the problem it solves,
+  who uses it, common uses, how it works, the AI Lab demo, and limitations.
 - Do not fetch links, crawl pages, download models, call cloud APIs, or use
   secrets from this automation.
 - Recommend only `watchlist`, `ready_for_eval`, `skip`, or
@@ -56,6 +64,7 @@ Use dated, source-specific filenames:
 YYYY-MM-DD-approved-source-packet.md
 YYYY-MM-DD-<topic>-approved-source-packet.md
 YYYY-MM-DD-external-curated-model-scan.md
+YYYY-MM-DD-daily-external-radar.md
 ```
 
 Start from `source-packet-template.md` when adding a new packet.

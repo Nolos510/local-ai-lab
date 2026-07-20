@@ -19,8 +19,10 @@ TEST_DIR = REPO_ROOT / "apps" / "model-dashboard" / "tests"
 SERVER_PATHS = (
     "/",
     "/?label=CODING_SPECIALIST&keep=yes",
+    "/lab",
     "/runs",
     "/runs?backend=llama.cpp",
+    "/reviews",
     "/compare?status=confirmed",
     "/inventory",
     "/inventory?runtime=LM%20Studio",
@@ -36,6 +38,11 @@ SERVER_PATHS = (
     "/demo",
     "/models/3",
 )
+SERVER_CONTENT = {
+    "/": "Local Readiness",
+    "/lab": "Local Readiness",
+    "/reviews": "Draft Review Queue",
+}
 
 
 class SmokeFailure(RuntimeError):
@@ -151,6 +158,9 @@ def _probe_server(db_path, host, timeout):
                 raise SmokeFailure(f"{url} returned HTTP {status}")
             if "Local Model Performance Dashboard" not in body:
                 raise SmokeFailure(f"{url} did not render the dashboard shell")
+            expected = SERVER_CONTENT.get(path)
+            if expected and expected not in body:
+                raise SmokeFailure(f"{url} did not render expected content: {expected}")
             print(f"OK {path} -> HTTP {status}", flush=True)
     finally:
         if proc.poll() is None:

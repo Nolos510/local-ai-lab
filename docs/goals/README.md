@@ -4,6 +4,10 @@ Standing goal prompts for the Codex agents. Each goal is paste-ready and runs on
 its **own branch** in its **own area** so parallel agents don't collide. The
 Claude Code integrator `/loop` gate-checks every branch's commits.
 
+The current integrated product gate is tracked in
+[`release-readiness.md`](release-readiness.md). It remains active until the
+evidence-backed score reaches 92/100 and every mandatory category gate passes.
+
 ## Coordination map
 
 | Goal | File | Branch | Area (owns these files) | Reserved ADR # |

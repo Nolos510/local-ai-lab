@@ -42,6 +42,14 @@ which local models and project opportunities are worth keeping.
 - Treat `data/dashboard/*.sqlite` and dashboard export folders as local runtime
   state.
 - Radar candidates are review records, not eval scores.
+- Classify installed models by role. Embedding and reranker models must not enter
+  generative Run All, LLM scoring, comparison rankings, or the efficiency
+  frontier; they require retrieval-specific evaluation evidence.
+- Machine-generated scores are drafts. A canonical confirmed score requires an
+  independent local review record and explicit human confirmation.
+- Keep raw prompts, responses, benchmark artifacts, dashboard databases, and
+  machine-specific paths local and ignored unless a deliberately sanitized
+  sample is approved for version control.
 - External Radar may gather public metadata on demand, but it must not download
   models, run models, call model APIs, add API clients, or register candidates
   without explicit approval.
@@ -120,6 +128,8 @@ and `uv.lock`.
 - If a required command cannot run locally, document the exact reason in PR
   notes or handoff notes.
 - Do not claim a command passed unless it was actually run.
+- Never invent missing benchmark values. Label safe metadata inference as
+  inferred and keep it distinct from values measured or declared by a run.
 
 ## 11. Validation Commands
 

@@ -80,6 +80,45 @@ def test_doctor_fails_when_selected_ollama_is_unreachable(tmp_path: Path) -> Non
     assert any(check.required and check.status == CheckStatus.FAIL for check in checks)
 
 
+def test_doctor_fails_when_qdrant_collection_dimension_does_not_match(
+    tmp_path: Path,
+) -> None:
+    root = _make_project_root(tmp_path)
+    settings = Settings(
+        llm_provider="mock",
+        qdrant_collection="local_ai_lab_chunks",
+        qdrant_vector_size=1024,
+    )
+
+    def fake_get(url: str, *, timeout: float) -> FakeResponse:
+        del timeout
+        if url == "http://localhost:6333/collections":
+            return FakeResponse(
+                {"result": {"collections": [{"name": "local_ai_lab_chunks"}]}}
+            )
+        assert url == "http://localhost:6333/collections/local_ai_lab_chunks"
+        return FakeResponse(
+            {"result": {"config": {"params": {"vectors": {"size": 384}}}}}
+        )
+
+    output = StringIO()
+    exit_code = run_doctor(
+        root=root,
+        output=output,
+        settings_factory=lambda: settings,
+        http_get=fake_get,
+    )
+
+    report = output.getvalue()
+    assert exit_code == 1
+    assert "Qdrant collection" in report
+    assert "existing collection uses 384 dimensions" in report
+    assert (
+        "LOCAL_AI_LAB_QDRANT_COLLECTION=local_ai_lab_chunks_deterministic_1024"
+        in report
+    )
+
+
 def test_doctor_fails_with_actionable_detail_when_selected_ollama_model_is_missing(
     tmp_path: Path,
 ) -> None:
@@ -155,14 +194,14 @@ def test_doctor_explains_when_no_ollama_models_are_installed(tmp_path: Path) -> 
 def test_doctor_checks_openai_compatible_endpoint_when_selected(tmp_path: Path) -> None:
     root = _make_project_root(tmp_path)
     calls: list[str] = []
-    settings = Settings(llm_provider="lm_studio")
+    settings = Settings(llm_provider="lm_studio", lm_studio_model="local-model")
 
     def fake_get(url: str, *, timeout: float) -> FakeResponse:
         del timeout
         calls.append(url)
         payloads = {
             "http://localhost:6333/collections": {"result": {"collections": []}},
-            "http://localhost:1234/v1/models": {"data": []},
+            "http://localhost:1234/v1/models": {"data": [{"id": "local-model"}]},
         }
         return FakeResponse(payloads[url])
 
@@ -175,6 +214,42 @@ def test_doctor_checks_openai_compatible_endpoint_when_selected(tmp_path: Path) 
 
     assert exit_code == 0
     assert calls == ["http://localhost:6333/collections", "http://localhost:1234/v1/models"]
+
+
+def test_doctor_fails_with_actionable_detail_when_lm_studio_model_is_missing(
+    tmp_path: Path,
+) -> None:
+    root = _make_project_root(tmp_path)
+    settings = Settings(
+        llm_provider="lm_studio",
+        lm_studio_base_url="http://user:secret@localhost:1234/private?token=abc",
+        lm_studio_model="missing-model",
+    )
+
+    def fake_get(url: str, *, timeout: float) -> FakeResponse:
+        del timeout
+        if url == "http://localhost:6333/collections":
+            return FakeResponse({"result": {"collections": []}})
+        assert "secret" in url
+        return FakeResponse({"data": [{"id": "installed-model"}]})
+
+    output = StringIO()
+    exit_code = run_doctor(
+        root=root,
+        output=output,
+        settings_factory=lambda: settings,
+        http_get=fake_get,
+    )
+
+    report = output.getvalue()
+    assert exit_code == 1
+    assert "configured model 'missing-model' was not found" in report
+    assert "curl -s http://localhost:1234/v1/models" in report
+    assert "uv run python -m json.tool" in report
+    assert "LOCAL_AI_LAB_LM_STUDIO_MODEL" in report
+    assert "secret" not in report
+    assert "token=abc" not in report
+    assert "/private" not in report
 
 
 def test_doctor_checks_ollama_embedding_model_when_selected(tmp_path: Path) -> None:

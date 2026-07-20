@@ -30,6 +30,8 @@ class ArtifactResponseTests(unittest.TestCase):
                     registry_path=database_path.parent / "missing-candidates.csv",
                     database_path=database_path,
                     eval_results_dir=FIXTURE_RUNS,
+                    enable_score_actions=True,
+                    reviewer_model="local-reviewer",
                 )
             run.assert_not_called()
             return html
@@ -37,6 +39,7 @@ class ArtifactResponseTests(unittest.TestCase):
         html = self._render(render)
 
         self.assertIn("Per-prompt Responses", html)
+        self.assertIn("Score Confirmation", html)
         self.assertIn("S1-PROMPT-001", html)
         self.assertIn(">12 ms<", html)
         self.assertIn(">7<", html)

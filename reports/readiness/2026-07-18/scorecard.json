@@ -1,0 +1,490 @@
+{
+  "schema_version": 1,
+  "measured_at": "2026-07-18T13:47:56-07:00",
+  "evaluated_revision": "d345266 + preserved working-tree patch",
+  "patch_state": "Dirty working tree preserved; readiness changes are layered on the existing scoring and lifecycle work.",
+  "baseline_score": 68.2,
+  "executive_assessment": "Local AI Lab now has a trustworthy evidence lifecycle instead of a generic draft backlog. Owner review produced 23 confirmed real runs across nine models. Two genuine Qwen judge disagreements remain for human disposition, one repaired Gemma draft awaits a compatible independent reviewer, ten invalid or retired generative runs are quarantined with recorded remediation, the BGE embedding artifact is routed outside the LLM rubric, and no run remains ambiguously unscored. Rejected evidence stays available for audit but cannot return to rankings or confirmation. A refreshed portfolio report separates benchmark authority from install decisions, names confirmed workload leaders, explains every efficiency exclusion, and passed automated privacy scanning. Full validation passes. The product is still No-Go because the 92-point threshold, human keyboard audit, interrupted-capture recovery proof, retrieval-model evaluation, seven missing portfolio decisions, and historical run metadata gaps remain open.",
+  "release_gate": {
+    "minimum_score": 92,
+    "minimum_criterion": 4,
+    "protected_minimum": 4.5,
+    "protected_criteria": [
+      "Product utility",
+      "Evaluation trust",
+      "Reliability and recovery",
+      "Privacy and security"
+    ]
+  },
+  "criteria": [
+    {
+      "criterion": "Product utility",
+      "weight": 17,
+      "rating": 4.6,
+      "confidence": "High",
+      "evidence": [
+        "Dashboard closes radar, inventory, benchmark, review, compare, decision, and report workflows",
+        "Artifact detail exposes the confirmation action beside underlying evidence",
+        "Twenty-three real runs across nine models now have confirmed score evidence",
+        "Score resolution distinguishes valid drafts, quarantine, role-specific evidence, and confirmed results",
+        "The live LM Studio RAG path completed doctor, ingest, answer, and citations",
+        "Home and Lab now expose cached local readiness with direct remediation before expensive actions"
+      ],
+      "blockers": [
+        "Seven confirmed models still lack an explicit keep, watch, retest, or remove decision",
+        "Retrieval models have no completed evaluation lane"
+      ],
+      "owner": "Product owner + implementation lead",
+      "measured_at": "2026-07-18"
+    },
+    {
+      "criterion": "Evaluation trust",
+      "weight": 18,
+      "rating": 4.6,
+      "confidence": "High",
+      "evidence": [
+        "Primary draft, blind independent review, disagreement state, and human confirmation are separate artifacts",
+        "Embedding and reranker models are excluded from generative scoring",
+        "Measured, declared, and inferred run configuration provenance is retained",
+        "Doctor validates Qdrant dimensions and the exact LM Studio model inventory before work",
+        "Rejected, all-zero, role-mismatched, capture-failed, and incomplete-review artifacts are excluded from human confirmation and active rankings",
+        "Prior score attempts are preserved and primary/reviewer repairs are bounded instead of looping indefinitely",
+        "Judge prompts use typed placeholders, canonical totals are recomputed from eleven validated metrics, and mismatched judge totals are retained only as warned provenance"
+      ],
+      "blockers": [
+        "Two genuine judge disagreements and one valid reviewer-pending draft remain",
+        "Seven confirmed real runs lack throughput or RAM and 24 runs lack complete run configuration",
+        "Retrieval models still lack a role-specific quality benchmark"
+      ],
+      "owner": "Evaluation lead",
+      "measured_at": "2026-07-18"
+    },
+    {
+      "criterion": "UI/UX and accessibility",
+      "weight": 16,
+      "rating": 4.2,
+      "confidence": "Medium",
+      "evidence": [
+        "Review is now primary navigation and pending drafts become the next recommended action",
+        "Skip link, global focus-visible treatment, and mobile touch targets are present",
+        "Charts explain frontier exclusions and evidence resolution states",
+        "The cockpit places judge, reviewer, Qdrant, and runtime readiness ahead of workflow queues",
+        "The review queue explains judge disagreement, hides invalid or rejected evidence, and labels machine-review-pending drafts",
+        "All ten required routes showed no page-level horizontal overflow at 1440x900, 1024x768, and 390x844; dense charts and tables remain contained scroll regions"
+      ],
+      "blockers": [
+        "Human keyboard traversal remains to be completed",
+        "Dense model history and benchmark tables still need stronger mobile progressive disclosure"
+      ],
+      "owner": "Product design lead",
+      "measured_at": "2026-07-18"
+    },
+    {
+      "criterion": "Reliability and recovery",
+      "weight": 14,
+      "rating": 4.6,
+      "confidence": "High",
+      "evidence": [
+        "Judge and reviewer inventory preflights run before expensive scoring work",
+        "Capture, scoring, review, and lifecycle statuses are represented separately",
+        "LM Studio models loaded by the harness are unloaded in a finally block",
+        "Score-all and review-all reuse raw evidence instead of rerunning inference",
+        "Automatic quarantine removes invalid drafts from rankings, preserves artifacts, and records the required remediation",
+        "Successful review recovery re-exports and re-imports a previously quarantined valid draft",
+        "A live review batch completed 21 of 26 drafts, then retried the five incomplete outputs successfully without recapture",
+        "Collection drift fails before ingest with a non-destructive separate-index remediation",
+        "Cached loopback health checks verify exact judge/reviewer inventory and Qdrant readiness before action"
+      ],
+      "blockers": [
+        "Interrupted capture-batch resume remains unproven even though review retry now passes",
+        "Current live full capture-to-confirm cycle has not been rerun after the patch"
+      ],
+      "owner": "Runtime lead",
+      "measured_at": "2026-07-18"
+    },
+    {
+      "criterion": "Privacy and security",
+      "weight": 12,
+      "rating": 4.7,
+      "confidence": "High",
+      "evidence": [
+        "Action surfaces are loopback-gated and disabled by default",
+        "Provider and runtime tokens are not written to commands, artifacts, or dashboard logs",
+        "Reports and ledgers exclude raw prompts, responses, secrets, and full private paths",
+        "No new cloud dependency or hidden remote call was added",
+        "Mock answers no longer echo prompts or retrieved document text"
+      ],
+      "blockers": [],
+      "owner": "Privacy/security reviewer",
+      "measured_at": "2026-07-18"
+    },
+    {
+      "criterion": "Runtime efficiency",
+      "weight": 8,
+      "rating": 4.3,
+      "confidence": "Medium",
+      "evidence": [
+        "Raw evidence can be rescored and reviewed without rerunning model inference",
+        "Run All loads installed LM Studio models on demand and unloads only models it loaded",
+        "Dashboard and benchmark harness remain dependency-light",
+        "Live Home, Lab, and cached Home requests completed in approximately 23 ms, 30 ms, and 12 ms",
+        "A ten-request route baseline kept every warmed response below 28 ms while the idle dashboard held 26.3 MiB RSS and 0% CPU"
+      ],
+      "blockers": [
+        "Batch execution is sequential and not resource-aware",
+        "Active-batch CPU, RAM, queue latency, and model-load churn have not been measured",
+        "Runs returns roughly 305 KiB of HTML and needs progressive history disclosure"
+      ],
+      "owner": "Runtime lead",
+      "measured_at": "2026-07-18"
+    },
+    {
+      "criterion": "Onboarding and docs",
+      "weight": 6,
+      "rating": 4.2,
+      "confidence": "High",
+      "evidence": [
+        "README documents exact local judge/reviewer launch and action flags",
+        "Doctor, LM Studio, mock RAG, and privacy behavior are documented",
+        "ADR 0012 records role and confirmation boundaries",
+        "Doctor provides actionable model-inventory and Qdrant dimension remediation",
+        "A separate five-minute fixture path was executed with a disposable database and report"
+      ],
+      "blockers": [
+        "Demo and live-runtime paths need one concise guided case study"
+      ],
+      "owner": "Documentation lead",
+      "measured_at": "2026-07-18"
+    },
+    {
+      "criterion": "Engineering quality",
+      "weight": 5,
+      "rating": 4.4,
+      "confidence": "High",
+      "evidence": [
+        "Full validation passed 439 pytest tests with 87 subtests, 272 dashboard tests, 24 harness tests, Ruff, Compose config, and smoke probe",
+        "New role, independent review, and readiness-report logic have focused tests",
+        "The batch confirmation contract rejects missing acknowledgement, disagreements, stale review state, malformed score records, and missing raw evidence",
+        "No product dependency was added"
+      ],
+      "blockers": [
+        "The large in-flight actions module should be decomposed only after behavior stabilizes"
+      ],
+      "owner": "Implementation lead",
+      "measured_at": "2026-07-18"
+    },
+    {
+      "criterion": "Differentiation",
+      "weight": 4,
+      "rating": 4.6,
+      "confidence": "High",
+      "evidence": [
+        "Product focuses on reproducible evidence, independent review, Apple Silicon resource fit, and keep/watch/retest/remove decisions",
+        "It complements rather than replaces LM Studio, Ollama, and Open WebUI"
+      ],
+      "blockers": [
+        "Portfolio proof needs one end-to-end confirmed decision case study"
+      ],
+      "owner": "Product owner",
+      "measured_at": "2026-07-18"
+    }
+  ],
+  "evidence_register": [
+    {
+      "id": "E1",
+      "title": "Repository baseline",
+      "confidence": "High",
+      "finding": "Revision d345266 was evaluated with the pre-existing dirty scoring/lifecycle patch preserved; no unrelated work was discarded."
+    },
+    {
+      "id": "E2",
+      "title": "All dashboard records",
+      "confidence": "High",
+      "finding": "The SQLite database contains 16 models, 41 runs, 29 active score rows, 27 confirmed scores, 2 imported drafts, and 12 run rows without an active score; these totals include four demo fixtures."
+    },
+    {
+      "id": "E3",
+      "title": "Real evidence subset",
+      "confidence": "High",
+      "finding": "Excluding demo rows leaves 12 models and 37 runs: 23 confirmed runs across nine models, three valid draft or review-pending runs, ten rejected or quarantined generative runs, one non-generative embedding run, and zero ambiguous unscored runs."
+    },
+    {
+      "id": "E4",
+      "title": "Confirmed recommendation coverage",
+      "confidence": "High",
+      "finding": "Confirmed evidence now covers nine real models: Qwen3.6 35B A3B, Qwen3.6 27B Obliteratus, Dolphin Mistral 24B Venice, Qwen3 Coder 30B A3B, llama3.3 70B, qwen2.5 32B, qwen2.5 14B, qwen2.5 7B, and Qwen2.5 VL 7B."
+    },
+    {
+      "id": "E5",
+      "title": "Local services",
+      "confidence": "High",
+      "finding": "LM Studio served a loopback /v1/models inventory and Qdrant served a healthy dimension-checked collection during the audit; Docker Compose infrastructure was not started by this loop."
+    },
+    {
+      "id": "E6",
+      "title": "Candidate behavior repairs",
+      "confidence": "High",
+      "finding": "Focused tests prove non-generative role exclusion, review-before-confirmation, artifact-level confirmation, bounded invalid-output retry, and truthful per-stage queue status."
+    },
+    {
+      "id": "E7",
+      "title": "Live local RAG journey",
+      "confidence": "High",
+      "finding": "Doctor verified the exact LM Studio model and 1024-dimensional Qdrant collection; sample ingest produced two chunks and Qwen Coder returned a local answer with two citations."
+    },
+    {
+      "id": "E8",
+      "title": "Live artifact confirmation route",
+      "confidence": "High",
+      "finding": "A real draft artifact detail route returned HTTP 200 with the Score Confirmation panel and Confirm Draft Score control after independent review."
+    },
+    {
+      "id": "E9",
+      "title": "Live independent review recovery",
+      "confidence": "High",
+      "finding": "The dashboard independently reviewed 21 of 26 untouched imported generative drafts on the first pass, preserved five failures as pending, and completed all five on a bounded retry without rerunning benchmark captures; all 27 current drafts now have review records."
+    },
+    {
+      "id": "E10",
+      "title": "Sanitized report export",
+      "confidence": "High",
+      "finding": "A freshly generated report contained no user home paths, bearer tokens, API-key assignments, serialized raw prompt/response payloads, or the known RAG smoke prompt."
+    },
+    {
+      "id": "E11",
+      "title": "Live cockpit readiness",
+      "confidence": "High",
+      "finding": "Home and Lab both returned HTTP 200 with primary judge, independent reviewer, Qdrant, LM Studio CLI, and Ollama CLI ready; the shared inventory was cached and the second Home request completed in approximately 12 ms."
+    },
+    {
+      "id": "E12",
+      "title": "Five-minute fixture path",
+      "confidence": "High",
+      "finding": "The documented offline path synchronized dependencies, initialized a disposable fixture database, and generated a nonempty fixture report without Docker or a model server."
+    },
+    {
+      "id": "E13",
+      "title": "All-zero agreement quarantine",
+      "confidence": "High",
+      "finding": "All-zero, malformed, capture-error, human-rejected, and role-mismatched artifacts are now removed from active rankings and human confirmation while their raw files and prior score attempts remain available for audit."
+    },
+    {
+      "id": "E14",
+      "title": "Owner disposition sheet",
+      "confidence": "High",
+      "finding": "Owner disposition and automatic triage reduced the live queue to two valid Qwen judge disagreements and one Gemma draft awaiting a compatible independent reviewer; ten invalid or retired generative runs have explicit quarantine actions and BGE is outside the LLM lane."
+    },
+    {
+      "id": "E15",
+      "title": "Judge contract hardening",
+      "confidence": "High",
+      "finding": "The local judge prompt now uses nonnumeric type placeholders instead of a zero-filled example; the harness retries invalid totals and labels, recomputes total_score from the eleven validated metrics, preserves judge_reported_total only for provenance, and warns on zero vectors or total mismatch."
+    },
+    {
+      "id": "E16",
+      "title": "Live runtime baseline",
+      "confidence": "High",
+      "finding": "Ten warmed requests per major dashboard route completed with medians from 1.8 to 26.2 ms and maxima below 28 ms; the idle server used 26.3 MiB RSS and 0% CPU. Runs produced 305.3 KiB of HTML, making progressive disclosure the priority over a backend rewrite."
+    },
+    {
+      "id": "E17",
+      "title": "Automated evidence reconciliation",
+      "confidence": "High",
+      "finding": "Automatic triage preserved raw artifacts and prior judge attempts while removing invalid imported drafts. Runs now reports 23 confirmed, 3 valid draft or review-pending, 10 quarantined, 1 non-generative, and 0 ambiguously unscored real runs."
+    },
+    {
+      "id": "E18",
+      "title": "Responsive route matrix",
+      "confidence": "Medium",
+      "finding": "All ten required routes were inspected at 1440x900, 1024x768, and 390x844 with no page-level horizontal overflow. Dense charts and tables remain in deliberate contained scroll regions; human keyboard traversal is still pending."
+    },
+    {
+      "id": "E19",
+      "title": "Portfolio report comprehension",
+      "confidence": "Medium",
+      "finding": "The first independent review failed because efficiency exclusions were absent. After revision, a fresh independent reviewer correctly identified all confirmed workload leaders, incomplete decisions, exclusion counts, next actions, and no private path, prompt, response, token, credential, or secret."
+    }
+  ],
+  "risks": [
+    {
+      "severity": "P1",
+      "title": "Portfolio decision authority is incomplete",
+      "impact": "Confirmed benchmark evidence covers nine models, but seven still lack an explicit keep, watch, retest, or remove decision and three valid drafts remain open.",
+      "mitigation": "Resolve the two genuine judge disagreements, obtain a compatible independent Gemma review, and record decisions for the seven confirmed models that still lack one."
+    },
+    {
+      "severity": "P1",
+      "title": "Resource evidence is incomplete",
+      "impact": "Seven confirmed real runs cannot support a tokens/sec versus RAM efficiency decision.",
+      "mitigation": "Use rerun-missing-evidence to capture both throughput and peak RAM; keep incomplete runs excluded from the frontier."
+    },
+    {
+      "severity": "P1",
+      "title": "Retrieval models lack actionable quality evidence",
+      "impact": "Embedding models are now safely excluded from LLM scoring but cannot yet be compared for RAG quality.",
+      "mitigation": "Add a small retrieval benchmark with recall, MRR or nDCG, latency, index size, and language coverage."
+    },
+    {
+      "severity": "P1",
+      "title": "Live recovery is not fully demonstrated",
+      "impact": "Automated tests cover lifecycle cleanup, but an interrupted real batch has not been resumed and completed in this audit.",
+      "mitigation": "Run one controlled interruption, verify cleanup, then retry without duplicate records."
+    },
+    {
+      "severity": "P1",
+      "title": "Viewport and accessibility evidence is incomplete",
+      "impact": "The responsive route matrix passed automated overflow inspection, but keyboard traversal and focus behavior still lack reliable human evidence.",
+      "mitigation": "Complete the keyboard and focus sections of reports/readiness/2026-07-18/human-verification-checklist.md and log every failure with severity and exit evidence."
+    },
+    {
+      "severity": "P2",
+      "title": "Dense data views remain costly on small screens",
+      "impact": "Horizontal tables and long identifiers can obscure the next action on mobile.",
+      "mitigation": "Move secondary columns into row details and retain a stable action/status summary at narrow widths."
+    }
+  ],
+  "journeys": [
+    {
+      "status": "PASS",
+      "name": "Fresh setup, doctor, runtime selection, and recovery",
+      "evidence": "Doctor detected and safely remediated collection drift, then passed Qdrant and exact LM Studio model checks; the separate fixture path also produced a disposable dashboard and report."
+    },
+    {
+      "status": "PASS",
+      "name": "Classify generator, embedding, reranker, and multimodal models",
+      "evidence": "Conservative classifier and inventory/scoring exclusions pass focused tests."
+    },
+    {
+      "status": "PARTIAL",
+      "name": "Approved benchmark load, capture, unload, and recovery",
+      "evidence": "Lifecycle code and tests pass; no new expensive live capture was started during this audit."
+    },
+    {
+      "status": "PARTIAL",
+      "name": "Preserve run configuration and resource metadata",
+      "evidence": "Future-run metadata provenance is implemented, but historical real runs remain incomplete."
+    },
+    {
+      "status": "PARTIAL",
+      "name": "Score, independently review, resolve, and confirm",
+      "evidence": "Owner review and automatic triage produced 23 confirmed runs, two genuine judge disagreements, one valid independent-review-pending draft, ten quarantined generative runs with remediation, and zero ambiguous unscored runs."
+    },
+    {
+      "status": "PARTIAL",
+      "name": "Compare models and make a portfolio decision",
+      "evidence": "Confirmed workload recommendations cover nine models, but only two models have an explicit portfolio decision."
+    },
+    {
+      "status": "PASS",
+      "name": "Ingest documents and answer with retrieval citations",
+      "evidence": "A live local run ingested one sample document into two chunks and returned a cited LM Studio answer without cloud calls."
+    },
+    {
+      "status": "PASS",
+      "name": "Export a sanitized, understandable report",
+      "evidence": "A fresh report passed automated privacy scans and an independent reviewer correctly identified evidence authority, workload leaders, efficiency exclusions, next actions, and no private content."
+    }
+  ],
+  "validation": [
+    {
+      "command": "uv sync",
+      "status": "PASS",
+      "detail": "Baseline candidate synchronized successfully."
+    },
+    {
+      "command": "docker compose config",
+      "status": "PASS",
+      "detail": "Baseline Compose configuration validated."
+    },
+    {
+      "command": "uv run ruff check .",
+      "status": "PASS",
+      "detail": "The full repository passed Ruff after coordinated radar work stabilized."
+    },
+    {
+      "command": "uv run pytest -q",
+      "status": "PASS",
+      "detail": "The full repository passed 439 tests with 87 subtests; one upstream Starlette deprecation warning remains."
+    },
+    {
+      "command": "python3 -m unittest discover -s apps/model-dashboard/tests",
+      "status": "PASS",
+      "detail": "Final candidate passed 272 dashboard tests."
+    },
+    {
+      "command": "python3 -m unittest discover -s evals/local-llm-benchmark/tests",
+      "status": "PASS",
+      "detail": "Final candidate passed 24 harness tests."
+    },
+    {
+      "command": "python3 scripts/model_dashboard_smoke.py --probe-server",
+      "status": "PASS",
+      "detail": "Final candidate passed tests, fixture report generation, and loopback probes including /lab and /reviews."
+    },
+    {
+      "command": "uv run local-ai-lab doctor",
+      "status": "EXPECTED FAIL",
+      "detail": "The default Ollama profile reaches the local service but qwen3:14b is not installed; use an installed Ollama model or select the validated LM Studio profile."
+    },
+    {
+      "command": "LOCAL_AI_LAB_LLM_PROVIDER=lm_studio ... uv run local-ai-lab doctor",
+      "status": "PASS",
+      "detail": "Qdrant collection dimension and exact LM Studio model both passed."
+    },
+    {
+      "command": "uv run local-ai-lab ingest --path data/sample_docs",
+      "status": "PASS",
+      "detail": "Live safe collection ingested one document into two chunks."
+    },
+    {
+      "command": "LOCAL_AI_LAB_LLM_PROVIDER=mock uv run local-ai-lab ask \"What is this lab for?\"",
+      "status": "PASS",
+      "detail": "Mock orchestration returned citations without echoing prompt or document text."
+    },
+    {
+      "command": "LOCAL_AI_LAB_LLM_PROVIDER=lm_studio ... uv run local-ai-lab ask \"What is this lab for?\"",
+      "status": "PASS",
+      "detail": "The configured local Qwen Coder model returned an answer with two citations."
+    },
+    {
+      "command": "GET /artifacts/<run-id>",
+      "status": "PASS",
+      "detail": "A real reviewed artifact returned HTTP 200 with its confirmation panel and human acknowledgement control."
+    },
+    {
+      "command": "POST /actions/review-all-drafts",
+      "status": "PASS",
+      "detail": "A live local batch reviewed 21 artifacts, retained five failures as pending, and completed all five on retry without recapture or automatic confirmation."
+    },
+    {
+      "command": "GET /reviews and guarded POST /actions/confirm-reviewed-agreements",
+      "status": "PASS",
+      "detail": "The action requires explicit acknowledgement; invalid and rejected evidence is excluded, while two valid judge disagreements remain individually reviewable."
+    },
+    {
+      "command": "dashboard report privacy scan",
+      "status": "PASS",
+      "detail": "Fresh report contained no private home path, credentials, serialized raw prompt/response content, or known smoke prompt and now quantifies evidence authority and exclusions."
+    },
+    {
+      "command": "GET / and GET /lab local readiness",
+      "status": "PASS",
+      "detail": "Both live pages showed exact primary judge, reviewer, Qdrant, LM Studio CLI, and Ollama CLI ready; cached Home reload completed in approximately 12 ms."
+    },
+    {
+      "command": "five-minute disposable fixture path",
+      "status": "PASS",
+      "detail": "Fixture database initialization and include-demo report generation completed without Docker or a model server."
+    },
+    {
+      "command": "human viewport and keyboard audit",
+      "status": "PENDING",
+      "detail": "All ten required routes passed automated page-overflow inspection at 1440x900, 1024x768, and 390x844; human keyboard and focus traversal remains pending."
+    },
+    {
+      "command": "second-person sanitized report comprehension review",
+      "status": "PASS",
+      "detail": "A reviewer who did not create the report identified confirmed workload leaders, incomplete decisions, all efficiency exclusion classes, next actions, and no private content."
+    }
+  ]
+}

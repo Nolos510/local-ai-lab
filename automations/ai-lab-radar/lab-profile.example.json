@@ -1,0 +1,34 @@
+{
+  "profile_version": 1,
+  "profile_status": "example",
+  "safe_to_commit": true,
+  "available_hardware": [
+    {
+      "category": "primary_compute",
+      "item": "Apple Silicon workstation",
+      "status": "available",
+      "planning_note": "Reuse for local metadata, design, and software-only prototypes."
+    },
+    {
+      "category": "edge_compute",
+      "item": "Raspberry Pi host",
+      "status": "unknown",
+      "planning_note": "Confirm model, memory, power supply, and storage before using incremental pricing."
+    }
+  ],
+  "budget_tiers": {
+    "weekend_project_usd": 100,
+    "sub_300_build_usd": 300,
+    "portfolio_investment_usd": null
+  },
+  "max_diy_hours": null,
+  "priority_categories": [
+    "ai_lab_os_product_loop",
+    "business_portfolio",
+    "edge_hardware",
+    "passive_osint_sigint_learning",
+    "drone_robotics",
+    "model_radar"
+  ],
+  "notes": "Copy to lab-profile.local.json, then replace unknown or null values. Keep private inventory details only in the ignored local file."
+}

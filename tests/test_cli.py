@@ -4,6 +4,7 @@ from local_ai_lab.cli.app import main
 from local_ai_lab.embeddings.base import EmbeddingProviderConnectionError
 from local_ai_lab.llms.base import ChatProviderConnectionError
 from local_ai_lab.rag.service import AskResult, Citation, RetrievalInspection
+from local_ai_lab.vectorstores.base import VectorStoreConfigurationError
 
 
 class FailingRAGService:
@@ -60,6 +61,22 @@ class SuccessfulRAGService:
         )
 
 
+class FailingVectorStoreRAGService:
+    def ingest_path(self, path) -> None:
+        del path
+        raise VectorStoreConfigurationError("safe vector dimension failure")
+
+    def ask(
+        self,
+        question: str,
+        *,
+        top_k: int | None = None,
+        inspect_retrieval: bool = False,
+    ) -> None:
+        del question, top_k, inspect_retrieval
+        raise VectorStoreConfigurationError("safe vector dimension failure")
+
+
 def test_cli_ask_catches_provider_error_without_traceback(monkeypatch, capsys) -> None:
     monkeypatch.setattr(sys, "argv", ["local-ai-lab", "ask", "PRIVATE_PROMPT_TEXT"])
     monkeypatch.setattr(
@@ -111,6 +128,27 @@ def test_cli_ingest_catches_embedding_error_without_traceback(monkeypatch, capsy
     assert exit_code == 1
     assert captured.out == ""
     assert "Embedding provider error: safe embedding failure" in captured.err
+    assert "private.md" not in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_cli_ingest_catches_vector_store_error_without_traceback(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["local-ai-lab", "ingest", "--path", "data/sample_docs/private.md"],
+    )
+    monkeypatch.setattr(
+        "local_ai_lab.cli.app.build_rag_service",
+        lambda: FailingVectorStoreRAGService(),
+    )
+
+    exit_code = main()
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "Vector store error: safe vector dimension failure" in captured.err
     assert "private.md" not in captured.err
     assert "Traceback" not in captured.err
 

@@ -48,6 +48,7 @@ def _home_next_action(
     artifact_counts,
     real_counts,
     pending_import_count=None,
+    pending_review_count=0,
 ):
     importable_gap = (
         max(0, artifact_counts["with_dashboard_import"] - real_counts["model_runs"])
@@ -63,6 +64,18 @@ def _home_next_action(
             "href": "/runs",
             "label": "Open Benchmark",
             "kind": "import",
+        }
+    if pending_review_count:
+        draft_word = "draft needs" if pending_review_count == 1 else "drafts need"
+        return {
+            "title": "Review benchmark drafts",
+            "detail": (
+                f"{pending_review_count} benchmark {draft_word} independent review and "
+                "human confirmation before it can support model recommendations."
+            ),
+            "href": "/reviews",
+            "label": "Open Review",
+            "kind": "review",
         }
     if score_decision_gap:
         return {
@@ -221,6 +234,7 @@ def _overview(
     enable_import_actions=False,
     action_token="",
     import_sync_result=None,
+    runtime_health=None,
 ):
     counts = _real_counts(conn)
     candidates = _load_radar_candidates(registry_path, local_inventory_path)
@@ -245,6 +259,8 @@ def _overview(
     installed_count = _count_local_inventory_models(local_inventory_path)
     artifact_counts = capability.benchmark_artifact_counts(Path(eval_results_dir))
     pending_import_count = len(_pending_artifact_run_ids(conn, eval_results_dir))
+    score_status_counts = _score_status_counts(conn)
+    pending_review_count = score_status_counts.get("draft", 0)
     hardware_profiles = capability.load_hardware_profiles(Path(hardware_profiles_dir), limit=1)
     action = _home_next_action(
         ready_count,
@@ -252,6 +268,7 @@ def _overview(
         artifact_counts,
         counts,
         pending_import_count=pending_import_count,
+        pending_review_count=pending_review_count,
     )
     action["pending_import_count"] = pending_import_count
     top_rows = _top_result_rows(summaries)
@@ -262,10 +279,12 @@ def _overview(
       <p class="home-intro">Benchmark and decide on local models, privately on your Mac.</p>
       <p class="empty">AI Lab OS turns local radar candidates, installed model inventory, benchmark artifacts, comparison scores, and keep/watch decisions into one auditable workflow.</p>
     </section>
+    {runtime_health_panel}
     <section class="workflow-strip" aria-label="AI Lab OS workflow loop">
       {discover_step}
       {install_step}
       {benchmark_step}
+      {review_step}
       {compare_step}
       {decide_step}
     </section>
@@ -287,6 +306,7 @@ def _overview(
     """.format(
         import_sync_notice=_import_sync_notice(import_sync_result),
         notice=_real_data_notice(counts["demo_models"]),
+        runtime_health_panel=_runtime_health_panel(runtime_health),
         discover_step=_workflow_step(
             "Discover",
             discover_count,
@@ -295,6 +315,12 @@ def _overview(
         ),
         install_step=_workflow_step("Install", installed_count, "detected local models", "/inventory"),
         benchmark_step=_workflow_step("Benchmark", artifact_counts["total"], "artifact directories", "/runs"),
+        review_step=_workflow_step(
+            "Review",
+            pending_review_count,
+            "draft scores awaiting confirmation",
+            "/reviews",
+        ),
         compare_step=_workflow_step("Compare", counts["eval_scores"], "imported scores", "/runs"),
         decide_step=_workflow_step("Decide", counts["decisions"], "recorded decisions", "/inventory"),
         task_leaders=_task_leaders(task_summary, surface_class="task-leaders-home"),

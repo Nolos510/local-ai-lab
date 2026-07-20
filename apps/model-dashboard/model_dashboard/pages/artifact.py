@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .. import capability, charts, db
+from .. import capability, charts, db, model_roles, score_review
 from ..components import *
 from ..filters import *
 from ..layout import _layout
@@ -316,14 +316,102 @@ def _artifact_context_path(value):
     return _path_cell(value)
 
 
+def _artifact_review_panel(
+    benchmark_run_id,
+    artifact_dir,
+    *,
+    enable_score_actions=False,
+    action_token="",
+    reviewer_model=None,
+):
+    role = model_roles.artifact_model_role(artifact_dir)
+    if not model_roles.model_supports_generation(role):
+        return f"""
+        <section class="panel artifact-review-panel" style="margin-top:16px">
+          <h2>Evaluation Lane</h2>
+          <p>{_pill(role)} This is not a chat/generation model.</p>
+          <p class="section-note">Use a retrieval evaluation for this artifact. It cannot be scored or confirmed with the local LLM rubric.</p>
+        </section>
+        """
+
+    primary = score_review.load_json_object(Path(artifact_dir) / "draft-scores.json")
+    review = score_review.review_state(artifact_dir)
+    status = review.get("status") or "unscored"
+    if status == "confirmed":
+        return f"""
+        <section class="panel artifact-review-panel" style="margin-top:16px">
+          <h2>Score Confirmation</h2>
+          <p>{_pill("confirmed")} This artifact has a canonical human-confirmed score.</p>
+        </section>
+        """
+    if not primary:
+        return f"""
+        <section class="panel artifact-review-panel" style="margin-top:16px">
+          <h2>Score Confirmation</h2>
+          <p>{_pill("unscored")} Create a local draft score before independent review.</p>
+          {_artifact_score_control(benchmark_run_id, enable_score_actions, action_token, artifact_dir.parent)}
+        </section>
+        """
+
+    primary_score = _number(primary.get("total_score"), 2, "—")
+    primary_label = _text(primary.get("final_label") or "—")
+    review_link = (
+        f'<a class="action-link secondary" href="/reviews/{_text(benchmark_run_id)}">'
+        "Open score comparison / edit</a>"
+    )
+    if status == "draft":
+        if enable_score_actions and reviewer_model:
+            action = f"""
+            <form class="inline-form" method="post" action="/actions/review-score">
+              <input type="hidden" name="token" value="{_text(action_token)}">
+              <input type="hidden" name="benchmark_run_id" value="{_text(benchmark_run_id)}">
+              <button type="submit">Send for Independent Review</button>
+            </form>
+            """
+        else:
+            action = (
+                '<button type="button" disabled>Send for Independent Review</button>'
+                '<p class="empty">Score actions and a different reviewer model are required.</p>'
+            )
+        confirmation = ""
+    else:
+        action = review_link
+        if enable_score_actions:
+            confirmation = f"""
+            <form class="inline-form artifact-confirm-form" method="post" action="/actions/confirm-score">
+              <input type="hidden" name="token" value="{_text(action_token)}">
+              <input type="hidden" name="benchmark_run_id" value="{_text(benchmark_run_id)}">
+              <input type="hidden" name="confirmation_mode" value="primary">
+              <label class="review-acknowledgement">
+                <input type="checkbox" name="human_reviewed" value="yes" required>
+                I inspected the evidence and independent review.
+              </label>
+              <button type="submit">Confirm Draft Score</button>
+            </form>
+            """
+        else:
+            confirmation = '<button type="button" disabled>Confirm Draft Score</button>'
+
+    return f"""
+    <section class="panel artifact-review-panel" style="margin-top:16px">
+      <h2>Score Confirmation</h2>
+      <p>{_pill(status.replace("_", " "))} Draft score {primary_score} &middot; {primary_label}</p>
+      <p class="section-note">Independent review never confirms automatically. Confirmation writes canonical <code>scores.json</code>, rebuilds dashboard imports, and preserves the review record.</p>
+      <div class="filter-actions">{action}{confirmation}</div>
+    </section>
+    """
+
+
 def _artifact_detail(
     conn,
     benchmark_run_id,
     registry_path=CANDIDATE_REGISTRY_PATH,
     database_path=DEFAULT_DASHBOARD_DB,
     enable_import_actions=False,
+    enable_score_actions=False,
     action_token="",
     eval_results_dir=None,
+    reviewer_model=None,
 ):
     eval_results_dir = EVAL_RESULTS_DIR if eval_results_dir is None else eval_results_dir
     candidates = _load_radar_candidates(registry_path)
@@ -354,6 +442,7 @@ def _artifact_detail(
     raw_result = _load_raw_responses(artifact_dir)
     metadata = _artifact_metadata(artifact_dir)
     prompt_set = _prompt_set_id(metadata, raw_result["records"])
+    model_role = model_roles.artifact_model_role(artifact_dir)
     compare_picker = _compare_picker(
         _artifact_catalog(eval_results_dir),
         prompt_set,
@@ -375,6 +464,7 @@ def _artifact_detail(
         <p><strong>Candidate:</strong> {status}</p>
         <p><strong>Benchmark run:</strong> <code>{run_id}</code></p>
         <p><strong>Prompt set:</strong> {prompt_set}</p>
+        <p><strong>Model role:</strong> {model_role}</p>
         <p><strong>Dashboard:</strong> {dashboard_state}</p>
       </section>
       <section class="panel">
@@ -389,6 +479,7 @@ def _artifact_detail(
       {compare_picker}
     </section>
     {responses}
+    {review_panel}
     <section class="panel" style="margin-top:16px">
       <h2>Dashboard Import</h2>
       <p>This imports only existing local CSV files from this artifact's <code>dashboard-import</code> directory.</p>
@@ -401,11 +492,19 @@ def _artifact_detail(
         status=candidate_state,
         run_id=_text(benchmark_run_id),
         prompt_set=(f"<code>{_text(prompt_set)}</code>" if prompt_set else EM_DASH),
+        model_role=_pill(model_role),
         dashboard_state=dashboard_state,
         source=_artifact_context_path(candidate.get("source_packet_path") if candidate else ""),
         report=_artifact_context_path(candidate.get("report_path") if candidate else ""),
         compare_picker=compare_picker,
         responses=_prompt_response_section(raw_result),
+        review_panel=_artifact_review_panel(
+            benchmark_run_id,
+            artifact_dir,
+            enable_score_actions=enable_score_actions,
+            action_token=action_token,
+            reviewer_model=reviewer_model,
+        ),
         import_control=_artifact_import_control(
             benchmark_run_id,
             enable_import_actions=enable_import_actions,

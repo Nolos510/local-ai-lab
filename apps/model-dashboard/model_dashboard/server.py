@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import secrets
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from . import db, discover
+from . import db, discover, score_review
+from .runtime_health import runtime_health_snapshot
 from .components import (
     CANDIDATE_REGISTRY_PATH,
     DEFAULT_DASHBOARD_DB,
@@ -23,6 +25,7 @@ from .filters import *
 from .layout import NAV_ICONS, NAV_ITEMS, _layout
 from .pages.actions import (
     _background_candidate_batch,
+    _auto_reject_invalid_artifacts,
     _build_candidate_commands,
     _import_action_page,
     _import_artifact,
@@ -32,10 +35,26 @@ from .pages.actions import (
     _run_all_started_page,
     _run_all_status_page,
     _run_candidate_test,
+    _score_action_page,
+    _score_all_started_page,
+    _score_all_status_page,
+    _score_artifact,
+    _start_score_batch,
     _start_candidate_batch,
     _start_candidate_test,
     _startup_import_sync,
     _sync_pending_artifacts,
+    _unscored_artifact_ids,
+    _judge_preflight,
+    _human_confirmation_batch_page,
+    _human_score_action_page,
+    _reject_artifact_score,
+    _review_all_started_page,
+    _review_all_status_page,
+    _reviewer_preflight,
+    _confirm_artifact_score,
+    _confirm_reviewed_agreements,
+    _start_review_batch,
 )
 from .pages.artifact import (
     _artifact_compare as _artifact_compare_page,
@@ -84,6 +103,7 @@ from .pages.projects import _projects
 from .pages.radar import _radar
 from .pages.reports import _reports
 from .pages.runs import _runs
+from .pages.review import _review_detail, _review_queue
 from .pages.specialty import _specialty
 from .pages.storage import _storage
 from .components import *
@@ -109,8 +129,10 @@ def _artifact_detail(
     registry_path=CANDIDATE_REGISTRY_PATH,
     database_path=DEFAULT_DASHBOARD_DB,
     enable_import_actions=False,
+    enable_score_actions=False,
     action_token="",
     eval_results_dir=None,
+    reviewer_model=None,
 ):
     eval_results_dir = EVAL_RESULTS_DIR if eval_results_dir is None else eval_results_dir
     return _artifact_detail_page(
@@ -119,8 +141,10 @@ def _artifact_detail(
         registry_path=registry_path,
         database_path=database_path,
         enable_import_actions=enable_import_actions,
+        enable_score_actions=enable_score_actions,
         action_token=action_token,
         eval_results_dir=eval_results_dir,
+        reviewer_model=reviewer_model,
     )
 
 
@@ -178,6 +202,7 @@ def make_handler(
     enable_run_tests=False,
     enable_import_actions=False,
     enable_delete_actions=False,
+    enable_score_actions=False,
     action_token="",
     run_test_timeout=3600,
     inventory_timeout=5,
@@ -188,6 +213,10 @@ def make_handler(
     project_registry_path=None,
     upstream_state_path=None,
     import_sync_result=None,
+    judge_endpoint="http://127.0.0.1:1234/v1",
+    judge_model=None,
+    reviewer_endpoint="http://127.0.0.1:1234/v1",
+    reviewer_model=None,
 ):
     candidate_registry_path = (
         CANDIDATE_REGISTRY_PATH if candidate_registry_path is None else candidate_registry_path
@@ -207,7 +236,10 @@ def make_handler(
     inventory_cache = {"result": None}
     import_sync_cache = {"result": import_sync_result}
     batch_run_cache = {}
+    score_batch_cache = {}
+    review_batch_cache = {}
     run_all_preflight_cache = {}
+    runtime_health_cache = {"captured_at": 0.0, "snapshot": None}
 
     class DashboardHandler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -234,6 +266,13 @@ def make_handler(
                     "/actions/refresh-inventory",
                     "/actions/import-artifact",
                     "/actions/import-all",
+                    "/actions/suggest-scores",
+                    "/actions/score-all-unscored",
+                    "/actions/review-all-drafts",
+                    "/actions/review-score",
+                    "/actions/confirm-score",
+                    "/actions/confirm-reviewed-agreements",
+                    "/actions/reject-score",
                     "/actions/delete-model",
                     "/actions/run-all",
                     "/actions/dismiss-upstream-update",
@@ -262,6 +301,86 @@ def make_handler(
                                 action_token=action_token,
                             )
                         self.send_response(200)
+                    elif parsed.path in (
+                        "/actions/review-all-drafts",
+                        "/actions/review-score",
+                        "/actions/confirm-score",
+                        "/actions/confirm-reviewed-agreements",
+                        "/actions/reject-score",
+                    ):
+                        if not enable_score_actions:
+                            html = _layout(
+                                "Score Actions Disabled",
+                                "",
+                                "<h2>Score actions disabled</h2><p>Restart the dashboard with <code>--enable-score-actions</code>.</p>",
+                            )
+                            self.send_response(403)
+                        else:
+                            benchmark_run_id = _query_value(form, "benchmark_run_id")
+                            if parsed.path in (
+                                "/actions/review-all-drafts",
+                                "/actions/review-score",
+                            ):
+                                if parsed.path == "/actions/review-all-drafts":
+                                    available_ids = set(
+                                        score_review.reviewable_artifact_ids(eval_results_dir)
+                                    )
+                                    submitted_ids = form.get("benchmark_run_id", [])
+                                    if isinstance(submitted_ids, str):
+                                        submitted_ids = [submitted_ids]
+                                    run_ids = [
+                                        run_id
+                                        for run_id in submitted_ids
+                                        if run_id in available_ids
+                                    ]
+                                    if not submitted_ids:
+                                        run_ids = sorted(available_ids)
+                                else:
+                                    run_ids = [benchmark_run_id]
+                                started = _start_review_batch(
+                                    run_ids,
+                                    eval_results_dir,
+                                    run_test_timeout,
+                                    reviewer_endpoint,
+                                    reviewer_model,
+                                    judge_endpoint,
+                                    judge_model,
+                                    database_path,
+                                )
+                                review_batch_cache[started["batch_id"]] = started["status"]
+                                while len(review_batch_cache) > 20:
+                                    review_batch_cache.pop(next(iter(review_batch_cache)))
+                                html = _review_all_started_page(started)
+                            elif parsed.path == "/actions/confirm-score":
+                                result = _confirm_artifact_score(
+                                    benchmark_run_id,
+                                    form,
+                                    database_path,
+                                    eval_results_dir,
+                                    run_test_timeout,
+                                )
+                                html = _human_score_action_page(result)
+                            elif parsed.path == "/actions/confirm-reviewed-agreements":
+                                submitted_ids = form.get("benchmark_run_id", [])
+                                if isinstance(submitted_ids, str):
+                                    submitted_ids = [submitted_ids]
+                                result = _confirm_reviewed_agreements(
+                                    submitted_ids,
+                                    form,
+                                    database_path,
+                                    eval_results_dir,
+                                    run_test_timeout,
+                                )
+                                html = _human_confirmation_batch_page(result)
+                            else:
+                                result = _reject_artifact_score(
+                                    benchmark_run_id,
+                                    form,
+                                    database_path,
+                                    eval_results_dir,
+                                )
+                                html = _human_score_action_page(result)
+                            self.send_response(200)
                     elif parsed.path == "/actions/refresh-inventory":
                         if not enable_inventory_refresh:
                             html = _layout(
@@ -299,8 +418,23 @@ def make_handler(
                     elif parsed.path in (
                         "/actions/import-artifact",
                         "/actions/import-all",
+                        "/actions/suggest-scores",
+                        "/actions/score-all-unscored",
                     ):
-                        if not enable_import_actions:
+                        if parsed.path in (
+                            "/actions/suggest-scores",
+                            "/actions/score-all-unscored",
+                        ) and not enable_score_actions:
+                            html = _layout(
+                                "Score Actions Disabled",
+                                "",
+                                "<h2>Score actions disabled</h2><p>Restart the dashboard with <code>--enable-score-actions</code>.</p>",
+                            )
+                            self.send_response(403)
+                        elif parsed.path not in (
+                            "/actions/suggest-scores",
+                            "/actions/score-all-unscored",
+                        ) and not enable_import_actions:
                             html = _layout(
                                 "Import Actions Disabled",
                                 "",
@@ -308,7 +442,24 @@ def make_handler(
                             )
                             self.send_response(403)
                         else:
-                            if parsed.path == "/actions/import-all":
+                            if parsed.path == "/actions/score-all-unscored":
+                                run_ids = _unscored_artifact_ids(
+                                    eval_results_dir,
+                                    database_path,
+                                )
+                                started = _start_score_batch(
+                                    run_ids,
+                                    database_path,
+                                    eval_results_dir,
+                                    run_test_timeout,
+                                    judge_endpoint,
+                                    judge_model,
+                                )
+                                score_batch_cache[started["batch_id"]] = started["status"]
+                                while len(score_batch_cache) > 20:
+                                    score_batch_cache.pop(next(iter(score_batch_cache)))
+                                html = _score_all_started_page(started)
+                            elif parsed.path == "/actions/import-all":
                                 result = _sync_pending_artifacts(
                                     database_path,
                                     eval_results_dir,
@@ -322,17 +473,34 @@ def make_handler(
                                         database_path=database_path,
                                         eval_results_dir=eval_results_dir,
                                         enable_import_actions=enable_import_actions,
+                                        enable_score_actions=enable_score_actions,
                                         action_token=action_token,
                                         import_sync_result=result,
                                     )
                             else:
                                 benchmark_run_id = _query_value(form, "benchmark_run_id")
-                                result = _import_artifact(
-                                    benchmark_run_id,
-                                    database_path,
-                                    eval_results_dir,
-                                )
-                                html = _import_action_page(result)
+                                if parsed.path == "/actions/suggest-scores":
+                                    _judge_preflight(
+                                        judge_endpoint,
+                                        judge_model,
+                                        min(run_test_timeout, 10),
+                                    )
+                                    result = _score_artifact(
+                                        benchmark_run_id,
+                                        database_path,
+                                        eval_results_dir,
+                                        run_test_timeout,
+                                        judge_endpoint,
+                                        judge_model,
+                                    )
+                                    html = _score_action_page(result)
+                                else:
+                                    result = _import_artifact(
+                                        benchmark_run_id,
+                                        database_path,
+                                        eval_results_dir,
+                                    )
+                                    html = _import_action_page(result)
                             self.send_response(200)
                     elif parsed.path == "/actions/delete-model":
                         if not enable_delete_actions:
@@ -365,6 +533,12 @@ def make_handler(
                             )
                             self.send_response(403)
                         else:
+                            if enable_score_actions:
+                                _judge_preflight(
+                                    judge_endpoint,
+                                    judge_model,
+                                    min(run_test_timeout, 10),
+                                )
                             approval_scope = _query_value(form, "approval_scope")
                             plan = run_all_preflight_cache.get(approval_scope)
                             if plan is None:
@@ -378,7 +552,17 @@ def make_handler(
                                 eval_results_dir,
                                 run_test_timeout,
                                 database_path,
-                                _start_candidate_batch,
+                                lambda runnable, eval_dir, timeout, db_path: _start_candidate_batch(
+                                    runnable,
+                                    eval_dir,
+                                    timeout,
+                                    db_path,
+                                    {
+                                        "enabled": enable_score_actions,
+                                        "endpoint": judge_endpoint,
+                                        "judge_model": judge_model,
+                                    },
+                                ),
                             )
                             run_all_preflight_cache.pop(approval_scope, None)
                             batch_run_cache[started["batch_id"]] = started["status"]
@@ -394,6 +578,12 @@ def make_handler(
                         )
                         self.send_response(403)
                     else:
+                        if enable_score_actions:
+                            _judge_preflight(
+                                judge_endpoint,
+                                judge_model,
+                                min(run_test_timeout, 10),
+                            )
                         candidate_id = _query_value(form, "candidate_id")
                         result = _start_candidate_test(
                             candidate_id,
@@ -401,6 +591,11 @@ def make_handler(
                             eval_results_dir,
                             run_test_timeout,
                             database_path,
+                            {
+                                "enabled": enable_score_actions,
+                                "endpoint": judge_endpoint,
+                                "judge_model": judge_model,
+                            },
                         )
                         html = _run_action_started_page(result)
                         self.send_response(200)
@@ -416,6 +611,22 @@ def make_handler(
         def log_message(self, fmt, *args):
             return
 
+        def _runtime_health(self):
+            now = time.monotonic()
+            if (
+                runtime_health_cache["snapshot"] is None
+                or now - runtime_health_cache["captured_at"] >= 15
+            ):
+                runtime_health_cache["snapshot"] = runtime_health_snapshot(
+                    enable_score_actions=enable_score_actions,
+                    judge_endpoint=judge_endpoint,
+                    judge_model=judge_model,
+                    reviewer_endpoint=reviewer_endpoint,
+                    reviewer_model=reviewer_model,
+                )
+                runtime_health_cache["captured_at"] = now
+            return runtime_health_cache["snapshot"]
+
         def _route(self, path, query, conn):
             if path == "/lab":
                 return _lab(
@@ -427,6 +638,7 @@ def make_handler(
                     registry_path=candidate_registry_path,
                     eval_results_dir=eval_results_dir,
                     project_registry_path=project_registry_path,
+                    runtime_health=self._runtime_health(),
                 )
             if path == "/capability":
                 return _capability(conn)
@@ -441,6 +653,25 @@ def make_handler(
                     enable_import_actions=enable_import_actions,
                     action_token=action_token,
                     import_sync_result=import_sync_cache["result"],
+                    runtime_health=self._runtime_health(),
+                )
+            if path == "/reviews":
+                return _review_queue(
+                    eval_results_dir,
+                    conn=conn,
+                    query=query,
+                    enable_score_actions=enable_score_actions,
+                    action_token=action_token,
+                    reviewer_model=reviewer_model,
+                )
+            if path.startswith("/reviews/"):
+                benchmark_run_id = path.rsplit("/", 1)[-1]
+                return _review_detail(
+                    benchmark_run_id,
+                    eval_results_dir,
+                    enable_score_actions=enable_score_actions,
+                    action_token=action_token,
+                    reviewer_model=reviewer_model,
                 )
             if path == "/runs":
                 return _runs(
@@ -451,6 +682,7 @@ def make_handler(
                     local_inventory_path=local_inventory_registry_path,
                     eval_results_dir=eval_results_dir,
                     enable_import_actions=enable_import_actions,
+                    enable_score_actions=enable_score_actions,
                     action_token=action_token,
                     import_sync_result=import_sync_cache["result"],
                 )
@@ -506,6 +738,26 @@ def make_handler(
                         "<section class=\"panel\"><h2>Batch summary unavailable</h2><p>The batch id is missing, unknown, or no longer retained by this dashboard process.</p><p><a href=\"/inventory\">Back to My Models</a></p></section>",
                     )
                 return _run_all_status_page(status)
+            if path == "/runs/score-all/status":
+                batch_id = _query_value(query, "batch_id")
+                status = score_batch_cache.get(batch_id)
+                if status is None:
+                    return _layout(
+                        "Bulk Draft Scoring",
+                        "/runs",
+                        '<section class="panel"><h2>Scoring summary unavailable</h2><p>The batch id is missing, unknown, or no longer retained by this dashboard process.</p><p><a href="/runs">Back to Benchmark</a></p></section>',
+                    )
+                return _score_all_status_page(status)
+            if path == "/runs/review-all/status":
+                batch_id = _query_value(query, "batch_id")
+                status = review_batch_cache.get(batch_id)
+                if status is None:
+                    return _layout(
+                        "Independent Draft Review",
+                        "/runs",
+                        '<section class="panel"><h2>Review summary unavailable</h2><p>The batch id is missing, unknown, or no longer retained by this dashboard process.</p><p><a href="/reviews">Back to Draft Review Queue</a></p></section>',
+                    )
+                return _review_all_status_page(status)
             if path == "/radar":
                 return _radar(
                     conn,
@@ -533,8 +785,10 @@ def make_handler(
                     benchmark_run_id,
                     database_path=database_path,
                     enable_import_actions=enable_import_actions,
+                    enable_score_actions=enable_score_actions,
                     action_token=action_token,
                     eval_results_dir=eval_results_dir,
+                    reviewer_model=reviewer_model,
                 )
             if path.startswith("/models/"):
                 model_id = int(path.rsplit("/", 1)[-1])
@@ -562,20 +816,31 @@ def serve(
     enable_run_tests=False,
     enable_import_actions=None,
     enable_delete_actions=False,
+    enable_score_actions=False,
     run_test_timeout=3600,
     inventory_timeout=5,
     eval_results_dir=None,
+    judge_endpoint="http://127.0.0.1:1234/v1",
+    judge_model=None,
+    reviewer_endpoint="http://127.0.0.1:1234/v1",
+    reviewer_model=None,
 ):
     enable_import_actions = _resolve_import_actions(host, enable_import_actions)
     if not _is_loopback_host(host):
         raise ValueError("Dashboard serving requires a localhost or loopback bind host.")
     eval_results_dir = EVAL_RESULTS_DIR if eval_results_dir is None else eval_results_dir
     enable_inventory_refresh = _is_loopback_host(host)
+    triage_result = _auto_reject_invalid_artifacts(
+        database_path,
+        eval_results_dir,
+        enabled=enable_score_actions,
+    )
     import_sync_result = _startup_import_sync(
         database_path,
         eval_results_dir,
         enabled=enable_import_actions,
     )
+    import_sync_result["evidence_triage"] = triage_result
     action_token = secrets.token_urlsafe(24)
     server = ThreadingHTTPServer(
         (host, port),
@@ -584,12 +849,17 @@ def serve(
             enable_run_tests=enable_run_tests,
             enable_import_actions=enable_import_actions,
             enable_delete_actions=enable_delete_actions,
+            enable_score_actions=enable_score_actions,
             action_token=action_token,
             run_test_timeout=run_test_timeout,
             inventory_timeout=inventory_timeout,
             enable_inventory_refresh=enable_inventory_refresh,
             eval_results_dir=eval_results_dir,
             import_sync_result=import_sync_result,
+            judge_endpoint=judge_endpoint,
+            judge_model=judge_model,
+            reviewer_endpoint=reviewer_endpoint,
+            reviewer_model=reviewer_model,
         ),
     )
     print(f"Serving Local Model Dashboard at http://{host}:{port}", flush=True)
@@ -599,6 +869,13 @@ def serve(
         print("Dashboard artifact import actions enabled for local CSV artifacts.", flush=True)
     if enable_delete_actions:
         print("Dashboard delete actions enabled for local inventory rows.", flush=True)
+    if enable_score_actions:
+        print("Dashboard draft-score actions enabled for local benchmark artifacts.", flush=True)
+        if reviewer_model:
+            print(
+                f"Independent draft reviewer configured: {reviewer_model}",
+                flush=True,
+            )
     if enable_inventory_refresh:
         print("Installed-model inventory refresh enabled for local runtimes.", flush=True)
     try:

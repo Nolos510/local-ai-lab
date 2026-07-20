@@ -13,6 +13,7 @@ NAV_ITEMS = (
     ("/radar", "Discover"),
     ("/inventory", "My Models"),
     ("/runs", "Benchmark"),
+    ("/reviews", "Review"),
 )
 
 NAV_ICONS = {
@@ -20,6 +21,7 @@ NAV_ICONS = {
     "/radar": "ti-radar",
     "/inventory": "ti-device-desktop-analytics",
     "/runs": "ti-player-play",
+    "/reviews": "ti-checkup-list",
     "/reports": "ti-file-analytics",
 }
 
@@ -393,7 +395,7 @@ def _layout(title, current_path, body):
       line-height: 1.1;
       font-style: normal;
       text-transform: uppercase;
-      letter-spacing: 0.4px;
+      letter-spacing: 0;
       white-space: nowrap;
     }}
     .filters {{
@@ -1147,7 +1149,7 @@ def _layout(title, current_path, body):
     .task-leader-task {{
       color: var(--muted);
       font-size: 11px;
-      letter-spacing: 0.5px;
+      letter-spacing: 0;
       text-transform: uppercase;
     }}
     .task-leader-models {{
@@ -1205,7 +1207,7 @@ def _layout(title, current_path, body):
     }}
     .workflow-strip {{
       display: grid;
-      grid-template-columns: repeat(5, minmax(140px, 1fr));
+      grid-template-columns: repeat(6, minmax(120px, 1fr));
       gap: 10px;
       margin-bottom: 18px;
     }}
@@ -1232,7 +1234,7 @@ def _layout(title, current_path, body):
       color: var(--muted);
       font-size: 12px;
       text-transform: uppercase;
-      letter-spacing: 0.6px;
+      letter-spacing: 0;
     }}
     .workflow-step strong {{
       color: var(--ink);
@@ -1285,7 +1287,7 @@ def _layout(title, current_path, body):
       color: var(--muted);
       font-size: 12px;
       text-transform: uppercase;
-      letter-spacing: 0.6px;
+      letter-spacing: 0;
     }}
     .machine-facts dd {{
       margin: 0;
@@ -1997,14 +1999,10 @@ def _layout(title, current_path, body):
       th, td {{ padding: 11px 9px; }}
     }}
     body {{
-      background:
-        radial-gradient(1100px 600px at 12% -8%, rgba(139, 123, 255, 0.20), transparent 60%),
-        radial-gradient(900px 520px at 96% 2%, rgba(42, 212, 238, 0.14), transparent 58%),
-        var(--bg);
-      background-attachment: fixed;
+      background: var(--bg);
       -webkit-font-smoothing: antialiased;
       font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-      letter-spacing: 0.1px;
+      letter-spacing: 0;
     }}
     header {{
       position: sticky;
@@ -2037,7 +2035,7 @@ def _layout(title, current_path, body):
     }}
     h1 {{
       font-weight: 600;
-      letter-spacing: -0.4px;
+      letter-spacing: 0;
       background: var(--accent-grad);
       -webkit-background-clip: text;
       background-clip: text;
@@ -2046,7 +2044,7 @@ def _layout(title, current_path, body):
     }}
     h2 {{
       font-weight: 600;
-      letter-spacing: -0.2px;
+      letter-spacing: 0;
     }}
     .nav {{
       border: 1px solid var(--line);
@@ -2208,7 +2206,7 @@ def _layout(title, current_path, body):
       color: var(--muted);
       font-size: 12px;
       text-transform: uppercase;
-      letter-spacing: 0.6px;
+      letter-spacing: 0;
     }}
     .stat .value {{
       font-size: 26px;
@@ -2234,7 +2232,7 @@ def _layout(title, current_path, body):
       padding: 3px 10px;
       font-size: 12px;
       font-weight: 500;
-      letter-spacing: 0.3px;
+      letter-spacing: 0;
     }}
     .pill.score-status {{
       background: var(--status-confirmed-bg);
@@ -2269,7 +2267,7 @@ def _layout(title, current_path, body):
       background: var(--table-head);
       color: var(--muted);
       text-transform: uppercase;
-      letter-spacing: 0.6px;
+      letter-spacing: 0;
       font-size: 11.5px;
       font-weight: 600;
       border-bottom: 1px solid var(--line);
@@ -2287,6 +2285,23 @@ def _layout(title, current_path, body):
       border-radius: 8px;
     }}
     .app {{ display: flex; align-items: stretch; min-height: 100vh; }}
+    .skip-link {{
+      position: fixed;
+      left: 16px;
+      top: 12px;
+      z-index: 100;
+      transform: translateY(-160%);
+      border-radius: 8px;
+      background: var(--accent);
+      color: var(--accent-ink);
+      padding: 10px 14px;
+      text-decoration: none;
+    }}
+    .skip-link:focus {{ transform: translateY(0); }}
+    :where(a, button, input, select, summary):focus-visible {{
+      outline: 3px solid var(--accent-2);
+      outline-offset: 3px;
+    }}
     .sidebar {{
       position: sticky;
       top: 0;
@@ -2385,12 +2400,14 @@ def _layout(title, current_path, body):
       .sidebar {{ position: static; height: auto; width: 100%; flex-basis: auto; flex-direction: column; border-right: none; border-bottom: 1px solid var(--line); }}
       .sidebar nav {{ flex-direction: row; flex-wrap: wrap; }}
       .sidebar .nav {{ width: auto; }}
+      .sidebar .nav, .nav-action, button, .action-link {{ min-height: 44px; }}
       .app main {{ padding: 20px; }}
       .workflow-strip, .home-columns {{ grid-template-columns: 1fr; }}
     }}
   </style>
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Skip to dashboard content</a>
   <div class="app">
     <aside class="sidebar">
       <div class="brand">
@@ -2400,7 +2417,7 @@ def _layout(title, current_path, body):
       <nav>{nav}</nav>
       <div class="nav-actions">{actions}</div>
     </aside>
-    <main>{body}</main>
+    <main id="main-content" tabindex="-1">{body}</main>
   </div>
   <script>
   (function() {{

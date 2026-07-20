@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
@@ -38,6 +39,9 @@ RUBRIC_PATH = HARNESS_ROOT / "rubrics" / "ai-lab-local-llm-rubric-v0.1.json"
 DEFAULT_OLLAMA_ENDPOINT = "http://127.0.0.1:11434"
 BYTES_PER_GIB = 1024**3
 VM_STAT_FIXTURE_ENV = "LOCAL_AI_LAB_FAKE_VM_STAT"
+DEFAULT_CONTEXT_WINDOW = 4096
+DEFAULT_TEMPERATURE = 0.2
+DEFAULT_TOP_P = 0.9
 
 TABLE_FIELDS = {
     "models": (
@@ -119,6 +123,11 @@ RESPONSE_FIELDS = (
 )
 SAFE_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+QUANT_PATTERNS = (
+    re.compile(r"\b(MLX[-_ ]?4bit)\b", re.IGNORECASE),
+    re.compile(r"\b(Q[0-9]+(?:_[A-Z0-9]+)*)\b", re.IGNORECASE),
+    re.compile(r"\b([0-9]+bit)\b", re.IGNORECASE),
+)
 
 
 class HarnessError(RuntimeError):
@@ -170,6 +179,73 @@ def _utc_now():
 
 def _blank(value):
     return "" if value is None else value
+
+
+def _infer_quantization_from_values(*values):
+    for value in values:
+        text = str(value or "")
+        if not text:
+            continue
+        for pattern in QUANT_PATTERNS:
+            match = pattern.search(text)
+            if not match:
+                continue
+            raw = match.group(1)
+            if raw.lower().replace("_", "-").replace(" ", "-") == "mlx-4bit":
+                return "4bit", "inferred:model_name_or_path"
+            if raw.lower().endswith("bit"):
+                return raw.lower(), "inferred:model_name_or_path"
+            return raw.upper(), "inferred:model_name_or_path"
+    return None, None
+
+
+def _append_run_note(notes, key, value):
+    parts = [part.strip() for part in str(notes or "").split("|") if part.strip()]
+    prefix = f"{key}="
+    parts = [part for part in parts if not part.startswith(prefix)]
+    if value not in (None, ""):
+        parts.append(f"{key}={value}")
+    return " | ".join(parts)
+
+
+def _apply_run_config_defaults(metadata, explicit_sources):
+    run = metadata["run"]
+    sources = metadata.setdefault("run_config_sources", {})
+    if run.get("quantization") in (None, ""):
+        inferred, source = _infer_quantization_from_values(
+            metadata["model"].get("model_name"),
+            run.get("format"),
+            metadata["model"].get("source_url"),
+            metadata["model"].get("notes"),
+            run.get("run_notes"),
+        )
+        if inferred:
+            run["quantization"] = inferred
+            sources["quantization"] = source
+    else:
+        sources["quantization"] = (
+            explicit_sources.get("quantization") or sources.get("quantization") or "command"
+        )
+    if run.get("context_window") in (None, ""):
+        run["context_window"] = DEFAULT_CONTEXT_WINDOW
+        sources["context_window"] = "inferred:benchmark_default"
+    else:
+        sources["context_window"] = (
+            explicit_sources.get("context_window") or sources.get("context_window") or "command"
+        )
+    if run.get("temperature") in (None, ""):
+        run["temperature"] = DEFAULT_TEMPERATURE
+        sources["temperature"] = "inferred:benchmark_default"
+    else:
+        sources["temperature"] = (
+            explicit_sources.get("temperature") or sources.get("temperature") or "command"
+        )
+    if run.get("top_p") in (None, ""):
+        run["top_p"] = DEFAULT_TOP_P
+        sources["top_p"] = "inferred:benchmark_default"
+    else:
+        sources["top_p"] = explicit_sources.get("top_p") or sources.get("top_p") or "command"
+    return metadata
 
 
 def _safe_csv_cell(value):
@@ -242,6 +318,9 @@ def _post_chat_completion(endpoint, payload, timeout):
     parsed = _chat_completions_url(endpoint)
     body = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
+    api_token = os.environ.get("LM_API_TOKEN", "").strip()
+    if api_token:
+        headers["Authorization"] = f"Bearer {api_token}"
     connection_class = (
         http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
     )
@@ -256,8 +335,12 @@ def _post_chat_completion(endpoint, payload, timeout):
         response_body = response.read().decode("utf-8", errors="replace")
     finally:
         conn.close()
+    if response.status == 401:
+        raise HarnessError(
+            "Local judge endpoint requires authentication; export LM_API_TOKEN before scoring."
+        )
     if response.status < 200 or response.status >= 300:
-        raise HarnessError(f"Local endpoint returned HTTP {response.status}: {response_body[:500]}")
+        raise HarnessError(f"Local endpoint returned HTTP {response.status}.")
     try:
         return json.loads(response_body)
     except json.JSONDecodeError as exc:
@@ -516,6 +599,116 @@ def _resolve_lms_path(path=None):
     if found:
         return found
     raise HarnessError("LM Studio CLI not found at ~/.lmstudio/bin/lms or on PATH.")
+
+
+def _lms_control(command, timeout, action):
+    result = _run_subprocess_capture(command, timeout)
+    if result["timed_out"]:
+        raise HarnessError(f"LM Studio {action} timed out after {timeout} seconds.")
+    if result["returncode"] != 0:
+        raise HarnessError(f"LM Studio {action} exited {result['returncode']}.")
+    return result
+
+
+def _lms_loaded_models(lms_path, timeout):
+    result = _lms_control(
+        [lms_path, "ps", "--json"],
+        timeout,
+        "loaded-model inventory check",
+    )
+    try:
+        payload = json.loads(result["stdout"])
+    except (TypeError, ValueError) as exc:
+        raise HarnessError("LM Studio loaded-model inventory returned invalid JSON.") from exc
+    if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
+        raise HarnessError("LM Studio loaded-model inventory returned an unexpected payload.")
+    return payload
+
+
+def _lms_model_is_loaded(models, model_id):
+    identity_fields = ("identifier", "modelKey", "indexedModelIdentifier", "path")
+    return any(
+        str(item.get(field) or "").strip() == model_id
+        for item in models
+        for field in identity_fields
+    )
+
+
+def _write_lms_lifecycle_log(run_dir, lifecycle):
+    lines = [
+        "LM Studio model lifecycle",
+        f"managed={'yes' if lifecycle['managed'] else 'no'}",
+        f"already_loaded={'yes' if lifecycle['already_loaded'] else 'no'}",
+        f"loaded_by_harness={'yes' if lifecycle['loaded_by_harness'] else 'no'}",
+        f"unloaded_after_run={'yes' if lifecycle['unloaded_after_run'] else 'no'}",
+        f"cleanup_error={'yes' if lifecycle['cleanup_error'] else 'no'}",
+    ]
+    (Path(run_dir) / "lms-lifecycle.log").write_text(
+        "\n".join(lines) + "\n",
+        encoding="utf-8",
+    )
+
+
+@contextmanager
+def _managed_lms_model(
+    lms_path,
+    model_id,
+    timeout,
+    ttl,
+    run_dir,
+    *,
+    enabled,
+    context_window=None,
+):
+    lifecycle = {
+        "managed": bool(enabled),
+        "already_loaded": False,
+        "loaded_by_harness": False,
+        "unloaded_after_run": False,
+        "cleanup_error": False,
+    }
+    primary_error = False
+    try:
+        if enabled:
+            lifecycle["already_loaded"] = _lms_model_is_loaded(
+                _lms_loaded_models(lms_path, timeout),
+                model_id,
+            )
+            if not lifecycle["already_loaded"]:
+                load_command = [
+                    lms_path,
+                    "load",
+                    model_id,
+                    "--identifier",
+                    model_id,
+                    "--ttl",
+                    str(ttl),
+                    "--yes",
+                ]
+                if context_window:
+                    load_command.extend(["--context-length", str(context_window)])
+                _lms_control(load_command, timeout, "model load")
+                lifecycle["loaded_by_harness"] = True
+        yield lifecycle
+    except BaseException:
+        primary_error = True
+        raise
+    finally:
+        cleanup_error = None
+        if lifecycle["loaded_by_harness"]:
+            try:
+                _lms_control(
+                    [lms_path, "unload", model_id],
+                    timeout,
+                    "model unload",
+                )
+                lifecycle["unloaded_after_run"] = True
+            except HarnessError as exc:
+                lifecycle["cleanup_error"] = True
+                cleanup_error = exc
+        _write_lms_lifecycle_log(run_dir, lifecycle)
+        if cleanup_error is not None and not primary_error:
+            raise cleanup_error
 
 
 def _parse_lms_stats(text):
@@ -780,7 +973,7 @@ def _require_absent_empty_or_force(path, force):
 def _metadata_from_args(args, prompt_set, rubric, run_dir):
     model_id = args.model_id
     run_id = args.run_id
-    return {
+    metadata = {
         "artifact_version": "local-llm-benchmark-harness-v0.1",
         "benchmark_run_id": args.benchmark_run_id,
         "created_at": _utc_now(),
@@ -831,6 +1024,12 @@ def _metadata_from_args(args, prompt_set, rubric, run_dir):
             "run_notes": args.run_notes,
         },
     }
+    explicit_sources = {
+        field: "command"
+        for field in ("quantization", "context_window", "temperature", "top_p")
+        if getattr(args, field, None) not in (None, "")
+    }
+    return _apply_run_config_defaults(metadata, explicit_sources)
 
 
 def _response_template_records(metadata, prompt_set):
@@ -906,16 +1105,24 @@ def _evidence_template(metadata, prompt_set):
 
 
 def _manual_run_notes(metadata):
+    artifact_paths = metadata.get("artifact_paths") or {}
     base_notes = [
         "benchmark_run_id={}".format(metadata["benchmark_run_id"]),
         "prompt_set_id={}".format(metadata["prompt_set_id"]),
         "rubric_version={}".format(metadata["rubric_version"]),
-        "raw_artifact={}".format(metadata["artifact_paths"]["raw_responses"]),
-        "runtime_metrics={}".format(metadata["artifact_paths"]["runtime_metrics"]),
     ]
+    if artifact_paths.get("raw_responses"):
+        base_notes.append("raw_artifact={}".format(artifact_paths["raw_responses"]))
+    if artifact_paths.get("runtime_metrics"):
+        base_notes.append("runtime_metrics={}".format(artifact_paths["runtime_metrics"]))
     existing = metadata["run"].get("run_notes")
     if existing:
         base_notes.append(str(existing))
+    sources = metadata.get("run_config_sources") or {}
+    for field in ("quantization", "context_window", "temperature", "top_p"):
+        source = sources.get(field)
+        if source:
+            base_notes.append(f"{field}_source={source}")
     return " | ".join(base_notes)
 
 
@@ -1085,6 +1292,8 @@ def _load_decision_row(decision_path, metadata, rubric):
 def write_dashboard_csvs(run_dir, metadata, rubric, scores_path=None, decision_path=None):
     run_dir = Path(run_dir)
     output_dir = run_dir / "dashboard-import"
+    metadata = _apply_run_config_defaults(metadata, {})
+    _write_json(run_dir / "metadata.json", metadata)
     model = dict(metadata["model"])
     run = dict(metadata["run"])
     run["run_notes"] = _manual_run_notes(metadata)
@@ -1714,16 +1923,9 @@ def run_mlx_lm(args):
     return raw_path
 
 
-def run_lmstudio_cli(args):
-    run_dir = Path(args.run_dir).resolve()
-    metadata = _read_json(run_dir / "metadata.json")
-    prompt_set = _load_prompt_set()
-    lms_path = _resolve_lms_path(args.lms_path)
+def _capture_lmstudio_cli(args, run_dir, metadata, prompt_set, lms_path):
     raw_path = run_dir / "raw_responses.jsonl"
     log_path = run_dir / "lms-cli-capture.log"
-    _require_absent_empty_or_force(raw_path, args.force)
-    _require_absent_empty_or_force(log_path, args.force)
-
     records = []
     log_lines = [
         "LM Studio CLI capture",
@@ -1796,6 +1998,28 @@ def run_lmstudio_cli(args):
     return raw_path
 
 
+def run_lmstudio_cli(args):
+    run_dir = Path(args.run_dir).resolve()
+    metadata = _read_json(run_dir / "metadata.json")
+    prompt_set = _load_prompt_set()
+    lms_path = _resolve_lms_path(args.lms_path)
+    raw_path = run_dir / "raw_responses.jsonl"
+    log_path = run_dir / "lms-cli-capture.log"
+    _require_absent_empty_or_force(raw_path, args.force)
+    _require_absent_empty_or_force(log_path, args.force)
+
+    with _managed_lms_model(
+        lms_path,
+        args.model_id,
+        args.timeout,
+        args.ttl,
+        run_dir,
+        enabled=args.manage_model_lifecycle,
+        context_window=metadata.get("run", {}).get("context_window"),
+    ):
+        return _capture_lmstudio_cli(args, run_dir, metadata, prompt_set, lms_path)
+
+
 def _neutralize_terminal(value):
     return "".join(
         char if char in ("\n", "\t") or ord(char) >= 32 else f"\\x{ord(char):02x}"
@@ -1819,20 +2043,31 @@ def _judge_prompt(metadata, raw_records, rubric):
             "You are a local benchmark judge for AI Lab OS.",
             "Use only the supplied benchmark responses. Do not infer hidden capabilities.",
             "Return only one JSON object.",
-            "Required JSON shape:",
+            (
+                "Required JSON shape. Replace every uppercase type placeholder with "
+                "an actual value:"
+            ),
             json.dumps(
                 {
-                    "scores": {field: 0 for field in rubric["metric_fields"]},
-                    "total_score": 0,
-                    "final_label": "WATCHLIST",
-                    "rationale": "short overall rationale",
+                    "scores": {
+                        field: "NUMBER_0_TO_100" for field in rubric["metric_fields"]
+                    },
+                    "total_score": "NUMBER_0_TO_100",
+                    "final_label": "ONE_VALID_LABEL",
+                    "rationale": "SHORT_OVERALL_RATIONALE",
                     "metric_rationales": {
-                        field: "short rationale" for field in rubric["metric_fields"]
+                        field: "SHORT_METRIC_RATIONALE"
+                        for field in rubric["metric_fields"]
                     },
                 },
                 indent=2,
             ),
             "Scores must be numbers from 0 to 100.",
+            "Do not copy the placeholders or return an all-zero template.",
+            (
+                "Every key in the required JSON shape is mandatory. Do not omit the "
+                "total, label, overall rationale, or per-metric rationales."
+            ),
             "Valid final labels: {}".format(", ".join(rubric["final_labels"])),
             "Benchmark metadata:",
             json.dumps(metadata, indent=2, sort_keys=True),
@@ -1840,6 +2075,40 @@ def _judge_prompt(metadata, raw_records, rubric):
             json.dumps(compact_records, indent=2, sort_keys=True),
         ]
     )
+
+
+def _score_suggestion_warnings(
+    suggestion,
+    rubric,
+    validated_scores=None,
+    calculated_total=None,
+    reported_total=None,
+):
+    warnings = []
+    score_values = validated_scores or suggestion.get("scores")
+    if isinstance(score_values, dict) and all(
+        score_values.get(field) == 0 for field in rubric["metric_fields"]
+    ):
+        warnings.append("all_scores_zero")
+    if suggestion.get("total_score") in (None, ""):
+        warnings.append("total_score_missing")
+    elif (
+        calculated_total is not None
+        and reported_total is not None
+        and abs(float(reported_total) - float(calculated_total)) > 0.01
+    ):
+        warnings.append("total_score_mismatch")
+    if suggestion.get("final_label") in (None, ""):
+        warnings.append("final_label_missing")
+    if not str(suggestion.get("rationale") or "").strip():
+        warnings.append("rationale_missing")
+    metric_rationales = suggestion.get("metric_rationales")
+    if not isinstance(metric_rationales, dict) or any(
+        not str(metric_rationales.get(field) or "").strip()
+        for field in rubric["metric_fields"]
+    ):
+        warnings.append("metric_rationales_incomplete")
+    return warnings
 
 
 def suggest_scores(args):
@@ -1852,41 +2121,92 @@ def suggest_scores(args):
     judge_model = args.judge_model or "local-judge"
     endpoint = _safe_endpoint(_chat_completions_url(args.endpoint))
     prompt = _judge_prompt(metadata, raw_records, rubric)
-    response = _post_chat_completion(
-        args.endpoint,
-        {
-            "model": judge_model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": args.temperature,
-            "max_tokens": args.max_tokens,
-        },
-        args.timeout,
-    )
-    content = _message_content(response)
-    try:
-        suggestion = _extract_json_object(content)
-    except json.JSONDecodeError as exc:
-        raise HarnessError(f"Judge response did not contain a JSON object: {exc}") from exc
-    score_values = suggestion.get("scores") or {}
+    payload = {
+        "model": judge_model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": args.temperature,
+        "max_tokens": args.max_tokens,
+    }
+    if args.reasoning_effort:
+        payload["reasoning_effort"] = args.reasoning_effort
+    best = None
+    last_error = None
+    for attempt in range(2):
+        attempt_payload = dict(payload)
+        if attempt:
+            attempt_payload["messages"] = [
+                {
+                    "role": "user",
+                    "content": prompt
+                    + (
+                        "\n\nRETRY: The prior response was incomplete or invalid. "
+                        "Return every required field in one valid JSON object."
+                    ),
+                }
+            ]
+        try:
+            response = _post_chat_completion(args.endpoint, attempt_payload, args.timeout)
+            content = _message_content(response)
+            suggestion = _extract_json_object(content)
+            score_values = suggestion.get("scores") or {}
+            validated_scores = {
+                field: _validate_score(score_values.get(field), field)
+                for field in rubric["metric_fields"]
+            }
+            reported_total = suggestion.get("total_score")
+            if reported_total not in (None, ""):
+                reported_total = _validate_score(reported_total, "total_score")
+            final_label = suggestion.get("final_label")
+            if final_label not in (None, "") and final_label not in rubric["final_labels"]:
+                raise HarnessError(f"Unknown final_label: {final_label}")
+        except (HarnessError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            last_error = exc
+            continue
+        calculated_total = round(
+            sum(validated_scores.values()) / len(validated_scores),
+            2,
+        )
+        warnings = _score_suggestion_warnings(
+            suggestion,
+            rubric,
+            validated_scores,
+            calculated_total,
+            reported_total,
+        )
+        candidate = (
+            suggestion,
+            validated_scores,
+            warnings,
+            reported_total,
+            calculated_total,
+        )
+        if best is None or len(warnings) < len(best[2]):
+            best = candidate
+        if not warnings:
+            break
+    if best is None:
+        detail = type(last_error).__name__ if last_error is not None else "invalid response"
+        raise HarnessError(
+            f"Judge response was not valid score JSON after one retry ({detail})."
+        )
+    suggestion, validated_scores, warnings, reported_total, calculated_total = best
     draft = {
         "id": metadata["dashboard_ids"].get("score_id"),
         "run_id": metadata["dashboard_ids"]["run_id"],
         "score_status": "draft",
-        "scores": {},
-        "total_score": suggestion.get("total_score"),
+        "scores": validated_scores,
+        "total_score": calculated_total,
+        "judge_reported_total": reported_total,
         "final_label": suggestion.get("final_label"),
         "rationale": suggestion.get("rationale", ""),
         "metric_rationales": suggestion.get("metric_rationales", {}),
+        "suggestion_warnings": warnings,
         "judge": {
             "endpoint": endpoint,
             "model": judge_model,
             "created_at": _utc_now(),
         },
     }
-    for field in rubric["metric_fields"]:
-        draft["scores"][field] = _validate_score(score_values.get(field), field)
-    if draft["total_score"] not in (None, ""):
-        draft["total_score"] = _validate_score(draft["total_score"], "total_score")
     if (
         draft["final_label"] not in (None, "")
         and draft["final_label"] not in rubric["final_labels"]
@@ -2027,6 +2347,14 @@ def build_parser():
     lmstudio_parser.add_argument("--lms-path")
     lmstudio_parser.add_argument("--timeout", type=float, default=180.0)
     lmstudio_parser.add_argument("--ttl", type=int, default=3600)
+    lmstudio_parser.add_argument(
+        "--manage-model-lifecycle",
+        action="store_true",
+        help=(
+            "Load the installed model before capture when needed and unload it afterward; "
+            "models already loaded before the run are preserved."
+        ),
+    )
     lmstudio_parser.add_argument("--force", action="store_true")
     lmstudio_parser.set_defaults(func=run_lmstudio_cli)
 
@@ -2050,6 +2378,11 @@ def build_parser():
     suggest_parser.add_argument("--timeout", type=float, default=180.0)
     suggest_parser.add_argument("--max-tokens", type=int, default=2048)
     suggest_parser.add_argument("--temperature", type=float, default=0.0)
+    suggest_parser.add_argument(
+        "--reasoning-effort",
+        choices=("none", "low", "medium", "high"),
+        help="Optional OpenAI-compatible reasoning effort for the local judge.",
+    )
     suggest_parser.add_argument("--force", action="store_true")
     suggest_parser.set_defaults(func=suggest_scores)
 

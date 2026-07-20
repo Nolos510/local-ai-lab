@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from local_ai_lab.api.app import create_app
 from local_ai_lab.llms.base import ChatProviderResponseError
 from local_ai_lab.rag.service import AskResult, Citation, RetrievalInspection
+from local_ai_lab.vectorstores.base import VectorStoreConfigurationError
 
 
 class FakeRAGService:
@@ -51,6 +52,20 @@ class FailingRAGService:
             "Endpoint: http://localhost:1234. "
             "Configured model: local-model. "
             "Run `uv run local-ai-lab doctor`."
+        )
+
+
+class FailingVectorStoreRAGService:
+    def ask(
+        self,
+        question: str,
+        *,
+        top_k: int | None = None,
+        inspect_retrieval: bool = False,
+    ) -> None:
+        del question, top_k, inspect_retrieval
+        raise VectorStoreConfigurationError(
+            "PRIVATE_COLLECTION uses 384; token=PRIVATE_TOKEN"
         )
 
 
@@ -123,3 +138,21 @@ def test_ask_endpoint_returns_502_for_provider_error(monkeypatch) -> None:
     assert "PRIVATE_PROMPT_TEXT" not in detail
     assert "secret" not in detail
     assert "token=abc" not in detail
+
+
+def test_ask_endpoint_returns_sanitized_503_for_vector_store_error(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "local_ai_lab.api.app.build_rag_service",
+        lambda settings: FailingVectorStoreRAGService(),
+    )
+    client = TestClient(create_app())
+
+    response = client.post("/ask", json={"question": "PRIVATE_PROMPT_TEXT", "top_k": 1})
+
+    assert response.status_code == 503
+    detail = response.json()["detail"]
+    assert "Local vector store configuration failed" in detail
+    assert "uv run local-ai-lab doctor" in detail
+    assert "PRIVATE_COLLECTION" not in detail
+    assert "PRIVATE_TOKEN" not in detail
+    assert "PRIVATE_PROMPT_TEXT" not in detail

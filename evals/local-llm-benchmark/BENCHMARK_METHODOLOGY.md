@@ -88,6 +88,12 @@ uv run ai-lab bench execute \
   --i-approve-local-run
 ```
 
+Dashboard-triggered `lmstudio-cli` runs explicitly manage model residency. The
+harness checks whether the selected model is already loaded, loads it only when
+needed, and unloads it after the benchmark only when the harness performed the
+load. A model that was resident before the run remains loaded. This lifecycle
+does not download or install model files.
+
 OpenAI-compatible loopback endpoint:
 
 ```bash

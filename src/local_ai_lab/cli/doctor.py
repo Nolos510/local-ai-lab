@@ -83,6 +83,7 @@ def collect_doctor_checks(
                 _failed_config_check("Embedding provider"),
                 _failed_config_check("Vector store provider"),
                 _failed_config_check("Qdrant"),
+                _failed_config_check("Qdrant collection"),
                 DoctorCheck(
                     "Ollama endpoint",
                     CheckStatus.WARN,
@@ -107,15 +108,27 @@ def collect_doctor_checks(
                     "settings unavailable",
                     required=False,
                 ),
+                DoctorCheck(
+                    "LM Studio/OpenAI-compatible model",
+                    CheckStatus.WARN,
+                    "settings unavailable",
+                    required=False,
+                ),
             ]
         )
         return checks
 
+    qdrant_check, qdrant_payload = _check_qdrant(settings, http_get=http_get)
     checks.extend(
         [
             _check_embedding_provider(settings),
             _check_vector_store_provider(settings),
-            _check_qdrant(settings, http_get=http_get),
+            qdrant_check,
+            _check_qdrant_collection(
+                settings,
+                collections_payload=qdrant_payload,
+                http_get=http_get,
+            ),
         ]
     )
 
@@ -146,10 +159,17 @@ def collect_doctor_checks(
     )
 
     openai_selected = settings.llm_provider.lower() in OPENAI_COMPATIBLE_PROVIDERS
+    openai_check, openai_payload = _check_openai_compatible_endpoint(
+        settings,
+        http_get=http_get,
+        required=openai_selected,
+    )
+    checks.append(openai_check)
     checks.append(
-        _check_openai_compatible_endpoint(
+        _check_openai_compatible_model(
             settings,
-            http_get=http_get,
+            models_payload=openai_payload,
+            endpoint_status=openai_check.status,
             required=openai_selected,
         )
     )
@@ -256,16 +276,101 @@ def _check_vector_store_provider(settings: Settings) -> DoctorCheck:
     return DoctorCheck("Vector store provider", CheckStatus.FAIL, "unsupported or empty provider")
 
 
-def _check_qdrant(settings: Settings, *, http_get: HttpGet) -> DoctorCheck:
+def _check_qdrant(
+    settings: Settings, *, http_get: HttpGet
+) -> tuple[DoctorCheck, dict[str, Any] | None]:
     url = _join_url(settings.qdrant_url, "collections")
-    ok, detail, _ = _get_json(url, http_get=http_get, timeout_seconds=_timeout(settings))
+    ok, detail, payload = _get_json(
+        url,
+        http_get=http_get,
+        timeout_seconds=_timeout(settings),
+    )
     if ok:
-        return DoctorCheck(
-            "Qdrant",
-            CheckStatus.PASS,
-            f"reachable at {_sanitize_url(settings.qdrant_url)}",
+        return (
+            DoctorCheck(
+                "Qdrant",
+                CheckStatus.PASS,
+                f"reachable at {_sanitize_url(settings.qdrant_url)}",
+            ),
+            payload,
         )
-    return DoctorCheck("Qdrant", CheckStatus.FAIL, detail)
+    return DoctorCheck("Qdrant", CheckStatus.FAIL, detail), None
+
+
+def _check_qdrant_collection(
+    settings: Settings,
+    *,
+    collections_payload: dict[str, Any] | None,
+    http_get: HttpGet,
+) -> DoctorCheck:
+    collection_names = _qdrant_collection_names(collections_payload)
+    if settings.qdrant_collection not in collection_names:
+        return DoctorCheck(
+            "Qdrant collection",
+            CheckStatus.WARN,
+            (
+                "configured collection does not exist yet; ingest will create it with "
+                f"{settings.qdrant_vector_size} dimensions"
+            ),
+            required=False,
+        )
+    url = _join_url(settings.qdrant_url, f"collections/{settings.qdrant_collection}")
+    ok, detail, payload = _get_json(
+        url,
+        http_get=http_get,
+        timeout_seconds=_timeout(settings),
+    )
+    if not ok:
+        return DoctorCheck("Qdrant collection", CheckStatus.FAIL, detail)
+    existing_size = _qdrant_collection_vector_size(payload)
+    if existing_size is None:
+        return DoctorCheck(
+            "Qdrant collection",
+            CheckStatus.FAIL,
+            "collection vector configuration could not be read",
+        )
+    if existing_size != settings.qdrant_vector_size:
+        return DoctorCheck(
+            "Qdrant collection",
+            CheckStatus.FAIL,
+            (
+                f"existing collection uses {existing_size} dimensions but the configured "
+                f"embedding provider uses {settings.qdrant_vector_size}; set "
+                "LOCAL_AI_LAB_QDRANT_COLLECTION="
+                f"local_ai_lab_chunks_{settings.embedding_provider.lower()}_"
+                f"{settings.qdrant_vector_size} to create a separate index"
+            ),
+        )
+    return DoctorCheck(
+        "Qdrant collection",
+        CheckStatus.PASS,
+        f"vector size matches configured {settings.qdrant_vector_size} dimensions",
+    )
+
+
+def _qdrant_collection_names(payload: dict[str, Any] | None) -> set[str]:
+    if not isinstance(payload, dict):
+        return set()
+    result = payload.get("result")
+    collections = result.get("collections") if isinstance(result, dict) else None
+    if not isinstance(collections, list):
+        return set()
+    return {
+        str(item["name"])
+        for item in collections
+        if isinstance(item, dict) and item.get("name") not in (None, "")
+    }
+
+
+def _qdrant_collection_vector_size(payload: dict[str, Any] | None) -> int | None:
+    try:
+        value = payload["result"]["config"]["params"]["vectors"]["size"]
+    except (KeyError, TypeError):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _check_ollama_endpoint(
@@ -401,24 +506,77 @@ def _check_openai_compatible_endpoint(
     *,
     http_get: HttpGet,
     required: bool,
+) -> tuple[DoctorCheck, dict[str, Any] | None]:
+    if not required:
+        return (
+            DoctorCheck(
+                "LM Studio/OpenAI-compatible endpoint",
+                CheckStatus.WARN,
+                "provider not selected; not checked",
+                required=False,
+            ),
+            None,
+        )
+
+    url = _join_url(settings.lm_studio_base_url, "models")
+    ok, detail, payload = _get_json(
+        url,
+        http_get=http_get,
+        timeout_seconds=_timeout(settings),
+    )
+    if ok:
+        return (
+            DoctorCheck(
+                "LM Studio/OpenAI-compatible endpoint",
+                CheckStatus.PASS,
+                f"reachable at {_sanitize_url(settings.lm_studio_base_url)}",
+            ),
+            payload,
+        )
+    return DoctorCheck("LM Studio/OpenAI-compatible endpoint", CheckStatus.FAIL, detail), None
+
+
+def _check_openai_compatible_model(
+    settings: Settings,
+    *,
+    models_payload: dict[str, Any] | None,
+    endpoint_status: CheckStatus,
+    required: bool,
 ) -> DoctorCheck:
     if not required:
         return DoctorCheck(
-            "LM Studio/OpenAI-compatible endpoint",
+            "LM Studio/OpenAI-compatible model",
             CheckStatus.WARN,
             "provider not selected; not checked",
             required=False,
         )
-
-    url = _join_url(settings.lm_studio_base_url, "models")
-    ok, detail, _ = _get_json(url, http_get=http_get, timeout_seconds=_timeout(settings))
-    if ok:
+    if endpoint_status != CheckStatus.PASS or models_payload is None:
         return DoctorCheck(
-            "LM Studio/OpenAI-compatible endpoint",
-            CheckStatus.PASS,
-            f"reachable at {_sanitize_url(settings.lm_studio_base_url)}",
+            "LM Studio/OpenAI-compatible model",
+            CheckStatus.FAIL,
+            "LM Studio/OpenAI-compatible model list unavailable",
         )
-    return DoctorCheck("LM Studio/OpenAI-compatible endpoint", CheckStatus.FAIL, detail)
+    model_ids = {
+        str(model["id"])
+        for model in models_payload.get("data", [])
+        if isinstance(model, dict) and model.get("id") not in (None, "")
+    }
+    if settings.lm_studio_model in model_ids:
+        return DoctorCheck(
+            "LM Studio/OpenAI-compatible model",
+            CheckStatus.PASS,
+            "configured model is available locally",
+        )
+    return DoctorCheck(
+        "LM Studio/OpenAI-compatible model",
+        CheckStatus.FAIL,
+        (
+            f"configured model '{settings.lm_studio_model}' was not found; run "
+            "`curl -s http://localhost:1234/v1/models | "
+            "uv run python -m json.tool`, then copy one returned `id` into "
+            "LOCAL_AI_LAB_LM_STUDIO_MODEL"
+        ),
+    )
 
 
 def _get_json(

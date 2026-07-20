@@ -13,10 +13,11 @@ from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 
-from .. import db, fit, removal
+from .. import db, fit, model_roles, removal
 from ..components import *
 from ..filters import *
 from ..layout import _layout
+from ..run_config import infer_quantization
 from ..sorting import _sort_rows, _sortable_headers
 from .storage import _storage_decision_table
 
@@ -53,6 +54,18 @@ INVENTORY_DECISION_FILTERS = {
         "icon": "ti-circle",
     },
 }
+
+
+def _inventory_model_role(model):
+    return model_roles.infer_model_role(
+        model.get("model_id"),
+        model.get("indexed_model_id"),
+        model.get("display_name"),
+        model.get("source_path"),
+        model.get("local_path"),
+        model.get("format_or_runtime"),
+        explicit=model.get("model_type") or model.get("model_role"),
+    )
 INVENTORY_SORT_HEADERS = {
     "Runtime": "runtime",
     "Model id": "model_id",
@@ -61,6 +74,7 @@ INVENTORY_SORT_HEADERS = {
     "Paths": "paths",
     "Registry match": "registry_match",
     "Tested": "tested",
+    "Resolve": "resolve",
     "Action": "action",
 }
 CANDIDATE_FIELDNAMES = (
@@ -162,14 +176,126 @@ def _inventory_action_cell(
         actions.append(_run_test_control(candidate, enable_run_tests, action_token))
     elif model.get("status") == "filesystem_only":
         actions.append('<span class="empty">Filesystem-only; index/load in LM Studio first</span>')
-    elif str(model.get("model_type") or "").lower() == "embedding":
-        actions.append('<span class="empty">Embedding model; LLM benchmark not applicable</span>')
+    elif not model_roles.model_supports_generation(_inventory_model_role(model)):
+        role = _inventory_model_role(model)
+        actions.append(
+            f'<span class="empty">{_text(role.title())} model; LLM benchmark not applicable</span>'
+        )
     elif candidate:
         actions.append('<span class="empty">Registered; no runnable local benchmark runner</span>')
     else:
         actions.append('<span class="empty">Register exact local model id first</span>')
     actions.append(_remove_model_control(model, enable_delete_actions, action_token))
     return '<div class="cell-stack">{}</div>'.format("".join(actions))
+
+
+def _run_has_frontier_evidence(run):
+    if not run:
+        return False
+    return (
+        run.get("score_status") == "confirmed"
+        and run.get("tokens_per_sec") not in (None, "")
+        and run.get("ram_usage_gb") not in (None, "")
+    )
+
+
+def _run_has_config_evidence(run):
+    if not run:
+        return False
+    return all(
+        run.get(field) not in (None, "")
+        for field in ("quantization", "context_window", "temperature", "top_p")
+    )
+
+
+def _run_has_actionable_evidence(run):
+    return _run_has_frontier_evidence(run) and _run_has_config_evidence(run)
+
+
+def _inventory_resolver_cell(model, match_state, candidate, run_history=None):
+    model_role = _inventory_model_role(model)
+    if not model_roles.model_supports_generation(model_role):
+        purpose = (
+            "vector/search model"
+            if model_role == "embedding"
+            else "query-document relevance model"
+        )
+        return f"""
+        <div class="cell-stack">
+          <strong>{_text(model_role.title())}-only</strong>
+          <span class="empty">What: {_text(purpose)}, not chat. Why: useful inside a RAG pipeline. Next: evaluate it in the matching retrieval lane or remove it if unused.</span>
+        </div>
+        """
+    if model.get("status") == "filesystem_only":
+        return """
+        <div class="cell-stack">
+          <strong>Load/index first</strong>
+          <span class="empty">LM Studio sees files on disk, but not a runnable loaded/indexed model. Open/load it in LM Studio or register a llama.cpp/MLX-LM runner, then refresh inventory.</span>
+        </div>
+        """
+    if candidate is None:
+        if match_state == "ambiguous":
+            return """
+            <div class="cell-stack">
+              <strong>Resolve match</strong>
+              <span class="empty">More than one registry row matches this local model. Pick one exact candidate/local id before running tests.</span>
+            </div>
+            """
+        return """
+        <div class="cell-stack">
+          <strong>Register local id</strong>
+          <span class="empty">Refresh inventory to auto-create a local overlay row, or add exact local_model_id and local_runner metadata.</span>
+        </div>
+        """
+    if not _candidate_run_ready(candidate):
+        return """
+        <div class="cell-stack">
+          <strong>Add runner metadata</strong>
+          <span class="empty">This candidate needs local_runner plus exact local_model_id before the dashboard can run a benchmark.</span>
+        </div>
+        """
+    run = _inventory_matching_run(model, candidate, run_history) or {}
+    if not run:
+        return """
+        <div class="cell-stack">
+          <strong>Run benchmark</strong>
+          <span class="empty">No dashboard run exists yet. Use Run Test or Run all needing evidence.</span>
+        </div>
+        """
+    if not run.get("score_status"):
+        return """
+        <div class="cell-stack">
+          <strong>Score artifact</strong>
+          <span class="empty">A raw run exists, but no reviewed score was imported. Review responses and import scores.</span>
+        </div>
+        """
+    if run.get("score_status") == "draft":
+        return """
+        <div class="cell-stack">
+          <strong>Confirm score</strong>
+          <span class="empty">Draft evidence exists. Human-review and confirm it, or rerun if the artifact is weak.</span>
+        </div>
+        """
+    if not _run_has_frontier_evidence(run):
+        return """
+        <div class="cell-stack">
+          <strong>Complete metrics</strong>
+          <span class="empty">Confirmed score exists, but tokens/sec and RAM GB are both required for efficiency-frontier comparison.</span>
+        </div>
+        """
+    if not _run_has_config_evidence(run):
+        return """
+        <div class="cell-stack">
+          <strong>Missing run config</strong>
+          <span class="empty">Backfill or rerun so quantization, context window, temperature, and top_p are recorded.</span>
+        </div>
+        """
+    return """
+    <div class="cell-stack">
+      <strong>Actionable</strong>
+      <span class="empty">Confirmed score, throughput, RAM, quantization, context, and sampling evidence are present.</span>
+    </div>
+    """
 
 
 def _run_note_value(notes, key):
@@ -198,7 +324,11 @@ def _inventory_run_record(row):
         "final_label": row["final_label"] or "",
         "params_b": row["params_b"],
         "quantization": row["quantization"],
+        "context_window": row["context_window"],
+        "temperature": row["temperature"],
+        "top_p": row["top_p"],
         "tokens_per_sec": row["tokens_per_sec"],
+        "ram_usage_gb": row["ram_usage_gb"],
     }
 
 
@@ -304,11 +434,12 @@ def _inventory_matching_run(model, candidate, run_history=None):
 def _inventory_test_status_cell(model, candidate, run_history=None):
     if not candidate:
         return '<span class="empty">Register first</span>'
-    if str(model.get("model_type") or "").lower() == "embedding":
-        return """
+    role = _inventory_model_role(model)
+    if not model_roles.model_supports_generation(role):
+        return f"""
         <div class="cell-stack">
           <span class="pill">not applicable</span>
-          <span class="empty">Embedding model; no LLM run expected</span>
+          <span class="empty">{_text(role.title())} model; no LLM run expected</span>
         </div>
         """
     if not _candidate_run_ready(candidate):
@@ -318,7 +449,7 @@ def _inventory_test_status_cell(model, candidate, run_history=None):
           <span class="empty">No local benchmark runner</span>
         </div>
         """
-    run = (run_history or {}).get(candidate.get("candidate_id", ""))
+    run = _inventory_matching_run(model, candidate, run_history)
     if not run:
         return """
         <div class="cell-stack">
@@ -344,7 +475,7 @@ def _inventory_test_sort_value(entry, run_history=None):
     candidate = entry.get("candidate")
     if not candidate:
         return "register first"
-    if str(model.get("model_type") or "").lower() == "embedding":
+    if not model_roles.model_supports_generation(_inventory_model_role(model)):
         return "not applicable"
     if not _candidate_run_ready(candidate):
         return "not runnable"
@@ -353,6 +484,35 @@ def _inventory_test_sort_value(entry, run_history=None):
         if (run_history or {}).get(candidate.get("candidate_id", ""))
         else "not tested"
     )
+
+
+def _inventory_resolution_sort_value(entry, run_history=None):
+    model = entry["model"]
+    candidate = entry.get("candidate")
+    match_state = entry.get("match_state")
+    role = _inventory_model_role(model)
+    if not model_roles.model_supports_generation(role):
+        return f"01 {role}-only"
+    if model.get("status") == "filesystem_only":
+        return "02 load-index-first"
+    if candidate is None:
+        if match_state == "ambiguous":
+            return "03 resolve-match"
+        return "04 register-local-id"
+    if not _candidate_run_ready(candidate):
+        return "05 add-runner-metadata"
+    run = _inventory_matching_run(model, candidate, run_history)
+    if not run:
+        return "06 run-benchmark"
+    if not run.get("score_status"):
+        return "07 score-artifact"
+    if run.get("score_status") == "draft":
+        return "08 confirm-score"
+    if not _run_has_frontier_evidence(run):
+        return "09 complete-metrics"
+    if not _run_has_config_evidence(run):
+        return "10 missing-run-config"
+    return "11 actionable"
 
 
 def _inventory_sort_columns(run_history=None):
@@ -369,6 +529,10 @@ def _inventory_sort_columns(run_history=None):
         "registry_match": (lambda entry: entry.get("match_state"), "text"),
         "tested": (
             lambda entry: _inventory_test_sort_value(entry, run_history),
+            "text",
+        ),
+        "resolve": (
+            lambda entry: _inventory_resolution_sort_value(entry, run_history),
             "text",
         ),
         "action": (
@@ -542,6 +706,12 @@ def _parse_lmstudio_inventory(ls_stdout, ps_stdout="", root=LMSTUDIO_MODELS_ROOT
             else "indexed"
         )
         source_path = row.get("path") or ""
+        model_role = model_roles.infer_model_role(
+            model_id,
+            display_name,
+            source_path,
+            explicit=row.get("type") or row.get("modelType"),
+        )
         local_path, removal_blocked_reason = _lmstudio_local_path_and_removal_reason(
             source_path,
             root=root,
@@ -562,7 +732,7 @@ def _parse_lmstudio_inventory(ls_stdout, ps_stdout="", root=LMSTUDIO_MODELS_ROOT
                 "status": status,
                 "source_path": source_path,
                 "local_path": local_path,
-                "model_type": row.get("type") or row.get("modelType") or "",
+                "model_type": model_role,
                 "removal_blocked_reason": removal_blocked_reason,
             }
         )
@@ -604,7 +774,7 @@ def _inventory_model_auto_registerable(model):
         return False
     runtime = model.get("runtime")
     if runtime == "LM Studio":
-        if str(model.get("model_type") or "").lower() == "embedding":
+        if not model_roles.model_supports_generation(_inventory_model_role(model)):
             return True
         return not model.get("removal_blocked_reason")
     return runtime in ("Ollama", "MLX-LM", "llama.cpp")
@@ -613,7 +783,7 @@ def _inventory_model_auto_registerable(model):
 def _inventory_local_runner(model):
     if model.get("runner_hint"):
         return model["runner_hint"]
-    if str(model.get("model_type") or "").lower() == "embedding":
+    if not model_roles.model_supports_generation(_inventory_model_role(model)):
         return ""
     if model.get("runtime") == "LM Studio" and model.get("status") in ("indexed", "loaded"):
         return "lmstudio-cli"
@@ -650,12 +820,20 @@ def _local_inventory_candidate_row(model, fieldnames, matched_row=None):
         row["model_name"] = model.get("display_name") or model.get("model_id") or ""
     if not row.get("provider_or_org"):
         row["provider_or_org"] = f"local {model.get('runtime', 'runtime')} inventory"
-    model_type = str(model.get("model_type") or "").lower()
-    row["format_or_runtime"] = (
-        model.get("format_or_runtime")
-        or ("LM Studio embedding" if model_type == "embedding" else "")
-        or model.get("runtime", "local")
+    model_role = _inventory_model_role(model)
+    quantization, _quantization_source = infer_quantization(
+        model.get("model_id"),
+        model.get("indexed_model_id"),
+        model.get("display_name"),
+        model.get("source_path"),
+        model.get("local_path"),
     )
+    runtime_label = model.get("runtime", "local")
+    if model_role in model_roles.NON_GENERATIVE_ROLES:
+        runtime_label = f"{runtime_label} {model_role}"
+    elif quantization:
+        runtime_label = f"{runtime_label} {quantization}"
+    row["format_or_runtime"] = model.get("format_or_runtime") or runtime_label
     if runner or generated or row.get("status") in ("", "watchlist", "needs_more_info"):
         row["status"] = "ready_for_eval" if runner else "needs_more_info"
     row["runtime_availability"] = (
@@ -674,8 +852,10 @@ def _local_inventory_candidate_row(model, fieldnames, matched_row=None):
     )
     runner_label = _candidate_runner_label(row)
     row["proposed_eval"] = (
-        "Do not run the local LLM benchmark; use an embedding retrieval eval lane when available."
-        if model_type == "embedding"
+        "Do not run the local LLM benchmark; use an embedding retrieval eval lane."
+        if model_role == "embedding"
+        else "Do not run the local LLM benchmark; use a reranker retrieval eval lane."
+        if model_role == "reranker"
         else f"Run evals/local-llm-benchmark/SPEC.md through {runner_label} after explicit local-run approval."
         if runner
         else "Install or enable the matching local runner before running the benchmark."
@@ -868,7 +1048,7 @@ def _scan_mlx_lm_cached_models(root=HF_HUB_CACHE_ROOT):
                 "status": "cached",
                 "source_path": repo_id,
                 "local_path": str(snapshot),
-                "model_type": "llm",
+                "model_type": model_roles.infer_model_role(repo_id, snapshot),
                 "format_or_runtime": "MLX-LM local cache",
             }
         )
@@ -907,7 +1087,7 @@ def _parse_ollama_inventory(stdout):
                     "status": "installed",
                     "source_path": "",
                     "local_path": _ollama_manifest_path(model_id),
-                    "model_type": "llm",
+                    "model_type": model_roles.infer_model_role(model_id),
                     "format_or_runtime": "Ollama",
                 }
             )
@@ -1054,8 +1234,9 @@ def _inventory_run_allowed(model, candidate):
 
 
 def _inventory_run_all_blocked_reason(model, match_state, candidate):
-    if str(model.get("model_type") or "").lower() == "embedding":
-        return "embedding model — LLM benchmark not applicable"
+    role = _inventory_model_role(model)
+    if not model_roles.model_supports_generation(role):
+        return f"{role} model — LLM benchmark not applicable"
     if model.get("status") == "filesystem_only":
         return "filesystem-only — index/load in the local runtime first"
     if candidate is None:
@@ -1090,6 +1271,11 @@ def _inventory_run_all_plan(
     clock=None,
 ):
     candidates = _load_radar_candidates(registry_path, local_inventory_path)
+    run_history = {}
+    if database_path:
+        with suppress(Exception), db.connect(database_path) as conn:
+            db.create_schema(conn)
+            run_history = _inventory_run_history(conn, candidates)
     runnable = []
     skipped = []
     used_run_ids = _existing_benchmark_run_ids(database_path, eval_results_dir)
@@ -1097,14 +1283,18 @@ def _inventory_run_all_plan(
     for model in (inventory_result or {}).get("models", []):
         match_state, candidate = _match_inventory_model(model, candidates)
         reason = _inventory_run_all_blocked_reason(model, match_state, candidate)
+        run = _inventory_matching_run(model, candidate, run_history) if candidate else None
         model_id = str((candidate or {}).get("local_model_id") or "").strip()
         runner = str((candidate or {}).get("local_runner") or "").strip()
         if not reason:
-            target = (runner, model_id)
-            if target in seen_targets:
-                reason = "duplicate exact local id and runner"
+            if _run_has_actionable_evidence(run):
+                reason = "already has confirmed score, throughput, RAM, and run config evidence"
             else:
-                seen_targets.add(target)
+                target = (runner, model_id)
+                if target in seen_targets:
+                    reason = "duplicate exact local id and runner"
+                else:
+                    seen_targets.add(target)
         if reason:
             skipped.append(
                 {
@@ -1163,7 +1353,7 @@ def _run_all_control(enable_run_tests=False):
         return ""
     return """
     <form class="inline-form" method="get" action="/inventory/run-all">
-      <button type="submit">Run all runnable</button>
+      <button type="submit">Run all needing evidence</button>
     </form>
     """
 
@@ -1205,7 +1395,7 @@ def _run_all_confirm_page(plan, action_token=""):
     <section class="panel page-intro">
       <h2>Run All Preflight</h2>
       <p>Approval scope: only the exact enumerated runnable batch below.</p>
-      <p class="empty">No model executes on this page. Confirmation starts one background worker, runs each model sequentially, and continues after per-model failures.</p>
+      <p class="empty">No model executes on this page. Confirmation starts one background worker, runs each model sequentially, and continues after per-model failures. Models that already have confirmed score, throughput, RAM, and run config evidence are skipped.</p>
       {confirm}
     </section>
     <section class="inventory-section">
@@ -1586,6 +1776,7 @@ def _inventory(
                     _inventory_paths_cell(model),
                     candidate_cell,
                     _inventory_test_status_cell(model, candidate, run_history),
+                    _inventory_resolver_cell(model, match_state, candidate, run_history),
                     _inventory_action_cell(
                         model,
                         candidate,
@@ -1605,6 +1796,7 @@ def _inventory(
       <h2>Installed Models</h2>
       <p>This page checks local runtime inventory on demand. It does not download, install, benchmark, score, or import models.</p>
       <p>LM Studio rows distinguish <code>loaded</code>, <code>indexed</code>, and <code>filesystem_only</code>. Filesystem-only folders are visible on disk but are not runnable from the dashboard until LM Studio indexes or loads them.</p>
+      <p>Resolver labels explain the exact next step: run a benchmark, score a raw artifact, confirm a draft, complete missing RAM/throughput, backfill missing run config, load/index filesystem-only rows, or route embedding models to retrieval evals.</p>
       <p>Use <strong>Local file path</strong> to locate model folders in Finder. Remove actions are disabled unless the server is started with <code>--enable-delete-actions</code>. Confirmed LM Studio folders and MLX-LM snapshots move to macOS Trash; Ollama removal uses the exact inventory id with <code>ollama rm</code>.</p>
       <form class="inline-form" method="post" action="/actions/refresh-inventory">
         <input type="hidden" name="token" value="{token}">
@@ -1652,6 +1844,7 @@ def _inventory(
                 "Paths",
                 "Registry match",
                 "Tested",
+                "Resolve",
                 "Action",
             ],
             model_rows,
@@ -1788,4 +1981,4 @@ def _delete_model_action(
     result = removal.remove_target(target, timeout=timeout)
     return _delete_result_page(result), result
 
-__all__ = ('_inventory_model_key', '_inventory_model_removable', '_inventory_removal_blocked_reason', '_remove_model_control', '_inventory_action_cell', '_lmstudio_cli_path', '_collect_json_objects', '_first_value', '_looks_like_lmstudio_model', '_lmstudio_identity_values', '_local_path_from_source', '_lmstudio_local_path_and_removal_reason', '_ollama_manifest_path', '_parse_lmstudio_inventory', '_scan_lmstudio_filesystem_models', '_has_lmstudio_weight_file', '_parse_ollama_inventory', '_refresh_inventory', '_match_inventory_model', '_inventory_run_allowed', '_inventory_filter_values', '_matches_inventory_search', '_filter_inventory_entries', '_inventory_filters', '_inventory_paths_cell', '_inventory', '_format_bytes', '_inventory_model_by_key', '_removal_target_from_key', '_delete_confirm_page', '_delete_result_page', '_delete_model_action', 'LMSTUDIO_MODELS_ROOT', 'LMSTUDIO_BUNDLED_MODELS_ROOT', 'OLLAMA_MODELS_ROOT', 'HF_HUB_CACHE_ROOT', 'LMSTUDIO_WEIGHT_SUFFIXES')
+__all__ = ('_inventory_model_key', '_inventory_model_removable', '_inventory_removal_blocked_reason', '_remove_model_control', '_inventory_action_cell', '_run_has_frontier_evidence', '_run_has_config_evidence', '_run_has_actionable_evidence', '_inventory_resolver_cell', '_lmstudio_cli_path', '_collect_json_objects', '_first_value', '_looks_like_lmstudio_model', '_lmstudio_identity_values', '_local_path_from_source', '_lmstudio_local_path_and_removal_reason', '_ollama_manifest_path', '_parse_lmstudio_inventory', '_scan_lmstudio_filesystem_models', '_has_lmstudio_weight_file', '_parse_ollama_inventory', '_refresh_inventory', '_match_inventory_model', '_inventory_run_allowed', '_inventory_filter_values', '_matches_inventory_search', '_filter_inventory_entries', '_inventory_filters', '_inventory_paths_cell', '_inventory', '_format_bytes', '_inventory_model_by_key', '_removal_target_from_key', '_delete_confirm_page', '_delete_result_page', '_delete_model_action', 'LMSTUDIO_MODELS_ROOT', 'LMSTUDIO_BUNDLED_MODELS_ROOT', 'OLLAMA_MODELS_ROOT', 'HF_HUB_CACHE_ROOT', 'LMSTUDIO_WEIGHT_SUFFIXES')

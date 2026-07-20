@@ -1,10 +1,12 @@
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from local_ai_lab.vectorstores.base import (
     RetrievedChunk,
+    VectorStoreConfigurationError,
     lexical_rank_chunks,
     reciprocal_rank_fuse,
     validate_retrieval_mode,
@@ -31,6 +33,14 @@ class FakeQdrantClient:
     def collection_exists(self, *, collection_name: str) -> bool:
         assert collection_name == "chunks"
         return True
+
+    def get_collection(self, *, collection_name: str):
+        assert collection_name == "chunks"
+        return SimpleNamespace(
+            config=SimpleNamespace(
+                params=SimpleNamespace(vectors=SimpleNamespace(size=2))
+            )
+        )
 
     def query_points(
         self,
@@ -124,6 +134,20 @@ def test_qdrant_hybrid_mode_uses_rrf_with_local_lexical_candidates() -> None:
 def test_validate_retrieval_mode_rejects_unknown_mode() -> None:
     with pytest.raises(ValueError, match="unsupported retrieval mode"):
         validate_retrieval_mode("graph")
+
+
+def test_qdrant_rejects_existing_collection_with_different_vector_size() -> None:
+    store = _store_with_fake_client()
+    store.vector_size = 1024
+
+    with pytest.raises(VectorStoreConfigurationError) as exc_info:
+        store.ensure_collection()
+
+    message = str(exc_info.value)
+    assert "existing collection uses 2 dimensions" in message
+    assert "configured embedding provider uses 1024" in message
+    assert "LOCAL_AI_LAB_QDRANT_COLLECTION=local_ai_lab_chunks_reindexed_1024" in message
+    assert "uv run local-ai-lab doctor" in message
 
 
 def _store_with_fake_client() -> QdrantVectorStore:

@@ -9,6 +9,14 @@ SUPPORTED_RETRIEVAL_MODES = {"dense", "hybrid"}
 TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 
 
+class VectorStoreError(RuntimeError):
+    """Base error with a safe message suitable for local CLI/API output."""
+
+
+class VectorStoreConfigurationError(VectorStoreError):
+    """Raised when persisted vector-store state conflicts with current settings."""
+
+
 @dataclass(frozen=True)
 class RetrievedChunk:
     id: str

@@ -4,6 +4,7 @@ from local_ai_lab.api.schemas import AskRequest, AskResponse
 from local_ai_lab.config.settings import get_settings
 from local_ai_lab.llms.base import ChatProviderError
 from local_ai_lab.rag.factory import build_rag_service
+from local_ai_lab.vectorstores.base import VectorStoreError
 
 
 def create_app() -> FastAPI:
@@ -27,6 +28,14 @@ def create_app() -> FastAPI:
             raise HTTPException(
                 status_code=502,
                 detail="Local chat provider failed. Run `uv run local-ai-lab doctor`.",
+            ) from exc
+        except VectorStoreError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Local vector store configuration failed. "
+                    "Run `uv run local-ai-lab doctor`."
+                ),
             ) from exc
         return AskResponse(
             answer=result.answer,

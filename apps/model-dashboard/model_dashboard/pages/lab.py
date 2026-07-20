@@ -22,6 +22,7 @@ def _lab(
     enable_import_actions=False,
     action_token="",
     database_path=DEFAULT_DASHBOARD_DB,
+    runtime_health=None,
 ):
     candidates = _load_radar_candidates(registry_path)
     projects = _load_project_repos(project_registry_path)
@@ -244,6 +245,7 @@ def _lab(
       {specialty_stat}
       {projects_stat}
     </section>
+    {runtime_health_panel}
     <section class="lab-section">
       <h2>Product Loop</h2>
       {stages}
@@ -273,6 +275,7 @@ def _lab(
             "Abliterated / Dolphin", len(specialty_candidates), "ti-sparkles"
         ),
         projects_stat=_stat_card("GitHub projects", len(projects), "ti-brand-github"),
+        runtime_health_panel=_runtime_health_panel(runtime_health),
         stages=_table(
             ["Stage", "State", "Signal", "Next action"],
             stage_rows,

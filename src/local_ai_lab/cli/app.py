@@ -7,6 +7,7 @@ from local_ai_lab.cli.doctor import run_doctor
 from local_ai_lab.embeddings.base import EmbeddingProviderError
 from local_ai_lab.llms.base import ChatProviderError
 from local_ai_lab.rag.factory import build_rag_service
+from local_ai_lab.vectorstores.base import VectorStoreError
 
 
 def main() -> int:
@@ -40,6 +41,9 @@ def main() -> int:
         except EmbeddingProviderError as exc:
             print(f"Embedding provider error: {exc}", file=sys.stderr)
             return 1
+        except VectorStoreError as exc:
+            print(f"Vector store error: {exc}", file=sys.stderr)
+            return 1
         print(f"Ingested {result['documents']} document(s) into {result['chunks']} chunk(s).")
         return 0
 
@@ -53,6 +57,9 @@ def main() -> int:
             )
         except EmbeddingProviderError as exc:
             print(f"Embedding provider error: {exc}", file=sys.stderr)
+            return 1
+        except VectorStoreError as exc:
+            print(f"Vector store error: {exc}", file=sys.stderr)
             return 1
         except ChatProviderError as exc:
             print(f"Provider error: {exc}", file=sys.stderr)

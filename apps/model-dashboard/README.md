@@ -176,6 +176,11 @@ when the server responds with `401 Unauthorized`. The LM Studio CLI runner uses
 `--yes` and `--dont-fetch-catalog` so dashboard-triggered runs do not pause for
 interactive prompts or catalog fetches.
 
+Home and Lab render a cached **Local Readiness** snapshot for the configured
+judge, reviewer, Qdrant, and native runtime CLIs. The snapshot refuses
+non-loopback service URLs, never renders credentials or executable paths, and
+keeps optional runtimes distinct from required failures.
+
 With `--enable-run-tests`, My Models also shows **Run all runnable**. Its first
 step is a non-executing preflight that enumerates exact candidate IDs, local
 model IDs, runners, and run IDs, plus skipped models and reasons. The
@@ -289,6 +294,11 @@ scores default to `confirmed`; local-judge suggestions may be imported as
 `draft`. Draft scores are visible in the overview, run list, compare page, model
 detail page, and Markdown report so they are not confused with confirmed
 evidence.
+
+The `/reviews` queue supports individual confirmation, editing, or rejection.
+It also offers a batch confirmation action for machine-reviewed agreements
+after one explicit human acknowledgement. Disagreements are never included in
+that batch and must be resolved individually.
 
 ## Tests
 

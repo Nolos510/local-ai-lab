@@ -22,6 +22,7 @@ def _reports(conn, database_path):
       <p>Radar candidates are possible models to evaluate, not scored models.</p>
       <p>My Models checks local LM Studio and Ollama inventory on demand.</p>
       <p>Scores are valid only after raw responses, confirmed scores, and decisions exist.</p>
+      <p>Rejected or automatically quarantined evidence stays on disk for audit, but it is removed from active rankings and the human review queue.</p>
       <p>Demo rows are examples only and are hidden from real dashboard views by default.</p>
     </section>
     <section class="reports-export-section">

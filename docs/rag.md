@@ -169,15 +169,15 @@ Qdrant collection vector size is fixed when the collection is created. Switching
 from deterministic embeddings to BGE-M3, or switching any embedding model/vector
 dimension, requires recreating the collection and reingesting documents.
 
-The common failure looks like this:
+Doctor reports the conflict before ingest, for example:
 
 ```text
-Vector dimension error: expected dim: 384, got 1024
+existing collection uses 384 dimensions but the configured embedding provider uses 1024
 ```
 
-That means the current settings are writing vectors with a different dimension
-than the existing collection. Use a new collection name for smoke work, or delete
-only the collection you intentionally want to rebuild.
+That means the current settings would write vectors with a different dimension
+than the existing collection. Prefer the separate collection name in doctor's
+remediation. Delete only a collection you intentionally want to rebuild.
 
 Until a dedicated `local-ai-lab reindex` command exists, use this local manual
 sequence:

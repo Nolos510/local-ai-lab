@@ -13,6 +13,7 @@ from qdrant_client.models import (
 from local_ai_lab.ingestion.chunking import DocumentChunk
 from local_ai_lab.vectorstores.base import (
     RetrievedChunk,
+    VectorStoreConfigurationError,
     lexical_rank_chunks,
     reciprocal_rank_fuse,
     validate_retrieval_mode,
@@ -30,6 +31,17 @@ class QdrantVectorStore:
 
     def ensure_collection(self) -> None:
         if self.client.collection_exists(collection_name=self.collection_name):
+            info = self.client.get_collection(collection_name=self.collection_name)
+            existing_size = _collection_vector_size(info)
+            if existing_size is not None and existing_size != self.vector_size:
+                raise VectorStoreConfigurationError(
+                    "Qdrant collection dimension mismatch: the existing collection uses "
+                    f"{existing_size} dimensions but the configured embedding provider uses "
+                    f"{self.vector_size}. Set "
+                    "LOCAL_AI_LAB_QDRANT_COLLECTION="
+                    f"local_ai_lab_chunks_reindexed_{self.vector_size} "
+                    "to create a separate index, then run `uv run local-ai-lab doctor`."
+                )
             return
         self.client.create_collection(
             collection_name=self.collection_name,
@@ -143,6 +155,22 @@ def _json_safe_payload(payload: dict[str, Any]) -> dict[str, Any]:
         else value
         for key, value in payload.items()
     }
+
+
+def _collection_vector_size(info: Any) -> int | None:
+    try:
+        vectors = info.config.params.vectors
+    except AttributeError:
+        return None
+    if isinstance(vectors, dict):
+        sizes = {
+            int(value.size)
+            for value in vectors.values()
+            if getattr(value, "size", None) is not None
+        }
+        return sizes.pop() if len(sizes) == 1 else None
+    size = getattr(vectors, "size", None)
+    return int(size) if size is not None else None
 
 
 def _point_to_retrieved_chunk(point: Any, *, default_score: float | None = None) -> RetrievedChunk:

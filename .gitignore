@@ -29,6 +29,9 @@ data/dashboard/exports/
 automations/ai-lab-radar/reports/*no-new-source-packet.md
 automations/ai-lab-radar/reports/*no-new-approved-source-packet.md
 
+# Private radar inventory and personal planning preferences stay local.
+automations/ai-lab-radar/lab-profile.local.json
+
 # Heavy local artifacts stay out of git by default.
 data/raw/*
 !data/raw/README.md

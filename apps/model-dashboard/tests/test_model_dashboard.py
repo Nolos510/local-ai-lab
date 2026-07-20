@@ -21,6 +21,9 @@ from model_dashboard import (  # noqa: E402
     reports,
     server,
 )
+from model_dashboard.pages import inventory as inventory_page  # noqa: E402
+from model_dashboard.pages import overview as overview_page  # noqa: E402
+from model_dashboard.pages import runs as runs_page  # noqa: E402
 from model_dashboard.scoring import METRIC_FIELDS  # noqa: E402
 
 FIXTURE_DIR = APP_DIR / "fixtures"
@@ -568,6 +571,7 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn(">Discover</span>", html)
         self.assertIn(">Install</span>", html)
         self.assertIn(">Benchmark</span>", html)
+        self.assertIn(">Review</span>", html)
         self.assertIn(">Compare</span>", html)
         self.assertIn(">Decide</span>", html)
         self.assertIn("Do This Next", html)
@@ -580,6 +584,20 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("256.0 GB", html)
         self.assertIn("lms, ollama", html)
         self.assertIn("Export report", html)
+
+    def test_home_prioritizes_pending_draft_review_after_imports(self):
+        action = overview_page._home_next_action(
+            ready_count=1,
+            installed_count=2,
+            artifact_counts={"with_dashboard_import": 3},
+            real_counts={"model_runs": 3, "eval_scores": 2, "decisions": 0},
+            pending_import_count=0,
+            pending_review_count=2,
+        )
+
+        self.assertEqual(action["title"], "Review benchmark drafts")
+        self.assertEqual(action["href"], "/reviews")
+        self.assertIn("human confirmation", action["detail"])
 
     def test_current_hardware_profile_reads_sanitized_local_facts(self):
         def fake_runner(command):
@@ -1306,6 +1324,81 @@ class ModelDashboardQaTests(unittest.TestCase):
             html,
         )
         self.assertIn("--enable-import-actions", html)
+
+    def test_runs_page_offers_bulk_scoring_for_unscored_raw_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "dashboard.sqlite"
+            eval_results = tmp_path / "eval_results"
+            write_raw_dashboard_import_fixture(eval_results / "ready-run", "ready-run")
+            db.init_db(db_path, reset=True)
+
+            with db.connect(db_path) as conn:
+                html = server._runs(
+                    conn,
+                    database_path=db_path,
+                    eval_results_dir=eval_results,
+                    enable_score_actions=True,
+                    action_token="fixture-token",
+                )
+
+        self.assertIn("Score all unscored artifacts", html)
+        self.assertIn('action="/actions/score-all-unscored"', html)
+        self.assertIn('name="token" value="fixture-token"', html)
+        self.assertIn("1 artifact awaiting draft scoring", html)
+
+    def test_runs_frontier_note_explains_excluded_score_states_and_metrics(self):
+        rows = [
+            {
+                "model_id": 1,
+                "model_name": "Raw Model",
+                "score_status": "",
+                "tokens_per_sec": 25.0,
+                "ram_usage_gb": 20.0,
+                "total_score": None,
+            },
+            {
+                "model_id": 2,
+                "model_name": "Draft Model",
+                "score_status": "draft",
+                "tokens_per_sec": 26.0,
+                "ram_usage_gb": 21.0,
+                "total_score": 72.0,
+            },
+            {
+                "model_id": 3,
+                "model_name": "Missing RAM Model",
+                "score_status": "confirmed",
+                "tokens_per_sec": 27.0,
+                "ram_usage_gb": None,
+                "total_score": 73.0,
+            },
+            {
+                "model_id": 4,
+                "model_name": "Frontier Model",
+                "score_status": "confirmed",
+                "tokens_per_sec": 28.0,
+                "ram_usage_gb": 22.0,
+                "total_score": 74.0,
+            },
+        ]
+
+        _chart, note = runs_page._efficiency_frontier(rows)
+        panel = runs_page._score_resolution_panel(rows)
+
+        self.assertIn("1 frontier-ready model shown.", note)
+        self.assertIn("Excluded score state: 1 unscored, 1 draft.", note)
+        self.assertIn(
+            "1 latest confirmed run missing usable throughput or peak RAM is excluded.",
+            note,
+        )
+        self.assertIn("Score Resolution Queue", panel)
+        self.assertIn("A draft is a judge recommendation, not a verdict", panel)
+        self.assertIn("not expected to rescore the model from scratch", panel)
+        self.assertIn("Unscored raw runs", panel)
+        self.assertIn("Draft scored runs", panel)
+        self.assertIn("Confirmed but missing frontier metrics", panel)
+        self.assertIn("Frontier-ready confirmed runs", panel)
 
     def test_model_detail_renders_unsafe_source_url_as_text(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2193,6 +2286,7 @@ class ModelDashboardQaTests(unittest.TestCase):
                 ("/radar", "Discover"),
                 ("/inventory", "My Models"),
                 ("/runs", "Benchmark"),
+                ("/reviews", "Review"),
             ),
         )
         self.assertIn('data-label="Home"', html)
@@ -2208,6 +2302,15 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("content: attr(data-label)", html)
         self.assertIn("clip: rect(0 0 0 0)", html)
         self.assertNotIn(".app.collapsed .sidebar .nav span { display: none", html)
+
+    def test_dashboard_shell_exposes_keyboard_and_mobile_accessibility_basics(self):
+        html = server._layout("Fixture", "/", "<p>Body</p>")
+
+        self.assertIn('class="skip-link" href="#main-content"', html)
+        self.assertIn('<main id="main-content" tabindex="-1">', html)
+        self.assertIn(":where(a, button, input, select, summary):focus-visible", html)
+        self.assertIn("min-height: 44px", html)
+        self.assertNotIn("radial-gradient", html)
 
     def test_demoted_routes_highlight_parent_nav_section(self):
         parent_expectations = {
@@ -3167,7 +3270,93 @@ class ModelDashboardQaTests(unittest.TestCase):
         self.assertIn("not applicable", html)
         self.assertIn("Embedding model; no LLM run expected", html)
         self.assertIn("Embedding model; LLM benchmark not applicable", html)
+        self.assertIn("Embedding-only", html)
+        self.assertIn("vector/search model, not chat", html)
+        self.assertIn("route embedding models to retrieval evals", html)
         self.assertNotIn('action="/actions/run-test"', html)
+
+    def test_inventory_resolver_labels_actionable_next_steps(self):
+        ready_candidate = {field: "" for field in CANDIDATE_FIELDS}
+        ready_candidate.update(
+            {
+                "candidate_id": "candidate-ready-local",
+                "status": "ready_for_eval",
+                "local_runner": "lmstudio-cli",
+                "local_model_id": "ready-local",
+            }
+        )
+        model = {
+            "runtime": "LM Studio",
+            "model_id": "ready-local",
+            "display_name": "Ready Local",
+            "status": "loaded",
+            "model_type": "llm",
+        }
+
+        raw_html = inventory_page._inventory_resolver_cell(
+            model,
+            "registered",
+            ready_candidate,
+            {"candidate:candidate-ready-local": {"score_status": ""}},
+        )
+        draft_html = inventory_page._inventory_resolver_cell(
+            model,
+            "registered",
+            ready_candidate,
+            {"candidate:candidate-ready-local": {"score_status": "draft"}},
+        )
+        missing_metrics_html = inventory_page._inventory_resolver_cell(
+            model,
+            "registered",
+            ready_candidate,
+            {
+                "candidate:candidate-ready-local": {
+                    "score_status": "confirmed",
+                    "tokens_per_sec": 50.0,
+                    "ram_usage_gb": "",
+                }
+            },
+        )
+        actionable_html = inventory_page._inventory_resolver_cell(
+            model,
+            "registered",
+            ready_candidate,
+            {
+                "candidate:candidate-ready-local": {
+                    "score_status": "confirmed",
+                    "tokens_per_sec": 50.0,
+                    "ram_usage_gb": 32.0,
+                    "quantization": "4bit",
+                    "context_window": 4096,
+                    "temperature": 0.2,
+                    "top_p": 0.9,
+                }
+            },
+        )
+        missing_config_html = inventory_page._inventory_resolver_cell(
+            model,
+            "registered",
+            ready_candidate,
+            {
+                "candidate:candidate-ready-local": {
+                    "score_status": "confirmed",
+                    "tokens_per_sec": 50.0,
+                    "ram_usage_gb": 32.0,
+                }
+            },
+        )
+        filesystem_html = inventory_page._inventory_resolver_cell(
+            {**model, "status": "filesystem_only"},
+            "registered",
+            ready_candidate,
+        )
+
+        self.assertIn("Score artifact", raw_html)
+        self.assertIn("Confirm score", draft_html)
+        self.assertIn("Complete metrics", missing_metrics_html)
+        self.assertIn("Missing run config", missing_config_html)
+        self.assertIn("Actionable", actionable_html)
+        self.assertIn("Load/index first", filesystem_html)
 
     def test_inventory_auto_registration_can_overlay_existing_candidate(self):
         with tempfile.TemporaryDirectory() as tmp:

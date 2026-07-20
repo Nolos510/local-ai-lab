@@ -24,6 +24,10 @@ class ReportTests(unittest.TestCase):
             self.assertIn("My Models is the source of truth", text)
             self.assertIn("Models tracked: 0", text)
             self.assertIn("Demo fixture models hidden: 4", text)
+            self.assertIn("## Evidence Authority", text)
+            self.assertIn("## Workload Leaders", text)
+            self.assertIn("## Efficiency Eligibility", text)
+            self.assertIn("## Next Actions", text)
             self.assertIn(
                 "| Model | Backend | Quant | Score | Status | Label | Decision | Best use case |",
                 text,

@@ -8,6 +8,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
 
 HARNESS_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = HARNESS_DIR.parents[1]
@@ -58,12 +59,61 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             env=self.harness_env(env),
         )
 
+    def write_lifecycle_lms_fixture(self, tmp_path):
+        fake_lms = tmp_path / "lms"
+        fake_lms.write_text(
+            "\n".join(
+                [
+                    "#!/usr/bin/env python3",
+                    "import json",
+                    "import os",
+                    "import sys",
+                    "from pathlib import Path",
+                    "state = Path(os.environ['FAKE_LMS_STATE'])",
+                    "log = Path(os.environ['FAKE_LMS_LOG'])",
+                    "with log.open('a', encoding='utf-8') as handle:",
+                    "    handle.write(json.dumps(sys.argv[1:]) + '\\n')",
+                    "command = sys.argv[1]",
+                    "if command == 'ps':",
+                    "    if state.exists():",
+                    "        model_id = state.read_text(encoding='utf-8').strip()",
+                    "        print(json.dumps([{'modelKey': model_id, 'identifier': model_id}]))",
+                    "    else:",
+                    "        print('[]')",
+                    "elif command == 'load':",
+                    "    model_id = sys.argv[2]",
+                    "    state.write_text(model_id, encoding='utf-8')",
+                    "    print('loaded')",
+                    "elif command == 'unload':",
+                    "    if state.exists():",
+                    "        state.unlink()",
+                    "    print('unloaded')",
+                    "elif command == 'chat':",
+                    "    print('fixture response')",
+                    "    print('prompt tokens: 10')",
+                    "    print('completion tokens: 5')",
+                    "    print('12.5 tok/s')",
+                    "else:",
+                    "    raise SystemExit(9)",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        fake_lms.chmod(0o755)
+        return fake_lms
+
     def start_chat_server(self, mode):
         class ChatHandler(BaseHTTPRequestHandler):
             def do_POST(self):
                 request_body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
                 payload = json.loads(request_body.decode("utf-8"))
-                self.server.requests.append({"path": self.path, "payload": payload})
+                self.server.requests.append(
+                    {
+                        "path": self.path,
+                        "payload": payload,
+                        "authorization": self.headers.get("Authorization"),
+                    }
+                )
                 if mode == "ollama":
                     content = payload.get("prompt", "")
                     prompt_id = "unknown"
@@ -90,19 +140,37 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
                     return
                 messages = payload.get("messages", [])
                 content = messages[-1].get("content", "") if messages else ""
-                if mode == "judge":
-                    scores = {field: 77 for field in self.server.metric_fields}
-                    response_content = json.dumps(
-                        {
-                            "scores": scores,
-                            "total_score": 77,
-                            "final_label": "WATCHLIST",
-                            "rationale": "Draft local judge fixture.",
-                            "metric_rationales": {
-                                field: "Fixture rationale" for field in self.server.metric_fields
-                            },
-                        }
-                    )
+                if mode in (
+                    "judge",
+                    "judge-invalid-once",
+                    "judge-mismatched-total",
+                    "judge-partial",
+                    "judge-zero",
+                ):
+                    score_value = 0 if mode == "judge-zero" else 77
+                    scores = {
+                        field: score_value for field in self.server.metric_fields
+                    }
+                    if mode == "judge-invalid-once" and len(self.server.requests) == 1:
+                        response_content = "not valid JSON"
+                    elif mode == "judge-partial":
+                        response_content = json.dumps({"scores": scores})
+                    else:
+                        reported_total = (
+                            12 if mode == "judge-mismatched-total" else score_value
+                        )
+                        response_content = json.dumps(
+                            {
+                                "scores": scores,
+                                "total_score": reported_total,
+                                "final_label": "WATCHLIST",
+                                "rationale": "Draft local judge fixture.",
+                                "metric_rationales": {
+                                    field: "Fixture rationale"
+                                    for field in self.server.metric_fields
+                                },
+                            }
+                        )
                 else:
                     prompt_id = "unknown"
                     for candidate in ("LLMCORE-v0.1-001", "LLMCORE-v0.1-012"):
@@ -196,6 +264,53 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             ) as handle:
                 rows = list(csv.DictReader(handle))
             self.assertEqual(rows, [])
+
+    def test_init_run_infers_and_exports_missing_run_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_id = "20260603-qwen3-coder-mlx-4bit"
+            self.run_harness(
+                "init-run",
+                "--benchmark-run-id",
+                run_id,
+                "--model-name",
+                "Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
+                "--backend",
+                "LM Studio CLI",
+                "--output-root",
+                tmp,
+            )
+
+            run_dir = Path(tmp) / run_id
+            metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+            self.assertEqual(metadata["run"]["quantization"], "4bit")
+            self.assertEqual(metadata["run"]["context_window"], 4096)
+            self.assertEqual(metadata["run"]["temperature"], 0.2)
+            self.assertEqual(metadata["run"]["top_p"], 0.9)
+            self.assertEqual(
+                metadata["run_config_sources"]["quantization"],
+                "inferred:model_name_or_path",
+            )
+            self.assertEqual(
+                metadata["run_config_sources"]["context_window"],
+                "inferred:benchmark_default",
+            )
+
+            with (run_dir / "dashboard-import" / "model_runs.csv").open(
+                newline="", encoding="utf-8"
+            ) as handle:
+                run_rows = list(csv.DictReader(handle))
+            self.assertEqual(run_rows[0]["quantization"], "4bit")
+            self.assertEqual(run_rows[0]["context_window"], "4096")
+            self.assertEqual(run_rows[0]["temperature"], "0.2")
+            self.assertEqual(run_rows[0]["top_p"], "0.9")
+            self.assertIn(
+                "quantization_source=inferred:model_name_or_path",
+                run_rows[0]["run_notes"],
+            )
+            self.assertIn(
+                "context_window_source=inferred:benchmark_default",
+                run_rows[0]["run_notes"],
+            )
 
     def test_record_responses_and_export_dashboard_csvs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -793,6 +908,109 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             self.assertNotIn("stderr:", log_text)
             self.assertNotIn("\x1b[31mred", log_text)
 
+    def test_run_lmstudio_cli_loads_and_unloads_model_when_managed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_id = "20260717-lmstudio-managed-lifecycle"
+            fake_lms = self.write_lifecycle_lms_fixture(tmp_path)
+            state_path = tmp_path / "loaded-model.txt"
+            command_log = tmp_path / "lms-commands.jsonl"
+            env = {
+                "FAKE_LMS_STATE": str(state_path),
+                "FAKE_LMS_LOG": str(command_log),
+            }
+            self.run_harness(
+                "init-run",
+                "--benchmark-run-id",
+                run_id,
+                "--model-name",
+                "Managed LM Studio Model",
+                "--backend",
+                "LM Studio CLI",
+                "--output-root",
+                tmp,
+            )
+
+            self.run_harness(
+                "run-lmstudio-cli",
+                "--run-dir",
+                str(tmp_path / run_id),
+                "--model-id",
+                "managed-model",
+                "--lms-path",
+                str(fake_lms),
+                "--manage-model-lifecycle",
+                "--force",
+                env=env,
+            )
+
+            commands = [
+                json.loads(line)
+                for line in command_log.read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual(commands[0], ["ps", "--json"])
+            self.assertEqual(commands[1][0:2], ["load", "managed-model"])
+            self.assertIn("--yes", commands[1])
+            self.assertEqual(sum(command[0] == "chat" for command in commands), 12)
+            self.assertEqual(commands[-1], ["unload", "managed-model"])
+            self.assertFalse(state_path.exists())
+            lifecycle_log = (tmp_path / run_id / "lms-lifecycle.log").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("loaded_by_harness=yes", lifecycle_log)
+            self.assertIn("unloaded_after_run=yes", lifecycle_log)
+
+    def test_run_lmstudio_cli_preserves_model_that_was_already_loaded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_id = "20260717-lmstudio-preserve-loaded"
+            fake_lms = self.write_lifecycle_lms_fixture(tmp_path)
+            state_path = tmp_path / "loaded-model.txt"
+            state_path.write_text("preloaded-model", encoding="utf-8")
+            command_log = tmp_path / "lms-commands.jsonl"
+            env = {
+                "FAKE_LMS_STATE": str(state_path),
+                "FAKE_LMS_LOG": str(command_log),
+            }
+            self.run_harness(
+                "init-run",
+                "--benchmark-run-id",
+                run_id,
+                "--model-name",
+                "Preloaded LM Studio Model",
+                "--backend",
+                "LM Studio CLI",
+                "--output-root",
+                tmp,
+            )
+
+            self.run_harness(
+                "run-lmstudio-cli",
+                "--run-dir",
+                str(tmp_path / run_id),
+                "--model-id",
+                "preloaded-model",
+                "--lms-path",
+                str(fake_lms),
+                "--manage-model-lifecycle",
+                "--force",
+                env=env,
+            )
+
+            commands = [
+                json.loads(line)
+                for line in command_log.read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual(commands[0], ["ps", "--json"])
+            self.assertFalse(any(command[0] == "load" for command in commands))
+            self.assertFalse(any(command[0] == "unload" for command in commands))
+            self.assertEqual(state_path.read_text(encoding="utf-8"), "preloaded-model")
+            lifecycle_log = (tmp_path / run_id / "lms-lifecycle.log").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("loaded_by_harness=no", lifecycle_log)
+            self.assertIn("unloaded_after_run=no", lifecycle_log)
+
     def test_capture_log_error_summarizes_cli_output_detail(self):
         import importlib.util
 
@@ -893,6 +1111,26 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
 
         self.assertEqual(metadata["run"]["ram_usage_gb"], 7.5)
 
+    def test_manual_run_notes_support_legacy_metadata_without_runtime_metrics_path(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("harness", HARNESS)
+        harness = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(harness)
+        notes = harness._manual_run_notes(
+            {
+                "benchmark_run_id": "legacy-run",
+                "prompt_set_id": "prompt-v1",
+                "rubric_version": "rubric-v1",
+                "artifact_paths": {"raw_responses": "raw_responses.jsonl"},
+                "run": {"run_notes": "legacy=yes"},
+            }
+        )
+
+        self.assertIn("raw_artifact=raw_responses.jsonl", notes)
+        self.assertNotIn("runtime_metrics=", notes)
+        self.assertIn("legacy=yes", notes)
+
     def test_suggest_scores_writes_draft_and_exports_draft_csv(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_id = "20260605-fixture-draft-scoring"
@@ -940,6 +1178,8 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
                     endpoint,
                     "--judge-model",
                     "fixture-judge",
+                    "--reasoning-effort",
+                    "none",
                     "--out",
                     str(draft_path),
                 )
@@ -950,6 +1190,12 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             draft = json.loads(draft_path.read_text(encoding="utf-8"))
             self.assertEqual(draft["score_status"], "draft")
             self.assertEqual(draft["scores"]["reasoning"], 77.0)
+            self.assertEqual(draft["total_score"], 77.0)
+            self.assertEqual(draft["judge_reported_total"], 77.0)
+            self.assertEqual(server.requests[0]["payload"]["reasoning_effort"], "none")
+            judge_prompt = server.requests[0]["payload"]["messages"][0]["content"]
+            self.assertIn("NUMBER_0_TO_100", judge_prompt)
+            self.assertNotIn('"reasoning": 0', judge_prompt)
 
             self.run_harness(
                 "export-dashboard",
@@ -964,6 +1210,188 @@ class LocalBenchmarkHarnessTests(unittest.TestCase):
             ) as handle:
                 rows = list(csv.DictReader(handle))
             self.assertEqual(rows[0]["score_status"], "draft")
+
+    def test_suggest_scores_retries_invalid_json_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_id = "20260718-fixture-score-retry"
+            self.run_harness(
+                "init-run",
+                "--benchmark-run-id",
+                run_id,
+                "--model-name",
+                "Fixture Retry Model",
+                "--backend",
+                "LM Studio",
+                "--output-root",
+                tmp,
+            )
+            run_dir = Path(tmp) / run_id
+            (run_dir / "raw_responses.jsonl").write_text(
+                '{"prompt_id":"one","raw_response":"answer"}\n',
+                encoding="utf-8",
+            )
+            server = self.start_chat_server("judge-invalid-once")
+            try:
+                self.run_harness(
+                    "suggest-scores",
+                    "--run-dir",
+                    str(run_dir),
+                    "--endpoint",
+                    f"http://127.0.0.1:{server.server_port}/v1",
+                    "--out",
+                    str(run_dir / "draft-scores.json"),
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+
+            self.assertEqual(len(server.requests), 2)
+            draft = json.loads((run_dir / "draft-scores.json").read_text())
+            self.assertEqual(draft["final_label"], "WATCHLIST")
+            self.assertEqual(draft["suggestion_warnings"], [])
+
+    def test_suggest_scores_preserves_partial_output_with_warnings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_id = "20260718-fixture-partial-score"
+            self.run_harness(
+                "init-run",
+                "--benchmark-run-id",
+                run_id,
+                "--model-name",
+                "Fixture Partial Judge Model",
+                "--backend",
+                "LM Studio",
+                "--output-root",
+                tmp,
+            )
+            run_dir = Path(tmp) / run_id
+            (run_dir / "raw_responses.jsonl").write_text(
+                '{"prompt_id":"one","raw_response":"answer"}\n',
+                encoding="utf-8",
+            )
+            server = self.start_chat_server("judge-partial")
+            try:
+                self.run_harness(
+                    "suggest-scores",
+                    "--run-dir",
+                    str(run_dir),
+                    "--endpoint",
+                    f"http://127.0.0.1:{server.server_port}/v1",
+                    "--out",
+                    str(run_dir / "draft-scores.json"),
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+
+            self.assertEqual(len(server.requests), 2)
+            draft = json.loads((run_dir / "draft-scores.json").read_text())
+            self.assertEqual(len(draft["scores"]), 11)
+            self.assertIn("final_label_missing", draft["suggestion_warnings"])
+            self.assertIn("metric_rationales_incomplete", draft["suggestion_warnings"])
+
+    def test_suggest_scores_flags_all_zero_template_echo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_id = "20260718-fixture-zero-score"
+            self.run_harness(
+                "init-run",
+                "--benchmark-run-id",
+                run_id,
+                "--model-name",
+                "Fixture Zero Judge Model",
+                "--backend",
+                "LM Studio",
+                "--output-root",
+                tmp,
+            )
+            run_dir = Path(tmp) / run_id
+            (run_dir / "raw_responses.jsonl").write_text(
+                '{"prompt_id":"one","raw_response":"answer"}\n',
+                encoding="utf-8",
+            )
+            server = self.start_chat_server("judge-zero")
+            try:
+                self.run_harness(
+                    "suggest-scores",
+                    "--run-dir",
+                    str(run_dir),
+                    "--endpoint",
+                    f"http://127.0.0.1:{server.server_port}/v1",
+                    "--out",
+                    str(run_dir / "draft-scores.json"),
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+
+            self.assertEqual(len(server.requests), 2)
+            draft = json.loads((run_dir / "draft-scores.json").read_text())
+            self.assertEqual(draft["total_score"], 0.0)
+            self.assertIn("all_scores_zero", draft["suggestion_warnings"])
+
+    def test_suggest_scores_recomputes_mismatched_reported_total(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_id = "20260718-fixture-total-mismatch"
+            self.run_harness(
+                "init-run",
+                "--benchmark-run-id",
+                run_id,
+                "--model-name",
+                "Fixture Total Mismatch Model",
+                "--backend",
+                "LM Studio",
+                "--output-root",
+                tmp,
+            )
+            run_dir = Path(tmp) / run_id
+            (run_dir / "raw_responses.jsonl").write_text(
+                '{"prompt_id":"one","raw_response":"answer"}\n',
+                encoding="utf-8",
+            )
+            server = self.start_chat_server("judge-mismatched-total")
+            try:
+                self.run_harness(
+                    "suggest-scores",
+                    "--run-dir",
+                    str(run_dir),
+                    "--endpoint",
+                    f"http://127.0.0.1:{server.server_port}/v1",
+                    "--out",
+                    str(run_dir / "draft-scores.json"),
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+
+            self.assertEqual(len(server.requests), 2)
+            draft = json.loads((run_dir / "draft-scores.json").read_text())
+            self.assertEqual(draft["judge_reported_total"], 12.0)
+            self.assertEqual(draft["total_score"], 77.0)
+            self.assertIn("total_score_mismatch", draft["suggestion_warnings"])
+
+    def test_chat_completion_uses_lm_api_token_header(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("harness", HARNESS)
+        harness = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(harness)
+        server = self.start_chat_server("judge")
+        try:
+            endpoint = f"http://127.0.0.1:{server.server_port}/v1"
+            with mock.patch.dict(os.environ, {"LM_API_TOKEN": "fixture-secret-token"}):
+                harness._post_chat_completion(
+                    endpoint,
+                    {"model": "fixture-judge", "messages": []},
+                    5,
+                )
+        finally:
+            server.shutdown()
+            server.server_close()
+
+        self.assertEqual(
+            server.requests[0]["authorization"],
+            "Bearer fixture-secret-token",
+        )
 
     def test_dashboard_csv_export_neutralizes_formula_prefixes(self):
         with tempfile.TemporaryDirectory() as tmp:

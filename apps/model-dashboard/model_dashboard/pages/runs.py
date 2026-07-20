@@ -7,7 +7,7 @@ from html import escape
 from pathlib import Path
 from urllib.parse import urlencode
 
-from .. import capability, charts, db, recommend
+from .. import capability, charts, db, model_roles, recommend, score_review
 from ..components import *
 from ..filters import *
 from ..layout import _layout
@@ -73,20 +73,54 @@ def _run_text(value):
     return "—" if value in (None, "") else _text(value)
 
 
+def _run_value(row, field):
+    try:
+        return row[field]
+    except (KeyError, IndexError, TypeError):
+        return row.get(field) if hasattr(row, "get") else None
+
+
+def _run_config_text(row, field):
+    value = _run_value(row, field)
+    if value in (None, ""):
+        return "—"
+    run_notes = _run_value(row, "run_notes")
+    source = _run_note_value(run_notes, f"{field}_source")
+    if source.startswith("inferred:"):
+        return (
+            '<div class="cell-stack">'
+            f"<span>{_text(value)}</span>"
+            '<span class="empty">inferred</span>'
+            "</div>"
+        )
+    return _text(value)
+
+
+def _run_model_role(row):
+    return model_roles.infer_model_role(
+        _run_value(row, "model_name"),
+        _run_value(row, "model_family"),
+        _run_value(row, "provider"),
+        _run_value(row, "format"),
+    )
+
+
 def _run_table_row(row, authoritative_run_ids):
     efficiency_value = charts.efficiency(row["tokens_per_sec"], row["ram_usage_gb"])
     current_badge = _current_run_badge() if row["id"] in authoritative_run_ids else ""
     return [
         _run_text(row["date_tested"]),
-        '<div class="run-model-cell"><a href="/models/{id}">{name}</a>{badge}</div>'.format(
+        '<div class="run-model-cell"><a href="/models/{id}">{name}</a>{badge}'
+        '<span class="empty">{role}</span></div>'.format(
             id=row["model_id"],
             name=_text(row["model_name"]),
             badge=current_badge,
+            role=_text(_run_model_role(row)),
         ),
         _run_text(row["backend"]),
         _run_text(row["format"]),
-        _run_text(row["quantization"]),
-        _run_text(row["context_window"]),
+        _run_config_text(row, "quantization"),
+        _run_config_text(row, "context_window"),
         _number(row["tokens_per_sec"], fallback="—"),
         _number(row["ram_usage_gb"], fallback="—"),
         _number(efficiency_value, 2, "—"),
@@ -191,7 +225,13 @@ def _grouped_runs_table(sorted_runs, authoritative_groups):
     return '<div class="run-groups">{}</div>'.format("".join(sections))
 
 
-def _artifact_score_state(row):
+def _artifact_score_state(row, review=None):
+    if (review or {}).get("status") == "rejected":
+        action = (review or {}).get("recommended_action") or "create a fresh run"
+        return (
+            "Rejected/quarantined audit evidence: excluded from active rankings. "
+            f"Next machine action: {action.replace('_', ' ')}."
+        )
     has_score = row["scores"] == "yes" or row["draft_scores"] == "yes"
     if row["dashboard_import"] != "yes":
         return "Export dashboard CSVs first."
@@ -208,10 +248,38 @@ def _pluralized_exclusion(count, singular, plural):
     return f"{count} {noun} {verb} excluded."
 
 
-def _efficiency_frontier(runs):
+def _artifact_review_state(row, eval_results_dir):
+    run_id = _benchmark_run_id_from_notes(_run_value(row, "run_notes"))
+    if not run_id:
+        return {"status": "unscored"}
+    try:
+        artifact_dir = _safe_artifact_dir(run_id, eval_results_dir)
+    except ValueError:
+        return {"status": "unscored"}
+    return score_review.review_state(artifact_dir)
+
+
+def _efficiency_frontier(runs, eval_results_dir=EVAL_RESULTS_DIR):
     latest_confirmed_by_model = {}
+    unscored_count = 0
+    draft_count = 0
+    quarantined_count = 0
     unconfirmed_count = 0
+    non_generation_count = 0
     for row in runs:
+        if not model_roles.model_supports_generation(_run_model_role(row)):
+            non_generation_count += 1
+            continue
+        if not row["score_status"]:
+            artifact_state = _artifact_review_state(row, eval_results_dir).get("status")
+            if artifact_state == "rejected":
+                quarantined_count += 1
+            elif artifact_state in ("draft", "machine_reviewed", "disagreement"):
+                draft_count += 1
+            else:
+                unscored_count += 1
+        elif row["score_status"] == "draft":
+            draft_count += 1
         if row["score_status"] != "confirmed":
             unconfirmed_count += 1
             continue
@@ -233,15 +301,38 @@ def _efficiency_frontier(runs):
             )
         )
 
-    notes = ["One point per model from its latest confirmed run."]
+    notes = [
+        "{} frontier-ready model{} shown.".format(
+            len(items),
+            "" if len(items) == 1 else "s",
+        ),
+        "One point per model from its latest confirmed run.",
+    ]
     if unconfirmed_count:
-        notes.append(
-            _pluralized_exclusion(
-                unconfirmed_count,
-                "run without confirmed scores",
-                "runs without confirmed scores",
+        parts = []
+        if unscored_count:
+            parts.append(f"{unscored_count} unscored")
+        if draft_count:
+            parts.append(f"{draft_count} draft")
+        if quarantined_count:
+            parts.append(f"{quarantined_count} quarantined")
+        if parts:
+            notes.append(
+                _pluralized_exclusion(
+                    unconfirmed_count,
+                    "run without confirmed scores",
+                    "runs without confirmed scores",
+                )
             )
-        )
+            notes.append("Excluded score state: {}.".format(", ".join(parts)))
+        else:
+            notes.append(
+                _pluralized_exclusion(
+                    unconfirmed_count,
+                    "run without confirmed scores",
+                    "runs without confirmed scores",
+                )
+            )
     else:
         notes.append("Runs without confirmed scores are excluded.")
     if incomplete_count:
@@ -252,12 +343,138 @@ def _efficiency_frontier(runs):
                 "latest confirmed runs missing usable throughput or peak RAM",
             )
         )
+    if non_generation_count:
+        notes.append(
+            _pluralized_exclusion(
+                non_generation_count,
+                "embedding or reranker run",
+                "embedding or reranker runs",
+            )
+        )
     chart = charts.scatter(
         items,
         title="Efficiency frontier",
         empty_message="No latest confirmed runs with throughput and peak RAM yet",
     )
     return chart, " ".join(notes)
+
+
+def _score_resolution_counts(runs, eval_results_dir=EVAL_RESULTS_DIR):
+    counts = {
+        "frontier_ready": 0,
+        "unscored": 0,
+        "draft": 0,
+        "quarantined": 0,
+        "confirmed_missing_metrics": 0,
+        "missing_run_config": 0,
+        "non_generation": 0,
+    }
+    for row in runs:
+        if not model_roles.model_supports_generation(_run_model_role(row)):
+            counts["non_generation"] += 1
+            continue
+        if any(
+            _run_value(row, field) in (None, "")
+            for field in ("quantization", "context_window", "temperature", "top_p")
+        ):
+            counts["missing_run_config"] += 1
+        if not row["score_status"]:
+            artifact_state = _artifact_review_state(row, eval_results_dir).get("status")
+            if artifact_state == "rejected":
+                counts["quarantined"] += 1
+            elif artifact_state in ("draft", "machine_reviewed", "disagreement"):
+                counts["draft"] += 1
+            else:
+                counts["unscored"] += 1
+            continue
+        if row["score_status"] == "draft":
+            counts["draft"] += 1
+            continue
+        if row["score_status"] == "confirmed":
+            if charts.efficiency(row["tokens_per_sec"], row["ram_usage_gb"]) is None:
+                counts["confirmed_missing_metrics"] += 1
+            else:
+                counts["frontier_ready"] += 1
+    return counts
+
+
+def _score_resolution_panel(runs, eval_results_dir=EVAL_RESULTS_DIR):
+    counts = _score_resolution_counts(runs, eval_results_dir)
+    rows = [
+        [
+            "Non-generative runs",
+            _text(counts["non_generation"]),
+            "Embedding and reranker artifacts use retrieval evaluation, not the LLM rubric.",
+        ],
+        [
+            "Unscored raw runs",
+            _text(counts["unscored"]),
+            "Review raw responses, create/import scores, then mark draft or confirmed.",
+        ],
+        [
+            "Draft scored runs",
+            _text(counts["draft"]),
+            "Await independent review; only valid judge agreement or disagreement reaches human confirmation.",
+        ],
+        [
+            "Rejected or quarantined runs",
+            _text(counts["quarantined"]),
+            "Preserved for audit and excluded from rankings; follow the recorded rescore, rerun, or role-specific action.",
+        ],
+        [
+            "Confirmed but missing frontier metrics",
+            _text(counts["confirmed_missing_metrics"]),
+            "Rerun or re-import performance so tokens/sec and RAM GB are both present.",
+        ],
+        [
+            "Missing run config",
+            _text(counts["missing_run_config"]),
+            "Backfill or rerun so quantization, context window, temperature, and top_p are recorded.",
+        ],
+        [
+            "Frontier-ready confirmed runs",
+            _text(counts["frontier_ready"]),
+            "Already actionable for score-vs-efficiency comparison.",
+        ],
+    ]
+    return """
+    <section class="runs-section score-resolution-section">
+      <h2>Score Resolution Queue</h2>
+      <p class="section-note">Every benchmark run becomes actionable in one of two ways: confirmed with score and run evidence, or quarantined with a recorded rescore, rerun, retire, or role-specific next action. Quarantined evidence remains available for audit but is not unfinished scoring work.</p>
+      <p class="section-note"><strong>A draft is a judge recommendation, not a verdict.</strong> You are not expected to rescore the model from scratch. Review whether the evidence is valid, then accept the reviewed result, rerun weak evidence, or reject an invalid artifact.</p>
+      <p><a href="/reviews">Open Draft Review Queue</a> to compare independent local judge scores and confirm, edit, or reject drafts.</p>
+      {table}
+    </section>
+    """.format(
+        table=_table(
+            ["State", "Runs", "Next action"],
+            rows,
+            table_class="score-resolution-table",
+        )
+    )
+
+
+def _score_all_control(unscored_count, enable_score_actions=False, action_token=""):
+    if unscored_count <= 0:
+        return '<p class="empty">No raw artifacts are awaiting draft scoring.</p>'
+    noun = "artifact" if unscored_count == 1 else "artifacts"
+    summary = f"{unscored_count} {noun} awaiting draft scoring"
+    if not enable_score_actions:
+        return (
+            '<div class="cell-stack">'
+            f'<span class="empty">{_text(summary)}</span>'
+            '<button type="button" disabled>Score all unscored artifacts</button>'
+            '<div class="empty">Restart with <code>--enable-score-actions</code> and a '
+            "configured local judge.</div>"
+            "</div>"
+        )
+    return f"""
+    <form class="inline-form" method="post" action="/actions/score-all-unscored">
+      <input type="hidden" name="token" value="{_text(action_token)}">
+      <button type="submit">Score all unscored artifacts</button>
+      <span class="empty">{_text(summary)}</span>
+    </form>
+    """
 
 
 def _runs(
@@ -268,6 +485,7 @@ def _runs(
     local_inventory_path=None,
     eval_results_dir=EVAL_RESULTS_DIR,
     enable_import_actions=False,
+    enable_score_actions=False,
     action_token="",
     import_sync_result=None,
 ):
@@ -281,7 +499,10 @@ def _runs(
     task_summary = recommend.task_recommendations(_real_rows(db.list_score_details(conn)))
     filters = _run_filter_values(query or {})
     filtered_runs = _filter_runs(runs, filters)
-    frontier_chart, frontier_note = _efficiency_frontier(filtered_runs)
+    frontier_chart, frontier_note = _efficiency_frontier(
+        filtered_runs,
+        eval_results_dir,
+    )
     sorted_runs = _sort_rows(filtered_runs, query or {}, RUN_SORT_COLUMNS)
     grouped = _runs_grouped(query or {})
     if grouped:
@@ -307,22 +528,46 @@ def _runs(
     dashboard_runs = _dashboard_runs_by_benchmark_id(conn)
     decisions_by_model = _latest_decisions_by_model_id(conn)
     pending_import_count = len(_pending_artifact_run_ids(conn, eval_results_dir))
-    for artifact in sorted(
+    artifacts = sorted(
         _artifact_summaries(eval_results_dir),
         key=lambda row: row["benchmark_run_id"],
         reverse=True,
-    ):
+    )
+    unscored_artifact_count = sum(
+        artifact["raw_responses"] > 0
+        and model_roles.model_supports_generation(artifact.get("model_role"))
+        and artifact["scores"] != "yes"
+        and score_review.review_state(
+            Path(eval_results_dir) / artifact["benchmark_run_id"]
+        ).get("status")
+        != "rejected"
+        and (
+            not dashboard_runs.get(artifact["benchmark_run_id"])
+            or dashboard_runs[artifact["benchmark_run_id"]]["score_status"]
+            not in ("draft", "confirmed")
+        )
+        for artifact in artifacts
+    )
+    for artifact in artifacts:
         run_id = artifact["benchmark_run_id"]
+        review = score_review.review_state(Path(eval_results_dir) / run_id)
         artifact_rows.append(
             [
                 _artifact_link(run_id),
+                _pill(artifact.get("model_role") or "unknown"),
                 _text(artifact["raw_responses"]),
                 _text(artifact["scores"]),
                 _text(artifact["draft_scores"]),
                 _text(artifact["decision"]),
                 _text(artifact["dashboard_import"]),
                 _import_state_for_run(dashboard_runs.get(run_id), decisions_by_model),
-                _text(_artifact_score_state(artifact)),
+                _text(_artifact_score_state(artifact, review)),
+                _artifact_score_control(
+                    run_id,
+                    enable_score_actions=enable_score_actions,
+                    action_token=action_token,
+                    eval_results_dir=eval_results_dir,
+                ),
                 _artifact_import_control(
                     run_id,
                     enable_import_actions=enable_import_actions,
@@ -343,6 +588,7 @@ def _runs(
       {frontier_panel}
       <p class="section-note">{frontier_note}</p>
     </section>
+    {score_resolution_panel}
     <section class="runs-section">
       <h2>Model Runs{filtered_count}</h2>
       <p class="section-note">Model Runs are imported local benchmark run records. A row may have raw performance fields before reviewed scores or keep/watch decisions exist.</p>
@@ -356,6 +602,7 @@ def _runs(
     <section class="runs-section runs-artifact-section">
       <h2>Local Artifact Import Queue</h2>
       <p class="section-note">Use this queue for benchmark artifacts already written under <code>data/eval_results</code>. Importing a raw run updates model/run/performance data; labels and stability reports appear only after reviewed score and decision files exist.</p>
+      {score_all_control}
       {import_all_control}
       {artifact_table}
     </section>
@@ -365,6 +612,10 @@ def _runs(
         task_leaders=_task_leaders(task_summary, surface_class="task-leaders-benchmark"),
         frontier_panel=_chart_panel("Efficiency Frontier", frontier_chart),
         frontier_note=_text(frontier_note),
+        score_resolution_panel=_score_resolution_panel(
+            filtered_runs,
+            eval_results_dir,
+        ),
         filters=_runs_filters(runs, filters),
         view_control=_runs_view_control(query or {}, grouped),
         filtered_count=(f" ({len(filtered_runs)} of {len(runs)})" if any(filters.values()) else ""),
@@ -373,6 +624,11 @@ def _runs(
             include_notice=False,
             include_filters=False,
             include_deep_link=True,
+        ),
+        score_all_control=_score_all_control(
+            unscored_artifact_count,
+            enable_score_actions=enable_score_actions,
+            action_token=action_token,
         ),
         import_all_control=_artifact_import_all_control(
             pending_import_count,
@@ -383,6 +639,7 @@ def _runs(
         artifact_table=_table(
             [
                 "Artifact",
+                "Role",
                 "Raw responses",
                 "Scores",
                 "Draft scores",
@@ -390,6 +647,7 @@ def _runs(
                 "Dashboard CSVs",
                 "Dashboard state",
                 "What import changes",
+                "Draft scoring",
                 "Action",
             ],
             artifact_rows,

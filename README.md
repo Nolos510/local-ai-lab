@@ -132,10 +132,10 @@ verify the existing loopback service:
 curl -fsS http://localhost:6333/collections
 ```
 
-Continue the mock smoke path only when Qdrant is reachable. If ingest reports a
-Qdrant vector dimension mismatch, the target collection was created with a
-different embedding vector size. Use the quickstart smoke collection above, or
-delete/recreate only the collection you intentionally want to rebuild.
+Continue the mock smoke path only when Qdrant is reachable. Doctor checks the
+persisted collection dimension before ingest. If it reports a mismatch, use the
+separate collection name in its remediation, use the quickstart smoke collection
+above, or delete/recreate only the collection you intentionally want to rebuild.
 
 Semantic local embeddings can be enabled through Ollama after installing the
 configured embedding model:
@@ -166,7 +166,8 @@ the exact `ollama pull <configured-model>` command for the configured model.
 
 The mock provider means "no real LLM call." It does not remove the Qdrant,
 retrieval, settings, embedding, or indexed-document dependencies from the ask
-path. Live local-model checks may fail if Ollama, LM Studio, Qdrant, or the
+path, and it does not echo prompts or retrieved document text. Live local-model
+checks may fail if Ollama, LM Studio, Qdrant, or the
 configured local model is missing; document the exact reason instead of treating
 it as passed.
 
@@ -196,6 +197,83 @@ python3 scripts/model_dashboard_smoke.py
 python3 apps/model-dashboard/run_dashboard.py serve --demo
 ```
 
+For dashboard-triggered benchmarks and local draft scoring, start the local
+judge server first and name an exact model ID returned by its `/v1/models`
+endpoint:
+
+```bash
+lms load qwen3-coder-30b-a3b-instruct-mlx \
+  --context-length 65536 \
+  --parallel 1 \
+  --identifier qwen3-coder-30b-a3b-instruct-mlx \
+  --yes
+lms load qwen/qwen3.6-35b-a3b \
+  --context-length 65536 \
+  --parallel 1 \
+  --identifier qwen3.6-35b-a3b-reviewer \
+  --yes
+lms server start --port 1234 --bind 127.0.0.1
+python3 apps/model-dashboard/run_dashboard.py serve \
+  --demo \
+  --enable-run-tests \
+  --enable-import-actions \
+  --enable-score-actions \
+  --judge-endpoint http://127.0.0.1:1234/v1 \
+  --judge-model "qwen3-coder-30b-a3b-instruct-mlx" \
+  --reviewer-endpoint http://127.0.0.1:1234/v1 \
+  --reviewer-model "qwen3.6-35b-a3b-reviewer"
+```
+
+A 65,536-token judge context is recommended for complete 12-response evidence
+packets. Smaller contexts can pass model-inventory preflight but still reject a
+large artifact during scoring. Adjust the model key and identifier to match the
+judge installed in LM Studio.
+
+The primary judge creates `draft-scores.json`. The independent reviewer reads
+the benchmark evidence and rubric without seeing that primary draft, writes
+`review-scores.json`, and records either `machine_reviewed` or `disagreement`
+in `score-review.json`. Neither state is confirmed automatically. Open
+`/reviews` to inspect the metric deltas and use **Confirm Primary Score**,
+**Edit & Confirm**, or **Reject Draft**. Confirmation creates canonical
+`scores.json`, rebuilds the artifact's dashboard CSVs, and imports the
+confirmed score. The reviewer model must be different from the primary judge.
+The harness recomputes the canonical total from validated per-metric scores and
+stores the judge-reported total only as provenance. Template-like all-zero
+vectors, capture errors, malformed evidence, incomplete judge output, and total
+mismatches are forced into disagreement before confirmation.
+The queue also offers an explicit **Confirm reviewed agreements** action for
+machine-reviewed artifacts that remain within every agreement threshold. It
+requires one human acknowledgement, confirms only the displayed primary
+scores, and never includes disagreements; those remain individual review work.
+The same confirmation gate is available on each `/artifacts/<run-id>` detail
+page after its independent review completes, so a draft can be finalized while
+the underlying evidence is in view.
+
+Home and Lab include a cached **Local Readiness** panel for the configured
+primary judge, independent reviewer, Qdrant, LM Studio CLI, and Ollama CLI.
+These checks are read-only, loopback-only, and sanitized; they show direct
+remediation before an expensive action is started. Use
+`uv run local-ai-lab doctor` for the complete RAG/provider diagnosis.
+The [five-minute demo](docs/product/five-minute-demo.md) keeps fixture-only and
+full local-runtime setup paths explicitly separate.
+
+Installed generators, embedding models, rerankers, and multimodal models are
+classified into separate evaluation lanes. Embedding and reranker models stay
+visible in My Models, but they are excluded from generative Run All, LLM score
+imports, comparisons, and the efficiency frontier until a retrieval-specific
+evaluation exists.
+
+Scoring-enabled Run All actions perform a local judge preflight before the
+first benchmark starts. A capture remains successful when optional draft
+scoring fails and is shown as `Capture passed · Scoring pending`. The Benchmark
+page can retry every raw, unscored artifact with **Score all unscored
+artifacts**, without rerunning model inference.
+
+If LM Studio API authentication is enabled, export its token as
+`LM_API_TOKEN` before starting the dashboard. The token is sent only in the
+local Authorization header and is not written to dashboard commands, logs, or
+benchmark artifacts.
+
 Then open:
 
 ```text
@@ -208,10 +286,13 @@ Useful dashboard pages:
 - `/radar` - model candidates
 - `/projects` - GitHub project opportunities
 - `/compare` - model comparison
+- `/reviews` - independent draft review and human confirmation queue
 - `/reports` - dashboard report view
 
-The dashboard MVP uses local SQLite/CSV artifacts. It does not download models,
-call cloud APIs, or require secrets.
+The dashboard uses local SQLite/CSV artifacts and does not call cloud APIs.
+Benchmark, scoring, import, and deletion actions are disabled unless explicitly
+enabled on a loopback-only server; model-runtime tokens remain local and are not
+written to artifacts.
 
 ## AI Lab OS CLI
 

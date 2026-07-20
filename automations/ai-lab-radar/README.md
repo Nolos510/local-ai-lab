@@ -50,6 +50,10 @@ Radar work should produce:
 
 - Candidate summaries using `candidate-schema.md`.
 - Optional report notes using `templates/radar-report.md`.
+- Plain-language project explainers that state what a project does, who uses it,
+  and what the local demo would look like.
+- Project action cards with a one-week deliverable and explicit stop conditions.
+- Dated cost ranges adjusted for the local lab profile when one is present.
 - Candidate registry records under `data/model_registry` when a candidate is
   ready to track.
 - Follow-up task recommendations for local benchmark or dashboard work.
@@ -72,6 +76,40 @@ of writing `*no-new-approved-source-packet.md` into the tracked report set.
 
 For External Radar, insert an approval gate between steps 1 and 2. The first
 packet/report is candidate-only and must not edit `data/model_registry`.
+
+## Local Lab Profile
+
+Copy `lab-profile.example.json` to the ignored
+`lab-profile.local.json` file and record available hardware, preferred budget
+tiers, maximum DIY hours, and priority categories. The automation reads the
+local profile before estimating project cost so already-owned equipment is not
+priced repeatedly. Unknown preferences stay `null`; do not invent them.
+
+The local profile may contain private inventory details and machine-specific
+notes. It is ignored by git and must not be quoted into tracked packets or
+reports. Reports may state only the planning effect, such as "existing host
+available" or "budget limit not confirmed."
+
+## Daily And Weekly Outputs
+
+Daily External Radar is a delta digest. A previously reported item returns only
+after a material price, release, license, maintenance, or risk change. Each
+reported item records `first_seen`, `last_seen`, `change_status`, and a concise
+`change_summary`.
+
+On Sunday, the automation also writes a concise weekly rollup using
+`templates/weekly-rollup.md` when the preceding seven days contain useful radar
+reports. The rollup names the best project, best model candidate, cheapest
+useful build, and strongest portfolio opportunity without creating a composite
+score or registry decision.
+
+## Project Explainers
+
+Every reported project opportunity includes a concise non-technical explainer.
+It must answer what the project is, the problem it solves, who it is for, common
+uses, how it works in practice, what the AI Lab version would demonstrate, and
+important limitations. Expand unavoidable acronyms on first use and avoid
+assuming software, AI, radio, or robotics expertise.
 
 ## Security Due Diligence
 
@@ -97,6 +135,13 @@ of radar review. If a candidate requires that path, mark it `blocked` or
 
 For documentation-only radar updates, inspect the diff and confirm no runtime
 dependencies, network calls, secrets, or download logic were added.
+
+Validate a generated report and its referenced source packet with:
+
+```bash
+python3 scripts/radar_report_check.py \
+  automations/ai-lab-radar/reports/YYYY-MM-DD-daily-external-radar.md
+```
 
 If radar output feeds dashboard CSV import, run:
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import csv
 import ipaddress
+import json
 import math
 import re
 import shlex
@@ -15,7 +16,7 @@ from html import escape
 from pathlib import Path
 from urllib.parse import urlparse
 
-from . import capability, charts, db, fit
+from . import capability, charts, db, fit, model_roles
 from .icons import icon as render_icon
 from .scoring import METRIC_FIELDS
 
@@ -266,6 +267,54 @@ def _stat_card(label, value, icon_name, href=None, active=False, link_class="sta
     )
 
 
+def _runtime_health_panel(snapshot):
+    if not snapshot:
+        return ""
+    rows = []
+    for row in snapshot.get("rows", []):
+        rows.append(
+            [
+                _text(row.get("name")),
+                _pill(str(row.get("status") or "unknown").replace("_", " ")),
+                _text(row.get("detail")),
+                _text(row.get("action")),
+            ]
+        )
+    action_needed = int(snapshot.get("action_needed") or 0)
+    summary = (
+        "All required local checks are ready."
+        if action_needed == 0
+        else (
+            f"{action_needed} required local check"
+            f"{'s need' if action_needed != 1 else ' needs'} attention."
+        )
+    )
+    return """
+    <section class="panel runtime-health" aria-labelledby="runtime-health-title">
+      <div class="section-heading-row">
+        <div>
+          <h2 id="runtime-health-title">Local Readiness</h2>
+          <p>{summary}</p>
+        </div>
+        <a href="/lab">Open lab operations</a>
+      </div>
+      {table}
+      <p class="section-note">Read-only checks are cached briefly. Run <code>uv run local-ai-lab doctor</code> for the complete RAG/provider diagnosis.</p>
+    </section>
+    """.format(
+        summary=_text(summary),
+        table=_table(
+            ["Dependency", "State", "Evidence", "Remediation"],
+            rows,
+            empty_message="No local readiness checks are configured.",
+            table_class="runtime-health-table",
+            scroll_controls=True,
+            scroll_id="runtime-health-table-scroll",
+            scroll_label="Local readiness table",
+        ),
+    )
+
+
 def _chart_panel(title, chart):
     return (
         f'<div class="panel chart-panel"><h2>{_metric_label(title)}</h2>'
@@ -451,6 +500,26 @@ def _load_radar_candidates(
                 rows[by_id[candidate_id]] = merged
             else:
                 rows.append(overlay)
+    for row in rows:
+        role = model_roles.infer_model_role(
+            row.get("model_name"),
+            row.get("model_family"),
+            row.get("provider_or_org"),
+            row.get("format_or_runtime"),
+            row.get("local_model_id"),
+            row.get("model_page_url"),
+            explicit=row.get("model_role") or row.get("model_type"),
+        )
+        row["model_role"] = role
+        if (
+            row.get("provenance_status") == "local_inventory"
+            and not model_roles.model_supports_generation(role)
+        ):
+            row["status"] = "needs_more_info"
+            row["local_runner"] = ""
+            row["proposed_eval"] = (
+                f"Do not run the local LLM benchmark; use the {role} evaluation lane."
+            )
     return rows
 
 
@@ -885,10 +954,19 @@ def _artifact_summaries(eval_results_dir=EVAL_RESULTS_DIR):
     for path in sorted(root.iterdir(), key=lambda item: item.name.lower()):
         if not path.is_dir():
             continue
+        metadata = {}
+        try:
+            loaded = json.loads((path / "metadata.json").read_text(encoding="utf-8"))
+            metadata = loaded if isinstance(loaded, dict) else {}
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            pass
+        model = metadata.get("model") if isinstance(metadata.get("model"), dict) else {}
         artifacts.append(
             {
                 "benchmark_run_id": path.name,
                 "path": path,
+                "model_name": model.get("model_name") or path.name,
+                "model_role": model_roles.artifact_model_role(path),
                 "raw_responses": _count_jsonl_lines(path / "raw_responses.jsonl"),
                 "scores": _file_status(path / "scores.json"),
                 "draft_scores": _file_status(path / "draft-scores.json"),
@@ -958,6 +1036,16 @@ def _artifact_import_guidance(
     database_path=DEFAULT_DASHBOARD_DB,
     eval_results_dir=None,
 ):
+    try:
+        artifact_dir = _safe_artifact_dir(benchmark_run_id, eval_results_dir)
+    except ValueError:
+        return '<span class="empty">Invalid artifact id.</span>'
+    role = model_roles.artifact_model_role(artifact_dir)
+    if not model_roles.model_supports_generation(role):
+        return (
+            f'<span class="empty">{_text(role.title())} artifacts require their matching '
+            "evaluation lane.</span>"
+        )
     if not _artifact_import_ready(benchmark_run_id, eval_results_dir):
         return '<span class="empty">Dashboard CSVs are incomplete.</span>'
     return """
@@ -985,6 +1073,16 @@ def _artifact_import_control(
     action_token="",
     eval_results_dir=None,
 ):
+    try:
+        artifact_dir = _safe_artifact_dir(benchmark_run_id, eval_results_dir)
+    except ValueError:
+        return '<span class="empty">Invalid artifact id</span>'
+    role = model_roles.artifact_model_role(artifact_dir)
+    if not model_roles.model_supports_generation(role):
+        return (
+            '<div class="cell-stack"><button type="button" disabled>Not applicable</button>'
+            f'<div class="empty">{_text(role.title())} artifact; use a retrieval eval.</div></div>'
+        )
     if not _artifact_import_ready(benchmark_run_id, eval_results_dir):
         return '<span class="empty">No complete dashboard-import CSV set</span>'
     if not enable_import_actions:
@@ -999,6 +1097,44 @@ def _artifact_import_control(
       <input type="hidden" name="token" value="{_text(action_token)}">
       <input type="hidden" name="benchmark_run_id" value="{_text(benchmark_run_id)}">
       <button type="submit">Import Artifact</button>
+    </form>
+    """
+
+
+def _artifact_score_control(
+    benchmark_run_id,
+    enable_score_actions=False,
+    action_token="",
+    eval_results_dir=None,
+):
+    try:
+        artifact_dir = _safe_artifact_dir(benchmark_run_id, eval_results_dir)
+    except ValueError:
+        return '<span class="empty">Invalid artifact id</span>'
+    role = model_roles.artifact_model_role(artifact_dir)
+    if not model_roles.model_supports_generation(role):
+        return (
+            '<div class="cell-stack"><button type="button" disabled>Not applicable</button>'
+            f'<div class="empty">{_text(role.title())} artifact; use a retrieval eval.</div></div>'
+        )
+    if (artifact_dir / "scores.json").exists():
+        return '<span class="empty">Confirmed scores present</span>'
+    if (artifact_dir / "draft-scores.json").exists():
+        return '<span class="empty">Draft scores present</span>'
+    if _count_jsonl_lines(artifact_dir / "raw_responses.jsonl") <= 0:
+        return '<span class="empty">No raw responses to score</span>'
+    if not enable_score_actions:
+        return (
+            '<div class="cell-stack">'
+            '<button type="button" disabled>Suggest Draft Score</button>'
+            '<div class="empty">Restart with <code>--enable-score-actions</code></div>'
+            "</div>"
+        )
+    return f"""
+    <form class="inline-form" method="post" action="/actions/suggest-scores">
+      <input type="hidden" name="token" value="{_text(action_token)}">
+      <input type="hidden" name="benchmark_run_id" value="{_text(benchmark_run_id)}">
+      <button type="submit">Suggest Draft Score</button>
     </form>
     """
 
@@ -1179,4 +1315,4 @@ def _import_state_for_run(run, decisions_by_model):
         decision=decision_state,
     )
 
-__all__ = ('_text', '_number', '_pill', '_status_pill', '_current_run_badge', '_fit_summary', '_fit_capacity_summary', '_fit_memory_gb', '_task_leaders', '_stat_card', '_chart_panel', '_model_chart_label', '_average_metric_items', '_performance_items', '_performance_chart', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_mint_dashboard_run_id', '_artifact_directory_ids', '_existing_benchmark_run_ids', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_run_note_value', '_benchmark_run_id_from_notes', '_authoritative_run_groups', '_authoritative_model_summaries', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_import_guidance', '_artifact_import_control', '_artifact_import_all_control', '_import_sync_notice', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_fit_evidence', '_dashboard_run_ids', '_pending_artifact_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'LOCAL_INVENTORY_REGISTRY_PATH', 'RADAR_UPSTREAM_STATE_PATH', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE', 'METRIC_EXPLANATIONS', 'METRIC_LABEL_KEYS', 'RESULT_TABLE_HEADER_TIPS')
+__all__ = ('_text', '_number', '_pill', '_status_pill', '_current_run_badge', '_fit_summary', '_fit_capacity_summary', '_fit_memory_gb', '_task_leaders', '_stat_card', '_runtime_health_panel', '_chart_panel', '_model_chart_label', '_average_metric_items', '_performance_items', '_performance_chart', '_table', '_is_demo_row', '_real_rows', '_demo_rows', '_real_counts', '_real_data_notice', '_load_radar_candidates', '_load_project_repos', '_path_cell', '_external_link', '_external_link_or_text', '_candidate_review_links', '_candidate_availability', '_candidate_security_status', '_candidate_security', '_slug', '_candidate_runner_label', '_candidate_run_ready', '_run_test_control', '_mint_dashboard_run_id', '_artifact_directory_ids', '_existing_benchmark_run_ids', '_next_dashboard_run_id', '_append_arg', '_run_subprocess', '_command_result', '_is_loopback_host', '_relative_path', '_artifact_link', '_run_note_value', '_benchmark_run_id_from_notes', '_authoritative_run_groups', '_authoritative_model_summaries', '_artifact_link_from_notes', '_command_block', '_command_lines', '_file_status', '_count_jsonl_lines', '_artifact_summaries', '_artifact_csv_paths', '_artifact_import_ready', '_artifact_import_command', '_artifact_import_guidance', '_artifact_import_control', '_artifact_score_control', '_artifact_import_all_control', '_import_sync_notice', '_safe_artifact_dir', '_score_status_counts', '_dashboard_model_links', '_dashboard_fit_evidence', '_dashboard_run_ids', '_pending_artifact_run_ids', '_dashboard_runs_by_benchmark_id', '_latest_decisions_by_model_id', '_import_state_for_run', 'REPO_ROOT', 'CANDIDATE_REGISTRY_PATH', 'PROJECT_REGISTRY_PATH', 'EVAL_RESULTS_DIR', 'HARNESS_PATH', 'DEFAULT_DASHBOARD_DB', 'LOCAL_INVENTORY_REGISTRY_PATH', 'RADAR_UPSTREAM_STATE_PATH', 'SUPPORTED_LOCAL_RUNNERS', 'SAFE_ARTIFACT_ID_RE', 'METRIC_EXPLANATIONS', 'METRIC_LABEL_KEYS', 'RESULT_TABLE_HEADER_TIPS')

@@ -166,6 +166,7 @@ LM Studio inventory:
 python3 evals/local-llm-benchmark/harness.py run-lmstudio-cli \
   --run-dir data/eval_results/<run_id> \
   --model-id qwen3-coder-30b-a3b-instruct-mlx \
+  --manage-model-lifecycle \
   --force
 ```
 
@@ -174,7 +175,11 @@ This runs
 captures all prompt responses into `raw_responses.jsonl`, and writes a
 metadata-only `lms-cli-capture.log` with return codes, timing, token counts,
 stop reason, and sanitized error summaries. It does not download, install, or
-fetch models.
+fetch models. With `--manage-model-lifecycle`, the harness checks `lms ps`,
+loads an installed model before capture when it is not already resident, and
+unloads only models that it loaded itself. Models that were already loaded are
+left resident. Dashboard-triggered LM Studio runs enable this lifecycle by
+default and write the sanitized outcome to `lms-lifecycle.log`.
 
 Normalize human-supplied responses into the run artifact:
 
@@ -186,7 +191,14 @@ python3 evals/local-llm-benchmark/harness.py record-responses \
 
 For assisted scoring, point a separate local judge endpoint at the completed run.
 This writes `draft-scores.json` with `score_status: draft`; it does not overwrite
-the official `scores.json` template.
+the official `scores.json` template. Use an exact model ID advertised by the
+local endpoint; the dashboard does not fall back to a placeholder judge model.
+The JSON prompt uses explicit type placeholders rather than a zero-filled score
+example. The harness validates every metric, recomputes the canonical
+`total_score` as the mean of the eleven metrics, and retains the judge's own
+total only as `judge_reported_total` provenance. All-zero vectors, incomplete
+output, or a reported-total mismatch are warnings that keep the result in human
+review; they never become confirmation authority by agreement alone.
 
 ```bash
 python3 evals/local-llm-benchmark/harness.py suggest-scores \

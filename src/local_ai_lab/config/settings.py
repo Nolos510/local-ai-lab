@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     env: str = "local"
 
     qdrant_url: str = "http://localhost:6333"
-    qdrant_collection: str = "local_ai_lab_chunks"
+    qdrant_collection: str = "local_ai_lab_chunks_deterministic_1024"
     qdrant_vector_size: int = Field(default=1024, ge=8)
 
     embedding_provider: str = "deterministic"

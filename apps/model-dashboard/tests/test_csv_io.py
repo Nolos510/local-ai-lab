@@ -400,6 +400,63 @@ class CsvImportTests(unittest.TestCase):
             self.assertIsNone(legacy_row["ttft_seconds"])
             self.assertIsNone(legacy_row["total_latency_seconds"])
 
+    def test_model_run_import_backfills_missing_run_config_with_inferred_sources(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            db_path = tmp_path / "dashboard.sqlite"
+            csv_dir = tmp_path / "input"
+            write_table(
+                csv_dir / "models.csv",
+                "models",
+                [
+                    {
+                        "id": 1,
+                        "model_name": "Fixture Local Model Q5_K_M",
+                        "source_url": "lmstudio-community/fixture-q5",
+                    }
+                ],
+            )
+            write_table(
+                csv_dir / "model_runs.csv",
+                "model_runs",
+                [
+                    {
+                        "id": 1,
+                        "model_id": 1,
+                        "date_tested": "2026-06-17",
+                        "backend": "LM Studio CLI",
+                        "run_notes": "benchmark_run_id=fixture-run",
+                    }
+                ],
+            )
+            write_table(csv_dir / "eval_scores.csv", "eval_scores", [])
+            csv_io.import_all(
+                db_path,
+                {
+                    "models": csv_dir / "models.csv",
+                    "model_runs": csv_dir / "model_runs.csv",
+                    "eval_scores": csv_dir / "eval_scores.csv",
+                },
+            )
+
+            with db.connect(db_path) as conn:
+                row = conn.execute(
+                    """
+                    SELECT quantization, context_window, temperature, top_p, run_notes
+                    FROM model_runs
+                    WHERE id = 1
+                    """
+                ).fetchone()
+
+            self.assertEqual(row["quantization"], "Q5_K_M")
+            self.assertEqual(row["context_window"], 4096)
+            self.assertEqual(row["temperature"], 0.2)
+            self.assertEqual(row["top_p"], 0.9)
+            self.assertIn("quantization_source=inferred:model_name_or_path", row["run_notes"])
+            self.assertIn("context_window_source=inferred:benchmark_default", row["run_notes"])
+            self.assertIn("temperature_source=inferred:benchmark_default", row["run_notes"])
+            self.assertIn("top_p_source=inferred:benchmark_default", row["run_notes"])
+
     def test_export_neutralizes_spreadsheet_formula_prefixes(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)

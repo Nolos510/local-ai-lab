@@ -61,8 +61,13 @@ def command_serve(args):
         enable_run_tests=args.enable_run_tests,
         enable_import_actions=args.enable_import_actions,
         enable_delete_actions=args.enable_delete_actions,
+        enable_score_actions=args.enable_score_actions,
         run_test_timeout=args.run_test_timeout,
         inventory_timeout=args.inventory_timeout,
+        judge_endpoint=args.judge_endpoint,
+        judge_model=args.judge_model,
+        reviewer_endpoint=args.reviewer_endpoint,
+        reviewer_model=args.reviewer_model,
     )
     return 0
 
@@ -107,6 +112,29 @@ def build_parser():
         "--enable-delete-actions",
         action="store_true",
         help="Enable two-step local model removal actions for detected inventory rows.",
+    )
+    serve_parser.add_argument(
+        "--enable-score-actions",
+        action="store_true",
+        help="Enable local judge draft-score actions for benchmark artifacts.",
+    )
+    serve_parser.add_argument(
+        "--judge-endpoint",
+        default="http://127.0.0.1:1234/v1",
+        help="Loopback OpenAI-compatible endpoint used for local draft scoring.",
+    )
+    serve_parser.add_argument(
+        "--judge-model",
+        help="Exact local judge model id; required before score actions can run.",
+    )
+    serve_parser.add_argument(
+        "--reviewer-endpoint",
+        default="http://127.0.0.1:1234/v1",
+        help="Loopback OpenAI-compatible endpoint used for independent draft review.",
+    )
+    serve_parser.add_argument(
+        "--reviewer-model",
+        help="Exact independent local reviewer model id; must differ from the judge model.",
     )
     serve_parser.add_argument(
         "--run-test-timeout",

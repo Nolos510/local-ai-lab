@@ -97,6 +97,8 @@ def test_rag_service_ask_returns_answer_and_citations() -> None:
     result = service.ask("What does the lab run?", top_k=1)
 
     assert "Mock local answer" in result.answer
+    assert "What does the lab run?" not in result.answer
+    assert "The lab runs local RAG on Apple Silicon." not in result.answer
     assert result.citations[0].source_name == "sample.md"
     assert not hasattr(result.citations[0], "source_path")
     assert not hasattr(result.citations[0], "chunk_id")

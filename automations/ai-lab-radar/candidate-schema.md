@@ -37,9 +37,19 @@ or benchmarked.
 | `claimed_strengths` | Optional | Claims from source notes, clearly marked as claims. |
 | `local_fit` | Optional | Expected fit for Apple Silicon or local workflow. |
 | `hardware_fit` | Optional | Known or expected RAM/VRAM practicality. |
+| `estimated_artifact_size` | Required for external model reports | Source-declared or conservatively inferred artifact range. Use `unknown` until an exact quantization/artifact is selected. |
+| `estimated_disk_requirement` | Required for external model reports | Expected working disk, including artifact and reasonable runtime overhead. Label inferred values. |
+| `expected_memory_range` | Required for external model reports | Expected local memory range for the proposed runtime. Use `unknown` when quantization/runtime is unresolved. |
+| `compatible_local_runtimes` | Required for external model reports | Explicit or unverified local runtimes, such as MLX/MLX-LM, llama.cpp, LM Studio, or Ollama. Do not imply compatibility from format alone. |
+| `benchmark_gap` | Required for external model reports | Specific missing artifact, runtime, security review, or benchmark lane preventing local evaluation. |
 | `risk_notes` | Optional | License, size, safety, quality, or source-confidence concerns. |
 | `recommended_next_step` | Required | `watchlist`, `ready_for_eval`, `skip`, or `needs_more_info`. |
 | `proposed_eval` | Optional | Benchmark or skill to use next. |
+| `source_last_checked` | Required for external model reports | ISO date when the public metadata was last inspected. |
+| `first_seen` | Required for external model reports | ISO date when the item first appeared in radar. |
+| `last_seen` | Required for external model reports | ISO date for this report occurrence. |
+| `change_status` | Required for external model reports | `new` or `material_change` in a daily report. |
+| `change_summary` | Required for external model reports | What is new or changed; name the price, release, license, maintenance, or risk change for repeat items. |
 
 ## Dashboard Mapping
 
@@ -75,3 +85,5 @@ map stable fields into:
   local install plan.
 - Keep private notes out of tracked candidate records unless the user confirms
   they should be committed.
+- Treat model size, disk, and memory values as planning metadata, not benchmark
+  evidence. Label source-declared, inferred, and unknown values distinctly.

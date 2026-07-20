@@ -4,6 +4,7 @@ import csv
 from pathlib import Path
 
 from . import db
+from .run_config import apply_run_config_defaults
 from .scoring import METRIC_FIELDS, normalize_score_record
 
 TABLE_FIELDS = {
@@ -266,6 +267,16 @@ def _import_related_rows(conn, rows_by_table):
     for row in rows_by_table.get("model_runs", []):
         original_id = row.get("id")
         row["model_id"] = model_id_map.get(row.get("model_id"), row.get("model_id"))
+        model_row = next(
+            (
+                model
+                for model in rows_by_table.get("models", [])
+                if model.get("id") == row.get("model_id")
+                or model_id_map.get(model.get("id")) == row.get("model_id")
+            ),
+            {},
+        )
+        row = apply_run_config_defaults(row, model_row)
         row["id"] = _existing_run_id(conn, row)
         run_id_map[original_id] = row["id"]
         _insert_row(conn, "model_runs", row)
