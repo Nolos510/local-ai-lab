@@ -7,7 +7,7 @@ import csv
 from html import escape
 from pathlib import Path
 
-from .. import capability, charts, db, discover, recommend
+from .. import capability, charts, db, discover, model_roles, recommend
 from ..components import *
 from ..filters import *
 from ..layout import _layout
@@ -137,7 +137,20 @@ def _home_action_card(action, enable_import_actions=False, action_token=""):
 
 
 def _top_result_rows(summaries, *, limit=5):
-    scored = [row for row in summaries if row["total_score"] not in (None, "")]
+    scored = [
+        row
+        for row in summaries
+        if row["total_score"] not in (None, "")
+        and model_roles.model_supports_generation(
+            model_roles.infer_model_role(
+                row.get("model_name"),
+                row.get("model_family"),
+                row.get("provider"),
+                row.get("source_url"),
+                explicit=row.get("model_role"),
+            )
+        )
+    ]
     scored.sort(
         key=lambda row: (
             0 if row["score_status"] == "confirmed" else 1,

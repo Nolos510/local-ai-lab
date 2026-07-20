@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from . import model_roles
+
 TASK_GROUPS = (
     ("Coding", ("instruction_following", "coding_debugging")),
     ("Reasoning & agents", ("reasoning", "agent_planning")),
@@ -83,6 +85,15 @@ def task_recommendations(rows) -> RecommendationSummary:
 
     for row in rows:
         if _row_value(row, "score_status") != "confirmed":
+            continue
+        role = model_roles.infer_model_role(
+            _row_value(row, "model_name"),
+            _row_value(row, "model_family"),
+            _row_value(row, "provider"),
+            _row_value(row, "source_url"),
+            explicit=_row_value(row, "model_role"),
+        )
+        if not model_roles.model_supports_generation(role):
             continue
         model_id = _row_value(row, "model_id")
         model_name = str(_row_value(row, "model_name") or "Unnamed model")

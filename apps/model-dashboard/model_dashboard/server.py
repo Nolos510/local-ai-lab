@@ -102,6 +102,7 @@ from .pages.overview import _overview
 from .pages.projects import _projects
 from .pages.radar import _radar
 from .pages.reports import _reports
+from .pages.retrieval import RETRIEVAL_CORPORA_DIR, _retrieval
 from .pages.runs import _runs
 from .pages.review import _review_detail, _review_queue
 from .pages.specialty import _specialty
@@ -217,6 +218,7 @@ def make_handler(
     judge_model=None,
     reviewer_endpoint="http://127.0.0.1:1234/v1",
     reviewer_model=None,
+    retrieval_corpora_dir=None,
 ):
     candidate_registry_path = (
         CANDIDATE_REGISTRY_PATH if candidate_registry_path is None else candidate_registry_path
@@ -232,6 +234,9 @@ def make_handler(
     )
     upstream_state_path = (
         RADAR_UPSTREAM_STATE_PATH if upstream_state_path is None else upstream_state_path
+    )
+    retrieval_corpora_dir = (
+        RETRIEVAL_CORPORA_DIR if retrieval_corpora_dir is None else retrieval_corpora_dir
     )
     inventory_cache = {"result": None}
     import_sync_cache = {"result": import_sync_result}
@@ -686,6 +691,8 @@ def make_handler(
                     action_token=action_token,
                     import_sync_result=import_sync_cache["result"],
                 )
+            if path == "/retrieval":
+                return _retrieval(retrieval_corpora_dir)
             if path == "/compare":
                 return _compare(conn, query)
             if path == "/artifacts/compare":

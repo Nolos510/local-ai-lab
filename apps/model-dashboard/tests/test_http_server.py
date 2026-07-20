@@ -160,6 +160,7 @@ class DashboardHttpHandlerTests(unittest.TestCase):
             for path in (
                 "/lab",
                 "/capability",
+                "/retrieval",
                 "/specialty",
                 "/projects",
                 "/storage",

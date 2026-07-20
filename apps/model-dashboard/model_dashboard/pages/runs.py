@@ -667,6 +667,7 @@ def _runs(
     <section class="panel page-intro">
       <p>Benchmark runs and side-by-side comparisons. Higher score and throughput are better; lower latency is better when latency fields exist.</p>
       <p class="empty">Benchmark reads local dashboard imports and artifact folders only. It does not download, install, run, or score a model by itself.</p>
+      <p><a href="/retrieval">Open Retrieval Evaluation</a> for embedding-model recall@k and reranker MRR evidence.</p>
     </section>
     {task_leaders}
     <section class="runs-section efficiency-frontier-section">

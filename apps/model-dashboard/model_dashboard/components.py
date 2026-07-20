@@ -52,6 +52,10 @@ METRIC_EXPLANATIONS = {
     "fit": "Estimated memory = parameter count in billions × quantization bits ÷ 8 × 1.1 weight overhead, plus an 8 GB context/runtime allowance. Fit compares that estimate with machine memory after a 16 GB system reserve. It is an estimate, not a measured run; observed tok/s comes only from imported benchmark runs.",
     "current_run": "latest / registry-designated run for this model; older runs are kept for history and regression diffs",
     "task_leader": "Task leaders use confirmed scores only; drafts are excluded. Coding averages instruction-following and coding/debugging. Reasoning & agents averages reasoning and agent-planning. Research & writing averages research-synthesis and creativity. Long context and Fast & practical use their matching dimensions. Equal scores remain co-leaders.",
+    "retrieval_query_count": "Number of labeled corpus queries included in this retrieval evaluation run.",
+    "recall_at_k": "Mean fraction of each query's labeled relevant chunks found in the first k retrieved results. Higher is better; compare configurations on the same corpus and k.",
+    "mrr": "Mean reciprocal rank of the first relevant chunk in the first k results. Higher is better; compare configurations on the same corpus and k.",
+    "retrieval_k": "Rank cutoff used for both recall@k and MRR in this saved retrieval evaluation.",
 }
 METRIC_LABEL_KEYS = {
     "total score": "total_score",

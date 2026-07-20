@@ -22,6 +22,7 @@ SERVER_PATHS = (
     "/lab",
     "/runs",
     "/runs?backend=llama.cpp",
+    "/retrieval",
     "/reviews",
     "/compare?status=confirmed",
     "/inventory",
@@ -41,6 +42,7 @@ SERVER_PATHS = (
 SERVER_CONTENT = {
     "/": "Local Readiness",
     "/lab": "Local Readiness",
+    "/retrieval": "Retrieval Evaluation",
     "/reviews": "Draft Review Queue",
 }
 

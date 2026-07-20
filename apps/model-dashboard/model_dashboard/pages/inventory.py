@@ -224,6 +224,7 @@ def _inventory_resolver_cell(model, match_state, candidate, run_history=None):
         <div class="cell-stack">
           <strong>{_text(model_role.title())}-only</strong>
           <span class="empty">What: {_text(purpose)}, not chat. Why: useful inside a RAG pipeline. Next: evaluate it in the matching retrieval lane or remove it if unused.</span>
+          <a href="/retrieval">Open Retrieval Evaluation</a>
         </div>
         """
     if model.get("status") == "filesystem_only":

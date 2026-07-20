@@ -35,6 +35,7 @@ NAV_PARENT_PATHS = {
     "/specialty": "/radar",
     "/projects": "/radar",
     "/compare": "/runs",
+    "/retrieval": "/runs",
     "/storage": "/inventory",
 }
 
@@ -1029,6 +1030,66 @@ def _layout(title, current_path, body):
     }}
     .runs-section > .section-heading-row {{
       margin-top: 0;
+    }}
+    .retrieval-corpus-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      margin-top: 18px;
+    }}
+    .retrieval-corpus-section > .section-heading-row {{
+      margin-top: 0;
+    }}
+    .retrieval-corpus-section h2,
+    .retrieval-corpus-section .section-note {{
+      margin-bottom: 0;
+    }}
+    .retrieval-table {{
+      min-width: 1280px;
+    }}
+    .retrieval-table th:nth-child(1),
+    .retrieval-table td:nth-child(1) {{
+      width: 150px;
+    }}
+    .retrieval-table th:nth-child(2),
+    .retrieval-table td:nth-child(2) {{
+      width: 145px;
+    }}
+    .retrieval-table th:nth-child(3),
+    .retrieval-table td:nth-child(3),
+    .retrieval-table th:nth-child(4),
+    .retrieval-table td:nth-child(4) {{
+      width: 120px;
+    }}
+    .retrieval-table th:nth-child(5),
+    .retrieval-table td:nth-child(5),
+    .retrieval-table th:nth-child(6),
+    .retrieval-table td:nth-child(6),
+    .retrieval-table th:nth-child(7),
+    .retrieval-table td:nth-child(7),
+    .retrieval-table th:nth-child(8),
+    .retrieval-table td:nth-child(8) {{
+      width: 95px;
+      white-space: nowrap;
+    }}
+    .retrieval-table th:nth-child(9),
+    .retrieval-table td:nth-child(9) {{
+      width: 445px;
+    }}
+    .retrieval-empty details {{
+      min-width: 0;
+    }}
+    .retrieval-empty summary {{
+      color: var(--accent-2);
+      cursor: pointer;
+    }}
+    .retrieval-empty .command {{
+      margin-top: 8px;
+      max-height: 360px;
+      overflow: auto;
+    }}
+    .retrieval-empty-state {{
+      margin-top: 18px;
     }}
     .runs-view-control {{
       display: flex;

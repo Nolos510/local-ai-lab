@@ -216,6 +216,13 @@ Additional URL-backed filters are available on:
 - `/specialty` for search, status, abliterated/Dolphin lane, and security review state.
 - `/storage` for search, decision, and keep-installed state.
 
+The retrieval-role evaluation lane is available at `/retrieval`. It reads only
+committed aggregate metrics under `evals/rag-retrieval/corpora/*/` and compares
+embedding model, dense/hybrid mode, and identity/cross-encoder reranker
+configurations using query count, recall@k, and MRR. Missing configurations
+remain explicitly **not scored yet** and show the exact local collection and
+scoring command; rendering never runs that command or calls a model.
+
 The Radar Candidates page is available at:
 
 ```text

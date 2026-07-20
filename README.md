@@ -260,8 +260,10 @@ full local-runtime setup paths explicitly separate.
 Installed generators, embedding models, rerankers, and multimodal models are
 classified into separate evaluation lanes. Embedding and reranker models stay
 visible in My Models, but they are excluded from generative Run All, LLM score
-imports, comparisons, and the efficiency frontier until a retrieval-specific
-evaluation exists.
+imports, comparisons, and the efficiency frontier. The dashboard's
+`/retrieval` lane reads committed real-corpus recall@k and MRR evidence and
+shows unmeasured configurations as **not scored yet** rather than inventing an
+LLM-style score.
 
 Scoring-enabled Run All actions perform a local judge preflight before the
 first benchmark starts. A capture remains successful when optional draft
