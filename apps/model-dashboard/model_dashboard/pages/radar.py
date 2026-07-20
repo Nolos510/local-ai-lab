@@ -235,13 +235,28 @@ def _discover_chip_row(default_count, evaluated_count, specialty_count, active_l
     default_total = _text(default_count)
     evaluated_total = _text(evaluated_count)
     specialty = _text(specialty_count)
+    default_current = ' aria-current="true"' if default_active else ""
+    evaluated_current = ' aria-current="true"' if evaluated_active else ""
+    specialty_current = ' aria-current="true"' if specialty_active else ""
+    default_label = _text(
+        f"To evaluate filter, {default_count} candidates"
+        + (", current filter" if default_active else "")
+    )
+    evaluated_label = _text(
+        f"Evaluated filter, {evaluated_count} candidates"
+        + (", current filter" if evaluated_active else "")
+    )
+    specialty_label = _text(
+        f"Specialty filter, {specialty_count} candidates"
+        + (", current filter" if specialty_active else "")
+    )
     return f"""
-    <div class="filter-chip-row" aria-label="Discover quick filters">
-      <a class="filter-chip{default_active}" href="/radar">To evaluate <strong>{default_total}</strong></a>
-      <a class="filter-chip{evaluated_active}" href="/radar?view=evaluated">Evaluated <strong>{evaluated_total}</strong></a>
-      <a class="filter-chip{specialty_active}" href="/radar?lane=specialty">Specialty <strong>{specialty}</strong></a>
-      <a class="filter-chip" href="/projects">Project deep view</a>
-    </div>
+    <nav class="filter-chip-row" aria-label="Discover quick filters">
+      <a class="filter-chip{default_active}" href="/radar"{default_current} aria-label="{default_label}">To evaluate <strong>{default_total}</strong></a>
+      <a class="filter-chip{evaluated_active}" href="/radar?view=evaluated"{evaluated_current} aria-label="{evaluated_label}">Evaluated <strong>{evaluated_total}</strong></a>
+      <a class="filter-chip{specialty_active}" href="/radar?lane=specialty"{specialty_current} aria-label="{specialty_label}">Specialty <strong>{specialty}</strong></a>
+      <a class="filter-chip" href="/projects" aria-label="Open project deep view">Project deep view</a>
+    </nav>
     """
 
 

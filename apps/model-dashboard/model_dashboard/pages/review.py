@@ -209,10 +209,10 @@ def _review_queue(
         <p><strong>Confirm</strong> accepts a reviewed result. <strong>Edit and confirm</strong> is rare and should correct only a clearly unsupported label or metric. <strong>Reject</strong> removes invalid or irrelevant evidence from active rankings while preserving the artifact. <strong>Rerun</strong> is the safest choice for failed captures or material disagreement.</p>
       </div>
       <p class="empty"><strong>Machine reviewed</strong> means the two judges are within the configured thresholds. <strong>Judge disagreement</strong> means both score records are structurally valid but their labels or metrics differ beyond a configured threshold. Rejected, all-zero, role-mismatched, and capture-failed artifacts are quarantined automatically and do not appear in this active queue.</p>
-      <div class="filter-actions" aria-label="Review queue scope">
-        <a class="action-link{current_active}" href="/reviews">Current dashboard ({current_count})</a>
-        <a class="action-link secondary{all_active}" href="/reviews?scope=all">All artifacts ({all_count})</a>
-      </div>
+      <nav class="filter-actions" aria-label="Review queue scope">
+        <a class="action-link{current_active}" href="/reviews"{current_aria}>Current dashboard ({current_count})</a>
+        <a class="action-link secondary{all_active}" href="/reviews?scope=all"{all_aria}>All artifacts ({all_count})</a>
+      </nav>
       <p class="section-note">The default queue contains only generative draft artifacts imported into the active dashboard. {archived_count} archival or unimported artifact{archived_suffix} remain available in All Artifacts. Embedding and reranker artifacts are excluded because they require retrieval-specific evaluation.</p>
       {review_all_control}
       {confirm_agreements_control}
@@ -223,6 +223,8 @@ def _review_queue(
     """.format(
         current_active=" secondary" if scope != "current" else "",
         all_active="" if scope != "all" else " active",
+        current_aria=' aria-current="true"' if scope == "current" else "",
+        all_aria=' aria-current="true"' if scope == "all" else "",
         current_count=current_count,
         all_count=len(all_entries),
         archived_count=archived_count,

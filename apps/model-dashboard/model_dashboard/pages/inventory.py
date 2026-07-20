@@ -1394,7 +1394,7 @@ def _run_all_confirm_page(plan, action_token=""):
         """
     body = """
     <section class="panel page-intro">
-      <h2>Run All Preflight</h2>
+      <h2 class="action-focus-target" tabindex="-1" autofocus>Run All Preflight</h2>
       <p>Approval scope: only the exact enumerated runnable batch below.</p>
       <p class="empty">No model executes on this page. Confirmation starts one background worker, runs each model sequentially, and continues after per-model failures. Models that already have confirmed score, throughput, RAM, and run config evidence are skipped.</p>
       {confirm}
@@ -1919,7 +1919,7 @@ def _delete_confirm_page(target, remove_key, action_token):
     root = target.root if target.root is not None else "Not applicable — no filesystem path used"
     body = f"""
     <section class="panel">
-      <h2>Confirm Model Removal</h2>
+      <h2 class="action-focus-target" tabindex="-1" autofocus>Confirm Model Removal</h2>
       <p>This is a recoverable, local-only action. Review the exact target before continuing.</p>
       <div class="cell-stack">
         <div><strong>Runtime</strong><br>{_text(target.runtime)}</div>
@@ -1946,7 +1946,7 @@ def _delete_result_page(result):
     path = result.target.path if result.target.path is not None else "Not required — exact runtime id"
     body = f"""
     <section class="panel">
-      <h2>Model Removal {_text(status)}</h2>
+      <h2 class="action-focus-target" tabindex="-1" autofocus>Model Removal {_text(status)}</h2>
       <p><strong>Runtime:</strong> {_text(result.target.runtime)}</p>
       <p><strong>Model id:</strong> <code>{_text(result.target.model_id)}</code></p>
       <p><strong>Action:</strong> {_text(result.target.action)}</p>

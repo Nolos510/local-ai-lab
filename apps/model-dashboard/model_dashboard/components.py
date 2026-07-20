@@ -263,6 +263,9 @@ def _stat_card(label, value, icon_name, href=None, active=False, link_class="sta
         attributes = f'class="{classes}" href="{_text(href)}"'
         if active:
             attributes += ' aria-current="true"'
+        accessible_label = f"{label}: {value}"
+        accessible_label += ", current filter" if active else ", filter"
+        attributes += f' aria-label="{_text(accessible_label)}"'
     return (
         f"<{tag} {attributes}>"
         f"{render_icon(icon_name)}"
@@ -385,6 +388,16 @@ def _table(
             continue
         direction = sortable.get("direction", "")
         aria_sort = f' aria-sort="{_text(direction + "ending")}"' if direction else ""
+        next_direction = sortable["next_direction"] + "ending"
+        if direction:
+            accessible_name = (
+                f"{header}: currently sorted {direction}ending. "
+                f"Activate to sort {next_direction}."
+            )
+        else:
+            accessible_name = (
+                f"{header}: not currently sorted. Activate to sort {next_direction}."
+            )
         indicator = ""
         if direction:
             arrow = "↑" if direction == "asc" else "↓"
@@ -395,12 +408,12 @@ def _table(
         info = _metric_info(tip_key) if tip_key else ""
         header_cells.append(
             '<th{aria_sort}><span class="metric-label">'
-            '<a class="sort-link" href="{href}" aria-label="Sort {label} {next_direction}">'
+            '<a class="sort-link" href="{href}" aria-label="{accessible_name}">'
             "{label}{indicator}</a>{info}</span></th>".format(
                 aria_sort=aria_sort,
                 href=_text(sortable["href"]),
                 label=_text(header),
-                next_direction=_text(sortable["next_direction"]),
+                accessible_name=_text(accessible_name),
                 indicator=indicator,
                 info=info,
             )

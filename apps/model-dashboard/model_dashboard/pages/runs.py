@@ -226,11 +226,12 @@ def _run_history_control(group, model_name):
     href = _runs_history_href(group["authoritative_run"]["model_id"])
     return (
         '<details class="run-history">'
-        f"<summary>{_text(history_label)}</summary>"
+        '<summary aria-label="Show {history_label} for {model_name}">{history_label}</summary>'
         '<p><a href="{href}">Open complete {model_name} history</a></p>'
         "</details>"
     ).format(
         href=_text(href),
+        history_label=_text(history_label),
         model_name=_text(model_name),
     )
 

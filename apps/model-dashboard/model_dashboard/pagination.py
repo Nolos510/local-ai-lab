@@ -88,22 +88,32 @@ def _page_href(path, query, number, page_size):
 def _pagination_controls(path, query, page, *, label):
     """Render prev/next navigation while retaining sort and filter state."""
 
+    previous_label = escape(
+        f"{label}: previous page, page {page.number - 1} of {page.total_pages}",
+        quote=True,
+    )
+    next_label = escape(
+        f"{label}: next page, page {page.number + 1} of {page.total_pages}",
+        quote=True,
+    )
     previous = (
-        '<a class="pagination-link" rel="prev" href="{}">Previous</a>'.format(
+        '<a class="pagination-link" rel="prev" href="{}" aria-label="{}">Previous</a>'.format(
             escape(
                 _page_href(path, query, page.number - 1, page.page_size),
                 quote=True,
-            )
+            ),
+            previous_label,
         )
         if page.has_previous
         else '<span class="pagination-link disabled" aria-disabled="true">Previous</span>'
     )
     next_link = (
-        '<a class="pagination-link" rel="next" href="{}">Next</a>'.format(
+        '<a class="pagination-link" rel="next" href="{}" aria-label="{}">Next</a>'.format(
             escape(
                 _page_href(path, query, page.number + 1, page.page_size),
                 quote=True,
-            )
+            ),
+            next_label,
         )
         if page.has_next
         else '<span class="pagination-link disabled" aria-disabled="true">Next</span>'

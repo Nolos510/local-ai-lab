@@ -797,6 +797,10 @@ class ScoreReviewTests(unittest.TestCase):
                 'action="/actions/confirm-reviewed-agreements"',
                 queue_html,
             )
+            self.assertIn(
+                'href="/reviews?scope=all" aria-current="true"',
+                queue_html,
+            )
             self.assertIn("Confirm 1 reviewed agreement", queue_html)
             self.assertIn("Disagreements remain", queue_html)
             self.assertIn("Inspect evidence and resolve", queue_html)

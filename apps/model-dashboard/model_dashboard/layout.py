@@ -44,18 +44,20 @@ def _layout(title, current_path, body):
     active_path = NAV_PARENT_PATHS.get(current_path, current_path)
     for path, label in NAV_ITEMS:
         active = " active" if active_path == path else ""
+        current = ' aria-current="page"' if active else ""
         icon_name = NAV_ICONS.get(path, "ti-circle")
         nav.append(
-            f'<a class="nav{active}" href="{path}" data-label="{escape(label)}" title="{escape(label)}">'
+            f'<a class="nav{active}" href="{path}"{current} data-label="{escape(label)}" title="{escape(label)}">'
             f"{render_icon(icon_name)}"
             f"<span>{escape(label)}</span></a>"
         )
     actions = []
     for path, label in NAV_ACTIONS:
         active = " active" if current_path == path else ""
+        current = ' aria-current="page"' if active else ""
         icon_name = NAV_ICONS.get(path, "ti-file-analytics")
         actions.append(
-            f'<a class="nav nav-action{active}" href="{path}" data-label="{escape(label)}" title="{escape(label)}">'
+            f'<a class="nav nav-action{active}" href="{path}"{current} data-label="{escape(label)}" title="{escape(label)}">'
             f"{render_icon(icon_name)}"
             f"<span>{escape(label)}</span></a>"
         )
@@ -82,6 +84,8 @@ def _layout(title, current_path, body):
       --accent-soft: rgba(139, 123, 255, 0.16);
       --accent-soft-ink: #b9b0ff;
       --accent-2: #2ad4ee;
+      --focus-ring: #f8fafc;
+      --focus-halo: #2ad4ee;
       --table-head: rgba(255, 255, 255, 0.035);
       --pill-bg: rgba(139, 123, 255, 0.15);
       --pill-ink: #c4bcff;
@@ -1008,8 +1012,8 @@ def _layout(title, current_path, body):
       box-shadow: var(--glow);
     }}
     .decision-stat-link:focus-visible {{
-      outline: 2px solid var(--accent-2);
-      outline-offset: 2px;
+      outline: 3px solid var(--focus-ring);
+      outline-offset: 3px;
     }}
     .decision-filter-status {{
       margin: 6px 0 0;
@@ -2304,8 +2308,8 @@ def _layout(title, current_path, body):
     .metric-tip:focus-visible {{
       --metric-tip-opacity: 1;
       --metric-tip-offset: 0px;
-      outline: 2px solid var(--accent-2);
-      outline-offset: 2px;
+      outline: 3px solid var(--focus-ring);
+      outline-offset: 3px;
     }}
     .chart-panel:has(.metric-tip:hover),
     .chart-panel:has(.metric-tip:focus),
@@ -2413,10 +2417,17 @@ def _layout(title, current_path, body):
       padding: 10px 14px;
       text-decoration: none;
     }}
-    .skip-link:focus {{ transform: translateY(0); }}
-    :where(a, button, input, select, summary):focus-visible {{
-      outline: 3px solid var(--accent-2);
+    .skip-link:focus,
+    .skip-link:focus-visible {{ transform: translateY(0); }}
+    :where(a[href], button:not([disabled]), input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [contenteditable="true"], [tabindex]:not([tabindex="-1"])):focus-visible {{
+      outline: 3px solid var(--focus-ring);
       outline-offset: 3px;
+      box-shadow: 0 0 0 6px var(--focus-halo);
+    }}
+    .action-focus-target:focus {{
+      outline: 3px solid var(--focus-ring);
+      outline-offset: 4px;
+      box-shadow: 0 0 0 7px var(--focus-halo);
     }}
     .sidebar {{
       position: sticky;
@@ -2530,8 +2541,8 @@ def _layout(title, current_path, body):
         <h1>Local Model Performance Dashboard</h1>
         <button class="collapse-btn" type="button" aria-label="Toggle sidebar"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 7l-5 5 5 5M18 7l-5 5 5 5"/></svg></button>
       </div>
-      <nav>{nav}</nav>
-      <div class="nav-actions">{actions}</div>
+      <nav aria-label="Primary navigation">{nav}</nav>
+      <nav class="nav-actions" aria-label="Report navigation">{actions}</nav>
     </aside>
     <main id="main-content" tabindex="-1">{body}</main>
   </div>

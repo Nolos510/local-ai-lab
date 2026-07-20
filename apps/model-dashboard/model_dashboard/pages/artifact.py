@@ -178,7 +178,11 @@ def _metric_value(record, key, suffix=""):
     return f"{_text(value)}{suffix}"
 
 
-def _response_details(record, missing_message="No response text captured."):
+def _response_details(
+    record,
+    missing_message="No response text captured.",
+    disclosure_label="Show full benchmark response",
+):
     if record is None:
         return f'<span class="empty">{_text(missing_message)}</span>'
     raw_response = record.get("raw_response")
@@ -190,9 +194,10 @@ def _response_details(record, missing_message="No response text captured."):
         preview = preview[: RESPONSE_PREVIEW_CHARS - 1].rstrip() + "…"
     escaped_preview = _text(preview)
     escaped_response = _text(response_text)
+    escaped_label = _text(disclosure_label)
     return f"""
     <details class="response-details">
-      <summary><span class="response-preview">{escaped_preview}</span><span class="response-expand">Expand response</span></summary>
+      <summary aria-label="{escaped_label}"><span class="response-preview">{escaped_preview}</span><span class="response-expand">Expand response</span></summary>
       <pre class="response-full">{escaped_response}</pre>
     </details>
     """
@@ -203,7 +208,8 @@ def _prompt_response_table(records):
         return ""
     rows = []
     for record in records:
-        prompt_id = _text(record.get("prompt_id"))
+        raw_prompt_id = record.get("prompt_id")
+        prompt_id = _text(raw_prompt_id)
         rows.append(
             """
             <tr data-prompt-id="{prompt_id}">
@@ -218,7 +224,10 @@ def _prompt_response_table(records):
                 latency=_metric_value(record, "latency_ms", " ms"),
                 input_tokens=_metric_value(record, "input_tokens"),
                 output_tokens=_metric_value(record, "output_tokens"),
-                response=_response_details(record),
+                response=_response_details(
+                    record,
+                    disclosure_label=f"Show full response for prompt {raw_prompt_id or 'unknown'}",
+                ),
             )
         )
     return """
@@ -253,7 +262,7 @@ def _paired_prompt_records(records_a, records_b):
     return [(prompt_id, by_a.get(prompt_id), by_b.get(prompt_id)) for prompt_id in prompt_ids]
 
 
-def _ab_response_cell(record):
+def _ab_response_cell(record, disclosure_label):
     return """
     <div class="ab-response-cell">
       <div class="response-metrics">
@@ -267,7 +276,11 @@ def _ab_response_cell(record):
         latency=_metric_value(record, "latency_ms", " ms"),
         input_tokens=_metric_value(record, "input_tokens"),
         output_tokens=_metric_value(record, "output_tokens"),
-        response=_response_details(record, "No response captured for this prompt."),
+        response=_response_details(
+            record,
+            "No response captured for this prompt.",
+            disclosure_label=disclosure_label,
+        ),
     )
 
 
@@ -277,8 +290,14 @@ def _ab_response_table(pairs, run_a, run_b, name_a, name_b):
     rows = []
     for prompt_id, record_a, record_b in pairs:
         escaped_prompt_id = _text(prompt_id)
-        response_a = _ab_response_cell(record_a)
-        response_b = _ab_response_cell(record_b)
+        response_a = _ab_response_cell(
+            record_a,
+            f"Show full response for prompt {prompt_id} from {name_a}",
+        )
+        response_b = _ab_response_cell(
+            record_b,
+            f"Show full response for prompt {prompt_id} from {name_b}",
+        )
         rows.append(
             f"""
             <tr data-prompt-id="{escaped_prompt_id}">

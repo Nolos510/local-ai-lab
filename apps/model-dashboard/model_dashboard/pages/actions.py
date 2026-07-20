@@ -865,7 +865,7 @@ def _run_all_started_page(started):
     count = len(status.get("plan", []))
     body = """
     <section class="panel page-intro">
-      <h2>Run All Started</h2>
+      <h2 class="action-focus-target" tabindex="-1" autofocus>Run All Started</h2>
       <p><strong>Approved batch:</strong> {count} models</p>
       <p><strong>Batch id:</strong> <code>{batch_id}</code></p>
       <p class="empty">One background worker is running the approved models sequentially. Each completed run refreshes dashboard CSVs and U1 auto-imports them; a failure does not stop the remaining models.</p>
@@ -1604,13 +1604,13 @@ def _review_all_started_page(started):
     count = len(started["status"].get("run_ids", []))
     body = f"""
     <section class="panel page-intro">
-      <h2>Independent Review Started</h2>
+      <h2 class="action-focus-target" tabindex="-1" autofocus>Independent Review Started</h2>
       <p><strong>{count} draft artifacts</strong> will be reviewed sequentially by the configured independent local model.</p>
       <p class="empty">The reviewer sees the benchmark evidence and rubric, not the primary judge's draft score. Machine review never confirms a score.</p>
       <p><a href="/runs/review-all/status?batch_id={_text(batch_id)}">View review progress</a></p>
     </section>
     """
-    return _layout("Independent Review Started", "/runs", body)
+    return _layout("Independent Review Started", "/reviews", body)
 
 
 def _review_all_status_page(status):
@@ -1667,7 +1667,7 @@ def _human_score_action_page(result):
     action = result.get("status") or "updated"
     body = """
     <section class="panel page-intro">
-      <h2>Draft Score {action}</h2>
+      <h2 class="action-focus-target" tabindex="-1" autofocus>Draft Score {action}</h2>
       <p><strong>Artifact:</strong> {artifact}</p>
       <p><strong>Status:</strong> {status}</p>
       <p><a href="/reviews">Back to Draft Review Queue</a></p>
@@ -1677,7 +1677,7 @@ def _human_score_action_page(result):
         artifact=_artifact_link(result.get("benchmark_run_id")),
         status=_pill(action),
     )
-    return _layout(f"Draft Score {action.title()}", "/runs", body)
+    return _layout(f"Draft Score {action.title()}", "/reviews", body)
 
 
 def _human_confirmation_batch_page(result):
@@ -1691,7 +1691,7 @@ def _human_confirmation_batch_page(result):
     ]
     body = """
     <section class="panel page-intro">
-      <h2>Reviewed Agreement Confirmation</h2>
+      <h2 class="action-focus-target" tabindex="-1" autofocus>Reviewed Agreement Confirmation</h2>
       <p><strong>{confirmed} confirmed</strong> &middot; <strong>{failed} failed</strong></p>
       <p class="section-note">Only independently reviewed agreements were eligible. Disagreements remain in the review queue.</p>
       <p><a href="/reviews">Back to Draft Review Queue</a></p>

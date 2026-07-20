@@ -2308,7 +2308,13 @@ class ModelDashboardQaTests(unittest.TestCase):
 
         self.assertIn('class="skip-link" href="#main-content"', html)
         self.assertIn('<main id="main-content" tabindex="-1">', html)
-        self.assertIn(":where(a, button, input, select, summary):focus-visible", html)
+        self.assertIn(
+            ':where(a[href], button:not([disabled]), '
+            'input:not([type="hidden"]):not([disabled]), select:not([disabled]), '
+            'textarea:not([disabled]), summary, [contenteditable="true"], '
+            '[tabindex]:not([tabindex="-1"])):focus-visible',
+            html,
+        )
         self.assertIn("min-height: 44px", html)
         self.assertNotIn("radial-gradient", html)
 

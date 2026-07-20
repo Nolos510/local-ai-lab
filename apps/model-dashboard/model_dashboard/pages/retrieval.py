@@ -233,12 +233,17 @@ def _evidence_cell(config, evidence):
     status_html = _pill(status)
     guidance_html = _text(guidance)
     command_html = _command_block(_production_command(config))
+    summary_label = _text(
+        "Show exact local collection and scoring command for "
+        f"{config.corpus}, {config.retrieval_mode} retrieval with "
+        f"{config.reranker} reranker"
+    )
     return f"""
     <div class="retrieval-empty cell-stack">
       {status_html}
       <span class="empty">{guidance_html}</span>
       <details>
-        <summary>Exact local collection and scoring command</summary>
+        <summary aria-label="{summary_label}">Exact local collection and scoring command</summary>
         {command_html}
       </details>
     </div>
