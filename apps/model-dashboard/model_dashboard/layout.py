@@ -1036,6 +1036,44 @@ def _layout(title, current_path, body):
       align-items: center;
       gap: 10px;
     }}
+    .pagination {{
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px 16px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel-soft);
+    }}
+    .pagination-status {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+    }}
+    .pagination-links {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }}
+    .pagination-link {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+      padding: 6px 11px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: rgba(139, 123, 255, 0.08);
+      font-weight: 600;
+      text-decoration: none;
+    }}
+    .pagination-link.disabled {{
+      color: var(--muted);
+      opacity: 0.58;
+    }}
     .run-groups {{
       display: grid;
       gap: 16px;
@@ -1079,6 +1117,23 @@ def _layout(title, current_path, body):
     }}
     .run-history[open] summary {{
       margin-bottom: 10px;
+    }}
+    .run-history p {{
+      margin: 8px 0 0;
+    }}
+    .run-history-filter-notes {{
+      display: grid;
+      gap: 8px;
+    }}
+    .run-history-filter-note {{
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 8px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel-soft);
     }}
     .run-model-cell,
     .current-run-marker {{

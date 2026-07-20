@@ -180,6 +180,17 @@ class AuthoritativeRunPageTests(unittest.TestCase):
                         registry_path=registry_path,
                         eval_results_dir=root / "eval-results",
                     )
+                    history_html = server._runs(
+                        conn,
+                        {
+                            "group": ["off"],
+                            "model_id": ["1"],
+                            "sort": ["date"],
+                            "dir": ["desc"],
+                        },
+                        registry_path=registry_path,
+                        eval_results_dir=root / "eval-results",
+                    )
             finally:
                 conn.close()
 
@@ -192,8 +203,18 @@ class AuthoritativeRunPageTests(unittest.TestCase):
         self.assertNotIn("newer-run", alpha_current)
         self.assertIn('<details class="run-history">', html)
         self.assertIn("2 earlier runs", html)
-        self.assertIn("newer-run", html)
-        self.assertIn("oldest-run", html)
+        self.assertNotIn("newer-run", html)
+        self.assertNotIn("oldest-run", html)
+        self.assertIn(
+            'href="/runs?group=off&amp;model_id=1&amp;sort=date&amp;dir=desc"',
+            html,
+        )
+        self.assertIn("newer-run", history_html)
+        self.assertIn("oldest-run", history_html)
+        history_table = history_html.split('<table class="runs-table"', 1)[1].split(
+            "</table>", 1
+        )[0]
+        self.assertNotIn("Beta Model", history_table)
         self.assertEqual(2, html.count('class="pill current-run"'))
         self.assertIn(CURRENT_RUN_TIP, html)
         self.assertIn('href="/runs?group=off"', html)

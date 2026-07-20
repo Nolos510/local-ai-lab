@@ -11,6 +11,7 @@ from .. import capability, charts, db, model_roles, recommend, score_review
 from ..components import *
 from ..filters import *
 from ..layout import _layout
+from ..pagination import _paginate, _pagination_controls
 from ..reports import generate_markdown_report
 from ..scoring import METRIC_FIELDS
 from ..sorting import _sort_rows, _sortable_headers
@@ -67,6 +68,23 @@ RUN_TABLE_HEADERS = (
     "Artifact",
     "Stability",
 )
+GROUPED_RUN_TABLE_HEADERS = (
+    "Date",
+    "Model",
+    "Backend",
+    "Tok/s",
+    "RAM GB",
+    "Efficiency",
+    "Score",
+    "Status",
+    "Label",
+    "Artifact",
+    "History",
+)
+GROUPED_RUN_HEADER_TIPS = {
+    **RESULT_TABLE_HEADER_TIPS,
+    "Model": "current_run",
+}
 
 
 def _run_text(value):
@@ -150,6 +168,11 @@ def _runs_grouped(query):
         return True
     if mode == "off":
         return False
+    if any(
+        _query_value(query or {}, key)
+        for key in ("q", "backend", "label", "status", "model_id")
+    ):
+        return False
     return _query_value(query or {}, "sort") not in RUN_SORT_COLUMNS
 
 
@@ -170,59 +193,115 @@ def _runs_view_control(query, grouped):
     )
 
 
+def _compact_compare_section():
+    return """
+    <div class="section-heading-row">
+      <div>
+        <h2>Compare Models</h2>
+        <p class="section-note">Open the dedicated comparison workspace for the complete score matrix, dimension averages, throughput, and latency charts.</p>
+      </div>
+      <a class="action-link secondary" href="/compare">Open compare filters</a>
+    </div>
+    """
+
+
+def _runs_history_href(model_id):
+    return "/runs?{}".format(
+        urlencode(
+            (
+                ("group", "off"),
+                ("model_id", str(model_id)),
+                ("sort", "date"),
+                ("dir", "desc"),
+            )
+        )
+    )
+
+
+def _run_history_control(group, model_name):
+    history_count = len(group["other_runs"])
+    if not history_count:
+        return "—"
+    history_label = f"{history_count} earlier run" + ("" if history_count == 1 else "s")
+    href = _runs_history_href(group["authoritative_run"]["model_id"])
+    return (
+        '<details class="run-history">'
+        f"<summary>{_text(history_label)}</summary>"
+        '<p><a href="{href}">Open complete {model_name} history</a></p>'
+        "</details>"
+    ).format(
+        href=_text(href),
+        model_name=_text(model_name),
+    )
+
+
+def _grouped_run_table_row(row, group):
+    full_row = _run_table_row(row, {group["authoritative_run_id"]})
+    model_cell = (
+        '<div class="run-model-cell"><a href="/models/{id}">{name}</a>'
+        '<span class="pill current-run">current</span>'
+        '<span class="empty">{role}</span></div>'
+    ).format(
+        id=row["model_id"],
+        name=_text(row["model_name"]),
+        role=_text(_run_model_role(row)),
+    )
+    return [
+        full_row[0],
+        model_cell,
+        full_row[2],
+        full_row[6],
+        full_row[7],
+        full_row[8],
+        full_row[9],
+        full_row[10],
+        full_row[11],
+        full_row[12],
+        _run_history_control(group, row["model_name"]),
+    ]
+
+
 def _grouped_runs_table(sorted_runs, authoritative_groups):
     if not sorted_runs:
         return '<p class="empty">No real benchmark runs match these filters.</p>'
     rows_by_model = {}
     for row in sorted_runs:
         rows_by_model.setdefault(row["model_id"], []).append(row)
-    sections = []
-    scroll_target_assigned = False
+    current_rows = []
+    outside_filter_notices = []
     for model_id, model_runs in rows_by_model.items():
         group = authoritative_groups[model_id]
         authoritative_id = group["authoritative_run_id"]
         current = next((row for row in model_runs if row["id"] == authoritative_id), None)
-        history = [row for row in model_runs if row["id"] != authoritative_id]
-        current_table = (
-            _table(
-                RUN_TABLE_HEADERS,
-                [_run_table_row(current, {authoritative_id})],
-                table_class="runs-table",
-                scroll_controls=not scroll_target_assigned,
-                scroll_id="model-runs-table-scroll",
-                scroll_label="Model runs table",
-                header_tip_keys=RESULT_TABLE_HEADER_TIPS,
-            )
-            if current is not None
-            else '<p class="empty">Current run is outside the active filters.</p>'
-        )
         if current is not None:
-            scroll_target_assigned = True
-        history_label = f"{len(history)} earlier run" + ("" if len(history) == 1 else "s")
-        history_table = ""
-        if history:
-            history_table = (
-                '<details class="run-history">'
-                f"<summary>{_text(history_label)}</summary>"
-                + _table(
-                    RUN_TABLE_HEADERS,
-                    [_run_table_row(row, set()) for row in history],
-                    table_class="runs-table runs-history-table",
-                    header_tip_keys=RESULT_TABLE_HEADER_TIPS,
-                )
-                + "</details>"
-            )
+            current_rows.append(_grouped_run_table_row(current, group))
+            continue
         model_name = model_runs[0]["model_name"]
-        sections.append(
-            '<section class="run-group">'
-            '<div class="run-group-heading">'
-            f'<h3><a href="/models/{model_id}">{_text(model_name)}</a></h3>'
-            f'<span class="empty">{1 if current is not None else 0} current · {len(history)} history</span>'
-            "</div>"
-            f"{current_table}{history_table}"
-            "</section>"
+        outside_filter_notices.append(
+            '<div class="run-history-filter-note">'
+            f'<strong><a href="/models/{model_id}">{_text(model_name)}</a></strong> '
+            '<span class="empty">Current run is outside the active filters.</span>'
+            f'{_run_history_control(group, model_name)}'
+            '</div>'
         )
-    return '<div class="run-groups">{}</div>'.format("".join(sections))
+    table = _table(
+        GROUPED_RUN_TABLE_HEADERS,
+        current_rows,
+        empty_message="No current runs match these filters.",
+        table_class="runs-table grouped-runs-table",
+        scroll_controls=True,
+        scroll_id="model-runs-table-scroll",
+        scroll_label="Current model runs table",
+        header_tip_keys=GROUPED_RUN_HEADER_TIPS,
+    )
+    notices = (
+        '<div class="run-history-filter-notes">{}</div>'.format(
+            "".join(outside_filter_notices)
+        )
+        if outside_filter_notices
+        else ""
+    )
+    return table + notices
 
 
 def _artifact_score_state(row, review=None):
@@ -508,7 +587,8 @@ def _runs(
     if grouped:
         model_runs_table = _grouped_runs_table(sorted_runs, authoritative_groups)
     else:
-        rows = [_run_table_row(row, authoritative_run_ids) for row in sorted_runs]
+        run_page = _paginate(sorted_runs, query or {})
+        rows = [_run_table_row(row, authoritative_run_ids) for row in run_page.items]
         model_runs_table = _table(
             RUN_TABLE_HEADERS,
             rows,
@@ -523,6 +603,11 @@ def _runs(
                 query or {},
                 RUN_SORT_HEADERS,
             ),
+        ) + _pagination_controls(
+            "/runs",
+            query or {},
+            run_page,
+            label="Model runs pagination",
         )
     artifact_rows = []
     dashboard_runs = _dashboard_runs_by_benchmark_id(conn)
@@ -619,11 +704,15 @@ def _runs(
         filters=_runs_filters(runs, filters),
         view_control=_runs_view_control(query or {}, grouped),
         filtered_count=(f" ({len(filtered_runs)} of {len(runs)})" if any(filters.values()) else ""),
-        compare_section=_compare_section(
-            conn,
-            include_notice=False,
-            include_filters=False,
-            include_deep_link=True,
+        compare_section=(
+            _compact_compare_section()
+            if grouped and not any(filters.values())
+            else _compare_section(
+                conn,
+                include_notice=False,
+                include_filters=False,
+                include_deep_link=True,
+            )
         ),
         score_all_control=_score_all_control(
             unscored_artifact_count,

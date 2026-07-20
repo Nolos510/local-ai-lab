@@ -490,6 +490,7 @@ def _run_filter_values(query):
         "backend": _query_value(query, "backend"),
         "label": _query_value(query, "label"),
         "status": _query_value(query, "status"),
+        "model_id": _query_value(query, "model_id"),
     }
 
 
@@ -517,6 +518,8 @@ def _matches_run_search(row, search):
 def _filter_runs(rows, filters):
     filtered = []
     for row in rows:
+        if filters["model_id"] and str(row["model_id"]) != filters["model_id"]:
+            continue
         if filters["backend"] and row["backend"] != filters["backend"]:
             continue
         if filters["label"] and row["final_label"] != filters["label"]:
@@ -675,8 +678,14 @@ def _runs_filters(rows, filters):
         for status in _field_options(rows, "score_status")
     )
     clear_link = '<a class="clear-link" href="/runs">Clear</a>' if any(filters.values()) else ""
+    model_input = (
+        f'<input type="hidden" name="model_id" value="{_text(filters["model_id"])}">'
+        if filters["model_id"]
+        else ""
+    )
     return """
     <form class="filters" method="get" action="/runs">
+      {model_input}
       <div class="field field-wide">
         <label for="runs-q">Search</label>
         <input id="runs-q" name="q" type="search" value="{q}">
@@ -715,6 +724,7 @@ def _runs_filters(rows, filters):
         label_options=label_options,
         all_statuses=_option("", "All statuses", filters["status"]),
         status_options=status_options,
+        model_input=model_input,
         clear_link=clear_link,
     )
 

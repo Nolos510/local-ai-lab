@@ -10,6 +10,7 @@ from .. import capability, charts, db, discover, fit
 from ..components import *
 from ..filters import *
 from ..layout import _layout
+from ..pagination import _paginate, _pagination_controls
 from ..reports import generate_markdown_report
 from ..scoring import METRIC_FIELDS
 from ..sorting import _sort_rows, _sortable_headers
@@ -45,6 +46,7 @@ CANDIDATE_SORT_HEADERS = {
     "Proposed eval": "proposed_eval",
     "Links": "links",
 }
+RADAR_PAGE_SIZE = 5
 
 
 def _upstream_update_control(row, action_token):
@@ -334,6 +336,11 @@ def _radar(
         query or {},
         CANDIDATE_SORT_COLUMNS,
     )
+    candidate_page = _paginate(
+        sorted_candidates,
+        query or {},
+        default_page_size=RADAR_PAGE_SIZE,
+    )
     evaluated_count = len(graduated_candidates)
     ready_count = sum(1 for row in view_candidates if row.get("status") == "ready_for_eval")
     watchlist_count = sum(1 for row in view_candidates if row.get("status") == "watchlist")
@@ -351,7 +358,7 @@ def _radar(
     )
     rows = _candidate_rows(
         conn,
-        sorted_candidates,
+        candidate_page.items,
         memory_gb,
         action_token=action_token,
     )
@@ -416,28 +423,36 @@ def _radar(
             if any(filters.values())
             else ""
         ),
-        table=_table(
-            [
-                "Candidate",
-                "Status",
-                "Metadata",
-                "Availability",
-                "Review notes",
-                "Security gate",
-                "Proposed eval",
-                "Links",
-            ],
-            rows,
-            empty_message="No candidates match these filters.",
-            table_class="radar-table",
-            scroll_controls=True,
-            scroll_id="radar-candidates-table-scroll",
-            scroll_label="Radar candidates table",
-            sortable_headers=_sortable_headers(
+        table=(
+            _table(
+                [
+                    "Candidate",
+                    "Status",
+                    "Metadata",
+                    "Availability",
+                    "Review notes",
+                    "Security gate",
+                    "Proposed eval",
+                    "Links",
+                ],
+                rows,
+                empty_message="No candidates match these filters.",
+                table_class="radar-table",
+                scroll_controls=True,
+                scroll_id="radar-candidates-table-scroll",
+                scroll_label="Radar candidates table",
+                sortable_headers=_sortable_headers(
+                    "/radar",
+                    query or {},
+                    CANDIDATE_SORT_HEADERS,
+                ),
+            )
+            + _pagination_controls(
                 "/radar",
                 query or {},
-                CANDIDATE_SORT_HEADERS,
-            ),
+                candidate_page,
+                label="Radar candidates pagination",
+            )
         ),
         projects_section=_project_section(projects),
     )
