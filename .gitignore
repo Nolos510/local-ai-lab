@@ -65,3 +65,6 @@ reports/postmortems/*
 !reports/postmortems/README.md
 .claude/
 data/growth_registry/plugins_upstream_state.json
+
+# Private Growth / Skills Lab inventory, progress, discovery inbox, and audit state.
+.local-ai-lab/

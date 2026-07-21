@@ -31,6 +31,11 @@ which local models and project opportunities are worth keeping.
 - Do not change architecture direction without an ADR in `docs/adr/`.
 - Logs must not dump user documents, prompts, retrieved chunks, API keys, or
   private paths by default.
+- Installation or removal authority for skills, plugins, MCP servers, and
+  connectors is limited to the separately reviewed `ai-lab growth` flow. No
+  dashboard render path, RAG/provider command, radar action, inventory scan, or
+  unrelated automation may install, enable, disable, or remove them. Growth G1
+  inventory is read-only and grants no install authority.
 
 ## 4. Dashboard, Benchmark, And Radar Rules
 

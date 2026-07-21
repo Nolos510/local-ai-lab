@@ -43,6 +43,7 @@ from local_ai_lab.cli.quant_advisor import (
 from local_ai_lab.cli.quant_advisor import (
     write_markdown as write_quant_markdown,
 )
+from local_ai_lab.growth import commands as growth_commands
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_REGISTRY = REPO_ROOT / "data" / "model_registry" / "candidates.csv"
@@ -63,6 +64,15 @@ SUPPORTED_BENCH_RUNNERS = (
     "ollama",
     "openai-compatible",
 )
+_PRIVACY_NARROW_PARSE_ERRORS = False
+
+
+class _LabArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        if _PRIVACY_NARROW_PARSE_ERRORS:
+            self.print_usage(sys.stderr)
+            self.exit(2, "ai-lab growth error: invalid arguments\n")
+        super().error(message)
 
 
 def _read_candidates(path: Path) -> list[dict[str, str]]:
@@ -940,8 +950,10 @@ def command_quant_advise(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Operate the local-first AI Lab OS loop.")
+    parser = _LabArgumentParser(description="Operate the local-first AI Lab OS loop.")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    growth_commands.add_parser(subparsers)
 
     status_parser = subparsers.add_parser("status", help="Show local lab loop status.")
     status_parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
@@ -1182,8 +1194,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    return args.func(args)
+    global _PRIVACY_NARROW_PARSE_ERRORS
+    arguments = sys.argv[1:] if argv is None else argv
+    _PRIVACY_NARROW_PARSE_ERRORS = bool(arguments and arguments[0] == "growth")
+    try:
+        args = build_parser().parse_args(arguments)
+        return args.func(args)
+    finally:
+        _PRIVACY_NARROW_PARSE_ERRORS = False
 
 
 if __name__ == "__main__":

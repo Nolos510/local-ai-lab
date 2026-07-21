@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "growth-state-v1.schema.json",
+  "title": "AI Lab OS private Growth state v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "inventory", "progress"],
+  "properties": {
+    "schema_version": {"const": "growth-state-v1"},
+    "inventory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id", "kind", "ecosystem", "source", "available", "configured",
+          "installed", "enabled", "referenced", "evidenced"
+        ],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_.:@-]{0,127}$"},
+          "kind": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_.:@-]{0,127}$"},
+          "ecosystem": {"enum": ["repo", "codex", "claude"]},
+          "source": {
+            "enum": [
+              "repo_skills", "codex_home_skills", "codex_plugin_cli", "codex_mcp_cli",
+              "repo_claude_skills", "claude_home_skills", "claude_plugin_cli", "claude_mcp_cli"
+            ]
+          },
+          "available": {"type": "boolean"},
+          "configured": {"type": "boolean"},
+          "installed": {"type": "boolean"},
+          "enabled": {"type": "boolean"},
+          "referenced": {"type": "boolean"},
+          "evidenced": {"type": "boolean"}
+        }
+      }
+    },
+    "progress": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["item_id", "status", "evidence"],
+        "properties": {
+          "item_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_.:@-]{0,127}$"},
+          "status": {"enum": ["queued", "in_progress", "completed", "skipped"]},
+          "evidence": {
+            "type": ["string", "null"],
+            "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9_.@+/-]*$"
+          }
+        }
+      }
+    }
+  }
+}
