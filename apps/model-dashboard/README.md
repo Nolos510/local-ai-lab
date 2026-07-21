@@ -114,6 +114,27 @@ score/run counts, and the next `ai-lab bench matrix` command. It is read-only an
 does not refresh runtime inventory, call LM Studio/Ollama, inspect model folders,
 run prompts, download models, or expose raw responses.
 
+The Growth / Skills Lab cockpit is available at:
+
+```text
+http://127.0.0.1:8765/growth
+```
+
+Its Skills, Extensions, Learning, and personal Inbox views read the three
+reviewed catalogs under `data/growth_registry/` plus the already-sanitized
+inventory and progress state in ignored `.local-ai-lab/growth-state-v1.json`.
+Rendering never scans host tools, runs subprocesses, or makes network requests.
+Detection, availability, configuration, installation, enablement, references,
+and current evidence are shown as separate facts; metadata review is never
+presented as an install approval or safety verdict.
+
+Personal queued / in-progress / completed / skipped updates are available on the
+loopback dashboard with its per-process action token. An optional evidence value
+must identify an existing repo-relative file. These actions atomically replace
+only the ignored Growth state file; they never edit a tracked catalog or install,
+enable, disable, or remove anything. Discovery and install/remove behavior remain
+outside this G2 cockpit.
+
 The Installed Models page is available at:
 
 ```text

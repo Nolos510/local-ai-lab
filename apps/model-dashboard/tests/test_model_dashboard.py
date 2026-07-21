@@ -2287,6 +2287,7 @@ class ModelDashboardQaTests(unittest.TestCase):
                 ("/inventory", "My Models"),
                 ("/runs", "Benchmark"),
                 ("/reviews", "Review"),
+                ("/growth", "Growth"),
             ),
         )
         self.assertIn('data-label="Home"', html)

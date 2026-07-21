@@ -29,6 +29,10 @@ SERVER_PATHS = (
     "/inventory?runtime=LM%20Studio",
     "/radar",
     "/radar?security=needs_review",
+    "/growth",
+    "/growth?view=extensions",
+    "/growth?view=learning",
+    "/growth?view=inbox",
     "/specialty",
     "/specialty?lane=Dolphin",
     "/specialty?security=needs_review",
@@ -44,6 +48,7 @@ SERVER_CONTENT = {
     "/lab": "Local Readiness",
     "/retrieval": "Retrieval Evaluation",
     "/reviews": "Draft Review Queue",
+    "/growth": "Growth / Skills Lab",
 }
 
 

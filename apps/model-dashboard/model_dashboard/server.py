@@ -4,11 +4,12 @@
 from __future__ import annotations
 
 import secrets
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from . import db, discover, score_review
+from . import db, discover, growth as growth_data, score_review
 from .runtime_health import runtime_health_snapshot
 from .components import (
     CANDIDATE_REGISTRY_PATH,
@@ -96,6 +97,11 @@ from .pages.inventory import (
     _sync_local_inventory_candidates,
 )
 from .pages.inventory import _delete_model_action as _inventory_delete_model_action
+from .pages.growth import (
+    DEFAULT_GROWTH_CATALOG_DIR,
+    DEFAULT_GROWTH_STATE_PATH,
+    _growth,
+)
 from .pages.lab import _lab
 from .pages.model_detail import _model_detail
 from .pages.overview import _overview
@@ -175,6 +181,42 @@ def _resolve_import_actions(host, configured):
     return True
 
 
+def _loopback_authority(value, *, scheme=None):
+    raw = str(value or "").strip()
+    try:
+        parsed = urlparse(raw if scheme else f"//{raw}")
+        if (
+            not raw
+            or parsed.username is not None
+            or parsed.password is not None
+            or not parsed.hostname
+            or not _is_loopback_host(parsed.hostname)
+        ):
+            return None
+        if scheme:
+            if parsed.scheme != scheme or parsed.path not in ("", "/"):
+                return None
+            if parsed.params or parsed.query or parsed.fragment:
+                return None
+        elif parsed.path or parsed.query or parsed.fragment:
+            return None
+        port = parsed.port
+    except ValueError:
+        return None
+    return parsed.hostname.casefold(), port if port is not None else 80
+
+
+def _growth_request_is_local(headers):
+    """Reject DNS-rebound Growth reads/actions before exposing the token."""
+    host = _loopback_authority(headers.get("Host"))
+    if host is None:
+        return False
+    origin_value = headers.get("Origin")
+    if not origin_value:
+        return True
+    return _loopback_authority(origin_value, scheme="http") == host
+
+
 def _start_confirmed_candidate_batch(
     form,
     action_token,
@@ -219,6 +261,9 @@ def make_handler(
     reviewer_endpoint="http://127.0.0.1:1234/v1",
     reviewer_model=None,
     retrieval_corpora_dir=None,
+    growth_catalog_dir=None,
+    growth_state_path=None,
+    growth_repo_root=None,
 ):
     candidate_registry_path = (
         CANDIDATE_REGISTRY_PATH if candidate_registry_path is None else candidate_registry_path
@@ -238,6 +283,13 @@ def make_handler(
     retrieval_corpora_dir = (
         RETRIEVAL_CORPORA_DIR if retrieval_corpora_dir is None else retrieval_corpora_dir
     )
+    growth_catalog_dir = (
+        DEFAULT_GROWTH_CATALOG_DIR if growth_catalog_dir is None else growth_catalog_dir
+    )
+    growth_state_path = (
+        DEFAULT_GROWTH_STATE_PATH if growth_state_path is None else growth_state_path
+    )
+    growth_repo_root = REPO_ROOT if growth_repo_root is None else growth_repo_root
     inventory_cache = {"result": None}
     import_sync_cache = {"result": import_sync_result}
     batch_run_cache = {}
@@ -245,18 +297,27 @@ def make_handler(
     review_batch_cache = {}
     run_all_preflight_cache = {}
     runtime_health_cache = {"captured_at": 0.0, "snapshot": None}
+    growth_progress_lock = threading.Lock()
 
     class DashboardHandler(BaseHTTPRequestHandler):
         def do_GET(self):
             parsed = urlparse(self.path)
-            try:
-                with db.connect(database_path) as conn:
-                    db.create_schema(conn)
-                    html = self._route(parsed.path, parse_qs(parsed.query), conn)
-                self.send_response(200)
-            except Exception as exc:
-                html = _layout("Error", "", f"<h2>Error</h2><p>{_text(exc)}</p>")
-                self.send_response(500)
+            if parsed.path == "/growth" and not _growth_request_is_local(self.headers):
+                html = _layout(
+                    "Growth Unavailable",
+                    "",
+                    "<h2>Growth unavailable</h2><p>This local cockpit requires a loopback Host.</p>",
+                )
+                self.send_response(400)
+            else:
+                try:
+                    with db.connect(database_path) as conn:
+                        db.create_schema(conn)
+                        html = self._route(parsed.path, parse_qs(parsed.query), conn)
+                    self.send_response(200)
+                except Exception as exc:
+                    html = _layout("Error", "", f"<h2>Error</h2><p>{_text(exc)}</p>")
+                    self.send_response(500)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
@@ -281,10 +342,16 @@ def make_handler(
                     "/actions/delete-model",
                     "/actions/run-all",
                     "/actions/dismiss-upstream-update",
+                    "/actions/growth-progress",
                 ):
                     html = _layout("Not Found", "", "<h2>Page not found</h2>")
                     self.send_response(404)
                 else:
+                    if parsed.path == "/actions/growth-progress" and (
+                        not _growth_request_is_local(self.headers)
+                        or not _is_loopback_host(self.client_address[0])
+                    ):
+                        raise ValueError("Growth progress requires a loopback action token.")
                     length = int(self.headers.get("Content-Length", "0"))
                     if length > 4096:
                         raise ValueError("Request body too large.")
@@ -292,7 +359,33 @@ def make_handler(
                     token = _query_value(form, "token")
                     if token != action_token:
                         raise ValueError("Invalid action token.")
-                    if parsed.path == "/actions/dismiss-upstream-update":
+                    if parsed.path == "/actions/growth-progress":
+                        if not action_token:
+                            raise ValueError("Growth progress requires a loopback action token.")
+                        item_id = _query_value(form, "item_id")
+                        status = _query_value(form, "status")
+                        evidence = _query_value(form, "evidence")
+                        view = _query_value(form, "view")
+                        with growth_progress_lock:
+                            catalog_items = growth_data.load_catalogs(growth_catalog_dir)
+                            growth_data.update_progress(
+                                growth_state_path,
+                                catalog_items=catalog_items,
+                                item_id=item_id,
+                                status=status,
+                                evidence=evidence or None,
+                                repo_root=growth_repo_root,
+                            )
+                        html = _growth(
+                            {"view": [view]},
+                            catalog_dir=growth_catalog_dir,
+                            state_path=growth_state_path,
+                            repo_root=growth_repo_root,
+                            action_token=action_token,
+                            notice=f"Personal progress updated: {item_id} → {status}.",
+                        )
+                        self.send_response(200)
+                    elif parsed.path == "/actions/dismiss-upstream-update":
                         candidate_id = _query_value(form, "candidate_id")
                         discover.dismiss_upstream_update(upstream_state_path, candidate_id)
                         with db.connect(database_path) as conn:
@@ -773,6 +866,14 @@ def make_handler(
                     local_inventory_path=local_inventory_registry_path,
                     project_registry_path=project_registry_path,
                     upstream_state_path=upstream_state_path,
+                    action_token=action_token,
+                )
+            if path == "/growth":
+                return _growth(
+                    query,
+                    catalog_dir=growth_catalog_dir,
+                    state_path=growth_state_path,
+                    repo_root=growth_repo_root,
                     action_token=action_token,
                 )
             if path == "/specialty":

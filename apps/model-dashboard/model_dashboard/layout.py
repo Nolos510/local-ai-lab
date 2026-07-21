@@ -14,6 +14,7 @@ NAV_ITEMS = (
     ("/inventory", "My Models"),
     ("/runs", "Benchmark"),
     ("/reviews", "Review"),
+    ("/growth", "Growth"),
 )
 
 NAV_ICONS = {
@@ -22,6 +23,7 @@ NAV_ICONS = {
     "/inventory": "ti-device-desktop-analytics",
     "/runs": "ti-player-play",
     "/reviews": "ti-checkup-list",
+    "/growth": "ti-sparkles",
     "/reports": "ti-file-analytics",
 }
 
@@ -421,6 +423,9 @@ def _layout(title, current_path, body):
     .filters-wide {{
       grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(140px, 1fr)) auto;
     }}
+    .filters-growth {{
+      grid-template-columns: repeat(5, minmax(135px, 1fr)) auto;
+    }}
     .page-intro {{
       display: grid;
       gap: 8px;
@@ -626,6 +631,140 @@ def _layout(title, current_path, body):
     .radar-guide {{
       margin-bottom: 0;
     }}
+    .growth-view-switcher {{
+      margin-bottom: 18px;
+    }}
+    .growth-stats {{
+      margin-bottom: 18px;
+    }}
+    .growth-inventory-summary {{
+      display: grid;
+      gap: 10px;
+      margin-bottom: 22px;
+    }}
+    .growth-inventory-summary h2,
+    .growth-inventory-summary p {{
+      margin: 0;
+    }}
+    .growth-inventory-counts {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+      gap: 8px;
+      margin: 0;
+    }}
+    .growth-inventory-counts div {{
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--panel-soft);
+    }}
+    .growth-inventory-counts dt {{
+      color: var(--muted);
+      font-size: 11px;
+    }}
+    .growth-inventory-counts dd {{
+      margin: 2px 0 0;
+      font-size: 18px;
+      font-variant-numeric: tabular-nums;
+    }}
+    .growth-catalog-section {{
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }}
+    .growth-catalog-section .section-heading-row,
+    .growth-catalog-section .filters {{
+      margin: 0;
+    }}
+    .growth-safety-heading {{
+      padding-top: 4px;
+      color: var(--muted);
+    }}
+    .growth-table {{
+      table-layout: fixed;
+      min-width: 2060px;
+    }}
+    .growth-table th:nth-child(1),
+    .growth-table td:nth-child(1) {{ width: 260px; }}
+    .growth-table th:nth-child(2),
+    .growth-table td:nth-child(2) {{ width: 100px; }}
+    .growth-table th:nth-child(3),
+    .growth-table td:nth-child(3) {{ width: 100px; }}
+    .growth-table th:nth-child(4),
+    .growth-table td:nth-child(4) {{ width: 105px; }}
+    .growth-table th:nth-child(5),
+    .growth-table td:nth-child(5) {{ width: 280px; }}
+    .growth-table th:nth-child(6),
+    .growth-table td:nth-child(6) {{ width: 210px; }}
+    .growth-table th:nth-child(7),
+    .growth-table td:nth-child(7) {{ width: 260px; }}
+    .growth-table th:nth-child(8),
+    .growth-table td:nth-child(8) {{ width: 360px; }}
+    .growth-table th:nth-child(9),
+    .growth-table td:nth-child(9) {{ width: 300px; }}
+    .growth-item-cell,
+    .growth-evidence-cell,
+    .growth-review-cell,
+    .growth-proof-cell,
+    .growth-progress-cell {{
+      display: grid;
+      gap: 7px;
+    }}
+    .growth-item-cell p,
+    .growth-evidence-cell p,
+    .growth-proof-cell p {{
+      margin: 0;
+    }}
+    .growth-item-cell > span,
+    .growth-evidence-cell > span,
+    .growth-review-cell > span,
+    .growth-proof-cell > span,
+    .growth-progress-cell > span {{
+      color: var(--muted);
+      font-size: 12px;
+    }}
+    .growth-inventory-details summary,
+    .growth-risk-details summary {{
+      color: var(--accent-2);
+      cursor: pointer;
+      font-weight: 500;
+    }}
+    .growth-inventory-details ul {{
+      display: grid;
+      gap: 8px;
+      margin: 9px 0 0;
+      padding-left: 18px;
+    }}
+    .growth-inventory-details li span {{
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+    }}
+    .growth-risk-facts {{
+      display: grid;
+      gap: 9px;
+      margin: 10px 0 0;
+    }}
+    .growth-risk-facts div {{
+      display: grid;
+      gap: 4px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--line-soft);
+    }}
+    .growth-risk-facts dd {{
+      margin: 0;
+    }}
+    .growth-progress-form label {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+    }}
+    .growth-notice {{
+      margin-bottom: 18px;
+      border-color: rgba(52, 211, 153, 0.38);
+    }}
+    .growth-notice p {{ margin: 0; }}
     .radar-candidate-identity {{
       gap: 6px;
     }}

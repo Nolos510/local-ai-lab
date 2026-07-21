@@ -56,6 +56,7 @@ METRIC_EXPLANATIONS = {
     "recall_at_k": "Mean fraction of each query's labeled relevant chunks found in the first k retrieved results. Higher is better; compare configurations on the same corpus and k.",
     "mrr": "Mean reciprocal rank of the first relevant chunk in the first k results. Higher is better; compare configurations on the same corpus and k.",
     "retrieval_k": "Rank cutoff used for both recall@k and MRR in this saved retrieval evaluation.",
+    "growth_safety": '"Safe?" is a review prompt, not a verdict. Read review_state and every specific risk fact verbatim; metadata review is not install approval.',
 }
 METRIC_LABEL_KEYS = {
     "total score": "total_score",
