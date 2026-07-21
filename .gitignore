@@ -64,3 +64,4 @@ reports/evals/*
 reports/postmortems/*
 !reports/postmortems/README.md
 .claude/
+data/growth_registry/plugins_upstream_state.json
