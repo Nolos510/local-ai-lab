@@ -102,6 +102,39 @@ SECRET_LITERAL_RE = re.compile(
     r"(?:^|[^A-Za-z0-9])(?:sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9]{12,}|"
     r"github_pat_[A-Za-z0-9_]{12,}|xox[baprs]-[A-Za-z0-9-]{8,}|AKIA[A-Z0-9]{12,})"
 )
+INBOX_ID_RE = re.compile(r"^inbox-[a-f0-9]{20}$")
+REVIEW_ID_RE = re.compile(r"^review-[a-f0-9]{20}$")
+EXEC_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+EXEC_TARGET_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
+VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$")
+REVISION_RE = re.compile(r"^[a-f0-9]{40,64}$")
+UTC_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+DISCOVERY_SOURCES = {"codex", "claude", "github", "huggingface", "mcp"}
+REVIEWED_READ_ONLY_MCP_WRITE_FACTS = {
+    "Research packet describes the MCP surface as read-only.",
+    "Research packet describes the tool as read-only.",
+}
+INSTALL_POLICY_FIELDS = {
+    "target_id",
+    "host",
+    "plugin_id",
+    "marketplace",
+    "marketplace_source",
+    "marketplace_revision",
+    "reviewed_version",
+    "scope",
+    "components",
+    "auth_policy",
+    "data_scope",
+    "high_risk",
+    "data_scope_ack_required",
+    "threat_review_artifact",
+    "threat_review_sha256",
+    "threat_review_version",
+    "threat_review_scope",
+    "reviewed_at",
+    "pin_mode",
+}
 
 
 class GrowthDataError(ValueError):
@@ -314,6 +347,251 @@ def load_state(path, *, repo_root=None):
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise GrowthDataError("Private Growth state could not be read safely.") from exc
     return validate_state(payload)
+
+
+def empty_inbox():
+    return {"schema_version": "growth-inbox-v1", "items": [], "reviews": []}
+
+
+def validate_inbox(payload):
+    if not isinstance(payload, dict) or set(payload) != {
+        "schema_version",
+        "items",
+        "reviews",
+    }:
+        raise GrowthDataError("Private Growth inbox could not be read safely.")
+    if payload.get("schema_version") != "growth-inbox-v1":
+        raise GrowthDataError("Private Growth inbox could not be read safely.")
+    items = payload.get("items")
+    reviews = payload.get("reviews")
+    if not isinstance(items, list) or not isinstance(reviews, list):
+        raise GrowthDataError("Private Growth inbox could not be read safely.")
+    item_fields = {
+        "id",
+        "source",
+        "kind",
+        "catalog_id",
+        "title",
+        "summary",
+        "source_url",
+        "version",
+        "popularity",
+        "observed_at",
+        "review_state",
+        "approval",
+        "untrusted",
+    }
+    item_ids = set()
+    for item in items:
+        if not isinstance(item, dict) or set(item) != item_fields:
+            raise GrowthDataError("Private Growth inbox could not be read safely.")
+        item_id = item.get("id")
+        if (
+            not isinstance(item_id, str)
+            or not INBOX_ID_RE.fullmatch(item_id)
+            or item_id in item_ids
+            or item.get("source") not in DISCOVERY_SOURCES
+            or item.get("kind") not in {"discovery", "update"}
+            or item.get("review_state") != "unreviewed"
+            or item.get("approval") != "none"
+            or item.get("untrusted") is not True
+        ):
+            raise GrowthDataError("Private Growth inbox could not be read safely.")
+        catalog_id = item.get("catalog_id")
+        if catalog_id is not None and (
+            not isinstance(catalog_id, str) or not SAFE_ID_RE.fullmatch(catalog_id)
+        ):
+            raise GrowthDataError("Private Growth inbox could not be read safely.")
+        if (
+            not isinstance(item.get("title"), str)
+            or len(item["title"]) > 160
+            or not isinstance(item.get("summary"), str)
+            or len(item["summary"]) > 500
+            or not isinstance(item.get("observed_at"), str)
+            or not UTC_TIMESTAMP_RE.fullmatch(item["observed_at"])
+            or any(
+                contains_private_literal(item[field])
+                for field in ("title", "summary", "observed_at")
+            )
+        ):
+            raise GrowthDataError("Private Growth inbox could not be read safely.")
+        if not isinstance(item.get("source_url"), str) or not _safe_public_url(
+            item.get("source_url")
+        ):
+            raise GrowthDataError("Private Growth inbox could not be read safely.")
+        version = item.get("version")
+        if version is not None and (
+            not isinstance(version, str) or not VERSION_RE.fullmatch(version)
+        ):
+            raise GrowthDataError("Private Growth inbox could not be read safely.")
+        popularity = item.get("popularity")
+        if popularity is not None and (
+            not isinstance(popularity, int) or isinstance(popularity, bool) or popularity < 0
+        ):
+            raise GrowthDataError("Private Growth inbox could not be read safely.")
+        item_ids.add(item_id)
+    review_fields = {
+        "id",
+        "inbox_id",
+        "created_at",
+        "state",
+        "title",
+        "source",
+        "source_url",
+        "observed_version",
+        "catalog_promotion",
+        "install_approval",
+    }
+    review_ids = set()
+    for review in reviews:
+        review_id = review.get("id") if isinstance(review, dict) else None
+        if (
+            not isinstance(review, dict)
+            or set(review) != review_fields
+            or not isinstance(review_id, str)
+            or not REVIEW_ID_RE.fullmatch(review_id)
+            or review_id in review_ids
+            or review.get("inbox_id") not in item_ids
+            or review.get("state") != "draft"
+            or review.get("catalog_promotion") != "reviewed_repo_patch_required"
+            or review.get("install_approval") != "none"
+            or contains_private_literal(json.dumps(review, sort_keys=True))
+        ):
+            raise GrowthDataError("Private Growth inbox could not be read safely.")
+        review_ids.add(review_id)
+    return payload
+
+
+def _validate_private_read_target(path, repo_root, filename):
+    invalid = False
+    try:
+        root = Path(repo_root).resolve(strict=True)
+        target = Path(path)
+        if (
+            target.name != filename
+            or target.parent.name != ".local-ai-lab"
+            or target.parent.parent.resolve(strict=True) != root
+            or target.parent.is_symlink()
+            or target.is_symlink()
+        ):
+            raise GrowthDataError("Private Growth state target is invalid.")
+    except OSError:
+        invalid = True
+    if invalid:
+        raise GrowthDataError("Private Growth state target is invalid.")
+    return target
+
+
+def load_inbox(path, *, repo_root):
+    target = _validate_private_read_target(path, repo_root, "growth-inbox-v1.json")
+    if not target.exists():
+        return empty_inbox()
+    read_failed = False
+    try:
+        payload = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        read_failed = True
+    if read_failed:
+        raise GrowthDataError("Private Growth inbox could not be read safely.")
+    return validate_inbox(payload)
+
+
+def load_install_policy_summaries(path, *, catalog_items):
+    """Read tracked policy display facts only; execution revalidates independently."""
+    read_failed = False
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        read_failed = True
+    if read_failed:
+        raise GrowthDataError("Tracked Growth install policies could not be read safely.")
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"schema_version", "policies"}
+        or payload.get("schema_version") != "growth-install-policy-v1"
+        or not isinstance(payload.get("policies"), list)
+    ):
+        raise GrowthDataError("Tracked Growth install policies could not be read safely.")
+    catalog_by_id = {item["id"]: item for item in catalog_items}
+    summaries = {}
+    for policy in payload["policies"]:
+        if not isinstance(policy, dict) or set(policy) != INSTALL_POLICY_FIELDS:
+            raise GrowthDataError("Tracked Growth install policies could not be read safely.")
+        target = policy.get("target_id")
+        item = catalog_by_id.get(target)
+        if (
+            not isinstance(target, str)
+            or not EXEC_TARGET_RE.fullmatch(target)
+            or target in summaries
+            or item is None
+            or item.get("official") is not True
+            or policy.get("host") not in {"codex", "claude"}
+            or not isinstance(policy.get("plugin_id"), str)
+            or not EXEC_ID_RE.fullmatch(policy["plugin_id"])
+            or not isinstance(policy.get("marketplace"), str)
+            or not EXEC_ID_RE.fullmatch(policy["marketplace"])
+            or not isinstance(policy.get("marketplace_source"), str)
+            or not _safe_public_url(policy.get("marketplace_source"))
+            or not isinstance(policy.get("marketplace_revision"), str)
+            or not REVISION_RE.fullmatch(policy["marketplace_revision"])
+            or not isinstance(policy.get("reviewed_version"), str)
+            or not VERSION_RE.fullmatch(policy["reviewed_version"])
+            or policy.get("scope") not in {"user", "project", "local"}
+            or not isinstance(policy.get("components"), list)
+            or not all(_safe_text(value) for value in policy["components"])
+            or not _safe_text(policy.get("auth_policy"))
+            or not _safe_text(policy.get("data_scope"))
+            or not isinstance(policy.get("high_risk"), bool)
+            or not isinstance(policy.get("data_scope_ack_required"), bool)
+            or (
+                "connectors" in policy.get("components", [])
+                and policy.get("high_risk") is not True
+            )
+            or (
+                item.get("type") == "connector"
+                and (
+                    policy.get("high_risk") is not True
+                    or "connectors" not in policy.get("components", [])
+                )
+            )
+            or (
+                item.get("type") == "mcp"
+                and "mcp_servers" not in policy.get("components", [])
+            )
+            or (
+                item.get("type") == "mcp"
+                and item.get("risk_facts", {}).get("writes")
+                not in REVIEWED_READ_ONLY_MCP_WRITE_FACTS
+                and policy.get("high_risk") is not True
+            )
+            or (
+                policy.get("high_risk") is False
+                and policy.get("data_scope_ack_required") is not False
+            )
+            or policy.get("pin_mode") != "immutable_marketplace_revision"
+            or contains_private_literal(json.dumps(policy, sort_keys=True))
+        ):
+            raise GrowthDataError("Tracked Growth install policies could not be read safely.")
+        summaries[target] = {
+            key: policy[key]
+            for key in (
+                "target_id",
+                "host",
+                "plugin_id",
+                "marketplace",
+                "marketplace_source",
+                "marketplace_revision",
+                "reviewed_version",
+                "scope",
+                "components",
+                "auth_policy",
+                "data_scope",
+                "high_risk",
+                "data_scope_ack_required",
+                "threat_review_artifact",
+            )
+        }
+    return summaries
 
 
 def _validate_state_target(path, repo_root):
@@ -532,11 +810,15 @@ __all__ = (
     "RISK_FIELDS",
     "contains_private_literal",
     "empty_state",
+    "empty_inbox",
     "inventory_counts",
     "item_views",
     "load_catalogs",
+    "load_inbox",
+    "load_install_policy_summaries",
     "load_state",
     "update_progress",
     "validate_state",
+    "validate_inbox",
     "write_state_atomic",
 )

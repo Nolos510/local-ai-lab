@@ -5,10 +5,14 @@ import argparse
 import sys
 from pathlib import Path
 
-from model_dashboard import csv_io, db, reports, server
-
 APP_DIR = Path(__file__).resolve().parent
 REPO_ROOT = APP_DIR.parents[1]
+SRC_DIR = REPO_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from model_dashboard import csv_io, db, reports, server  # noqa: E402
+
 DEFAULT_DB = REPO_ROOT / "data" / "dashboard" / "model_dashboard.sqlite"
 FIXTURE_DIR = APP_DIR / "fixtures"
 
@@ -62,6 +66,7 @@ def command_serve(args):
         enable_import_actions=args.enable_import_actions,
         enable_delete_actions=args.enable_delete_actions,
         enable_score_actions=args.enable_score_actions,
+        enable_growth_installs=args.enable_growth_installs,
         run_test_timeout=args.run_test_timeout,
         inventory_timeout=args.inventory_timeout,
         judge_endpoint=args.judge_endpoint,
@@ -117,6 +122,11 @@ def build_parser():
         "--enable-score-actions",
         action="store_true",
         help="Enable local judge draft-score actions for benchmark artifacts.",
+    )
+    serve_parser.add_argument(
+        "--enable-growth-installs",
+        action="store_true",
+        help="Enable reviewed two-step Growth plugin install/remove actions (off by default).",
     )
     serve_parser.add_argument(
         "--judge-endpoint",

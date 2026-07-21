@@ -682,7 +682,7 @@ def _layout(title, current_path, body):
     }}
     .growth-table {{
       table-layout: fixed;
-      min-width: 2060px;
+      min-width: 2360px;
     }}
     .growth-table th:nth-child(1),
     .growth-table td:nth-child(1) {{ width: 260px; }}
@@ -702,6 +702,8 @@ def _layout(title, current_path, body):
     .growth-table td:nth-child(8) {{ width: 360px; }}
     .growth-table th:nth-child(9),
     .growth-table td:nth-child(9) {{ width: 300px; }}
+    .growth-table th:nth-child(10),
+    .growth-table td:nth-child(10) {{ width: 300px; }}
     .growth-item-cell,
     .growth-evidence-cell,
     .growth-review-cell,

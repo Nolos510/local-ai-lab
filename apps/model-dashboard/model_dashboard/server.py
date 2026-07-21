@@ -99,8 +99,12 @@ from .pages.inventory import (
 from .pages.inventory import _delete_model_action as _inventory_delete_model_action
 from .pages.growth import (
     DEFAULT_GROWTH_CATALOG_DIR,
+    DEFAULT_GROWTH_INBOX_PATH,
+    DEFAULT_GROWTH_POLICY_PATH,
     DEFAULT_GROWTH_STATE_PATH,
     _growth,
+    _growth_job_status_page,
+    _growth_preflight_page,
 )
 from .pages.lab import _lab
 from .pages.model_detail import _model_detail
@@ -217,6 +221,135 @@ def _growth_request_is_local(headers):
     return _loopback_authority(origin_value, scheme="http") == host
 
 
+def _bounded_form_length(headers, *, maximum=4096):
+    raw = headers.get("Content-Length")
+    if not isinstance(raw, str) or not raw.isdigit() or len(raw) > 8:
+        raise ValueError("Request body length is invalid.")
+    length = int(raw)
+    if length < 0 or length > maximum:
+        raise ValueError("Request body too large.")
+    content_type = headers.get("Content-Type")
+    if content_type and not content_type.casefold().startswith("application/x-www-form-urlencoded"):
+        raise ValueError("Request body type is invalid.")
+    return length
+
+
+class _GrowthJobCoordinator:
+    """Retain sanitized step-only state for one serialized background mutation."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._active_job_id = None
+        self._statuses = {}
+
+    def start(self, service, *, operation, execute_kwargs):
+        if operation not in {"install", "remove"}:
+            raise ValueError("Growth plugin operation is invalid.")
+        job_id = f"job-{secrets.token_hex(10)}"
+        status = {
+            "job_id": job_id,
+            "operation": operation,
+            "stage": "preflight",
+            "step": 0,
+            "total_steps": 3,
+            "outcome": "pending",
+        }
+        with self._lock:
+            if self._active_job_id is not None:
+                raise ValueError("Another Growth install or removal is already running.")
+            self._active_job_id = job_id
+            self._statuses[job_id] = status
+            while len(self._statuses) > 20:
+                oldest = next(iter(self._statuses))
+                if oldest == self._active_job_id:
+                    break
+                self._statuses.pop(oldest)
+
+        def update_stage(stage, step, total_steps):
+            safe_stage = (
+                stage
+                if stage in {"preflight", "installing", "verifying", "complete", "failed"}
+                else "failed"
+            )
+            with self._lock:
+                current = self._statuses.get(job_id)
+                if current is not None:
+                    current.update(
+                        {
+                            "stage": safe_stage,
+                            "step": step if isinstance(step, int) and 0 <= step <= 3 else 0,
+                            "total_steps": (
+                                total_steps
+                                if isinstance(total_steps, int) and total_steps == 3
+                                else 3
+                            ),
+                        }
+                    )
+
+        def worker():
+            try:
+                service.execute(
+                    **execute_kwargs,
+                    stage=update_stage,
+                    correlation_id=job_id,
+                )
+                outcome = "success"
+                final_stage = "complete"
+                final_step = 3
+            except Exception as exc:
+                outcome = "blocked" if getattr(exc, "exit_code", 1) == 2 else "failed"
+                final_stage = "failed"
+                final_step = None
+            with self._lock:
+                current = self._statuses.get(job_id)
+                if current is not None:
+                    retained_step = current.get("step", 0)
+                    current.update(
+                        {
+                            "stage": final_stage,
+                            "step": (
+                                final_step
+                                if final_step is not None
+                                else retained_step
+                                if isinstance(retained_step, int) and 0 <= retained_step <= 3
+                                else 0
+                            ),
+                            "total_steps": 3,
+                            "outcome": outcome,
+                        }
+                    )
+                if self._active_job_id == job_id:
+                    self._active_job_id = None
+
+        thread = threading.Thread(target=worker, name=f"growth-{operation}", daemon=True)
+        start_failed = False
+        try:
+            thread.start()
+        except Exception:
+            start_failed = True
+            with self._lock:
+                current = self._statuses.get(job_id)
+                if current is not None:
+                    current.update(
+                        {
+                            "stage": "failed",
+                            "step": 0,
+                            "total_steps": 3,
+                            "outcome": "failed",
+                        }
+                    )
+                if self._active_job_id == job_id:
+                    self._active_job_id = None
+        if start_failed:
+            raise ValueError("Growth background job could not be started safely.")
+        return self.snapshot(job_id)
+
+    def snapshot(self, job_id):
+        with self._lock:
+            status = self._statuses.get(job_id)
+            return dict(status) if status is not None else None
+
+
 def _start_confirmed_candidate_batch(
     form,
     action_token,
@@ -246,6 +379,7 @@ def make_handler(
     enable_import_actions=False,
     enable_delete_actions=False,
     enable_score_actions=False,
+    enable_growth_installs=False,
     action_token="",
     run_test_timeout=3600,
     inventory_timeout=5,
@@ -263,7 +397,11 @@ def make_handler(
     retrieval_corpora_dir=None,
     growth_catalog_dir=None,
     growth_state_path=None,
+    growth_inbox_path=None,
+    growth_policy_path=None,
     growth_repo_root=None,
+    growth_install_service=None,
+    growth_job_coordinator=None,
 ):
     candidate_registry_path = (
         CANDIDATE_REGISTRY_PATH if candidate_registry_path is None else candidate_registry_path
@@ -290,6 +428,29 @@ def make_handler(
         DEFAULT_GROWTH_STATE_PATH if growth_state_path is None else growth_state_path
     )
     growth_repo_root = REPO_ROOT if growth_repo_root is None else growth_repo_root
+    growth_inbox_path = (
+        growth_repo_root / ".local-ai-lab" / "growth-inbox-v1.json"
+        if growth_inbox_path is None
+        else growth_inbox_path
+    )
+    growth_policy_path = (
+        growth_catalog_dir / "install-policies.json"
+        if growth_policy_path is None
+        else growth_policy_path
+    )
+    if enable_growth_installs and growth_install_service is None:
+        from local_ai_lab.growth.install import GrowthInstallService
+
+        private_growth_dir = growth_repo_root / ".local-ai-lab"
+        growth_install_service = GrowthInstallService(
+            repo_root=growth_repo_root,
+            catalog_dir=growth_catalog_dir,
+            policy_path=growth_policy_path,
+            preflight_path=private_growth_dir / "growth-preflights-v1.json",
+            audit_path=private_growth_dir / "growth-audit-v1.json",
+            operation_lock_path=private_growth_dir / "growth-operation-v1.lock",
+        )
+    growth_job_coordinator = growth_job_coordinator or _GrowthJobCoordinator()
     inventory_cache = {"result": None}
     import_sync_cache = {"result": import_sync_result}
     batch_run_cache = {}
@@ -302,7 +463,7 @@ def make_handler(
     class DashboardHandler(BaseHTTPRequestHandler):
         def do_GET(self):
             parsed = urlparse(self.path)
-            if parsed.path == "/growth" and not _growth_request_is_local(self.headers):
+            if parsed.path.startswith("/growth") and not _growth_request_is_local(self.headers):
                 html = _layout(
                     "Growth Unavailable",
                     "",
@@ -316,11 +477,20 @@ def make_handler(
                         html = self._route(parsed.path, parse_qs(parsed.query), conn)
                     self.send_response(200)
                 except Exception as exc:
-                    html = _layout("Error", "", f"<h2>Error</h2><p>{_text(exc)}</p>")
+                    message = (
+                        "Growth page could not be rendered safely."
+                        if parsed.path.startswith("/growth")
+                        else _text(exc)
+                    )
+                    html = _layout("Error", "", f"<h2>Error</h2><p>{message}</p>")
                     self.send_response(500)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            if parsed.path.startswith("/growth"):
+                self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(html.encode("utf-8"))
 
@@ -343,23 +513,70 @@ def make_handler(
                     "/actions/run-all",
                     "/actions/dismiss-upstream-update",
                     "/actions/growth-progress",
+                    "/actions/growth-install-preflight",
+                    "/actions/growth-install-execute",
                 ):
                     html = _layout("Not Found", "", "<h2>Page not found</h2>")
                     self.send_response(404)
                 else:
-                    if parsed.path == "/actions/growth-progress" and (
+                    growth_action = parsed.path.startswith("/actions/growth-")
+                    if growth_action and (
                         not _growth_request_is_local(self.headers)
                         or not _is_loopback_host(self.client_address[0])
                     ):
-                        raise ValueError("Growth progress requires a loopback action token.")
-                    length = int(self.headers.get("Content-Length", "0"))
-                    if length > 4096:
-                        raise ValueError("Request body too large.")
+                        raise ValueError("Growth actions require a loopback action token.")
+                    if growth_action and not action_token:
+                        raise ValueError("Growth actions require a configured action token.")
+                    length = _bounded_form_length(self.headers)
                     form = parse_qs(self.rfile.read(length).decode("utf-8"))
                     token = _query_value(form, "token")
                     if token != action_token:
                         raise ValueError("Invalid action token.")
-                    if parsed.path == "/actions/growth-progress":
+                    if parsed.path in (
+                        "/actions/growth-install-preflight",
+                        "/actions/growth-install-execute",
+                    ):
+                        if not enable_growth_installs or growth_install_service is None:
+                            html = _layout(
+                                "Growth Installs Disabled",
+                                "/growth",
+                                "<h2>Growth installs disabled</h2><p>Restart the dashboard with <code>--enable-growth-installs</code>.</p>",
+                            )
+                            self.send_response(403)
+                        elif parsed.path == "/actions/growth-install-preflight":
+                            result = growth_install_service.preflight(
+                                target=_query_value(form, "target"),
+                                scope=_query_value(form, "scope"),
+                                operation=_query_value(form, "operation"),
+                                dry_run=False,
+                            )
+                            html = _growth_preflight_page(result, action_token)
+                            self.send_response(200)
+                        else:
+                            operation = _query_value(form, "operation")
+                            started = growth_job_coordinator.start(
+                                growth_install_service,
+                                operation=operation,
+                                execute_kwargs={
+                                    "nonce": _query_value(form, "nonce"),
+                                    "target": _query_value(form, "target"),
+                                    "scope": _query_value(form, "scope"),
+                                    "operation": operation,
+                                    "yes": _query_value(form, "yes") == "yes",
+                                    "allowed": True,
+                                    "typed_plugin_id": _query_value(
+                                        form,
+                                        "confirm_target",
+                                    )
+                                    or None,
+                                    "data_scope_ack": (
+                                        _query_value(form, "ack_data_scope") == "yes"
+                                    ),
+                                },
+                            )
+                            html = _growth_job_status_page(started)
+                            self.send_response(202)
+                    elif parsed.path == "/actions/growth-progress":
                         if not action_token:
                             raise ValueError("Growth progress requires a loopback action token.")
                         item_id = _query_value(form, "item_id")
@@ -383,6 +600,9 @@ def make_handler(
                             repo_root=growth_repo_root,
                             action_token=action_token,
                             notice=f"Personal progress updated: {item_id} → {status}.",
+                            inbox_path=growth_inbox_path,
+                            policy_path=growth_policy_path,
+                            enable_growth_installs=enable_growth_installs,
                         )
                         self.send_response(200)
                     elif parsed.path == "/actions/dismiss-upstream-update":
@@ -698,11 +918,20 @@ def make_handler(
                         html = _run_action_started_page(result)
                         self.send_response(200)
             except Exception as exc:
-                html = _layout("Action Error", "", f"<h2>Action Error</h2><p>{_text(exc)}</p>")
+                message = (
+                    "Growth action was blocked or failed safely."
+                    if parsed.path.startswith("/actions/growth-")
+                    else _text(exc)
+                )
+                html = _layout("Action Error", "", f"<h2>Action Error</h2><p>{message}</p>")
                 self.send_response(400)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            if parsed.path.startswith("/actions/growth-"):
+                self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(html.encode("utf-8"))
 
@@ -875,7 +1104,23 @@ def make_handler(
                     state_path=growth_state_path,
                     repo_root=growth_repo_root,
                     action_token=action_token,
+                    inbox_path=growth_inbox_path,
+                    policy_path=growth_policy_path,
+                    enable_growth_installs=enable_growth_installs,
                 )
+            if path == "/growth/install/status":
+                job_id = _query_value(query, "job")
+                status = growth_job_coordinator.snapshot(job_id)
+                if status is None:
+                    status = {
+                        "job_id": "unavailable",
+                        "operation": "plugin",
+                        "stage": "failed",
+                        "step": 0,
+                        "total_steps": 3,
+                        "outcome": "unavailable",
+                    }
+                return _growth_job_status_page(status)
             if path == "/specialty":
                 return _specialty(conn, query, registry_path=candidate_registry_path)
             if path == "/projects":
@@ -925,6 +1170,7 @@ def serve(
     enable_import_actions=None,
     enable_delete_actions=False,
     enable_score_actions=False,
+    enable_growth_installs=False,
     run_test_timeout=3600,
     inventory_timeout=5,
     eval_results_dir=None,
@@ -958,6 +1204,7 @@ def serve(
             enable_import_actions=enable_import_actions,
             enable_delete_actions=enable_delete_actions,
             enable_score_actions=enable_score_actions,
+            enable_growth_installs=enable_growth_installs,
             action_token=action_token,
             run_test_timeout=run_test_timeout,
             inventory_timeout=inventory_timeout,
@@ -984,6 +1231,8 @@ def serve(
                 f"Independent draft reviewer configured: {reviewer_model}",
                 flush=True,
             )
+    if enable_growth_installs:
+        print("Reviewed Growth install/remove actions enabled.", flush=True)
     if enable_inventory_refresh:
         print("Installed-model inventory refresh enabled for local runtimes.", flush=True)
     try:

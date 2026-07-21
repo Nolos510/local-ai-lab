@@ -13,6 +13,7 @@ from local_ai_lab.growth.catalog import (
     load_catalog,
     load_catalogs,
 )
+from local_ai_lab.growth.install_policy import load_install_policies
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CATALOG_DIR = REPO_ROOT / "data" / "growth_registry"
@@ -22,6 +23,7 @@ def test_json_schemas_and_research_packet_catalogs_parse() -> None:
     schemas = sorted((CATALOG_DIR / "schemas").glob("*.schema.json"))
     assert {path.name for path in schemas} == {
         "growth-catalog-v1.schema.json",
+        "growth-install-policy-v1.schema.json",
         "growth-state-v1.schema.json",
     }
     for path in schemas:
@@ -33,6 +35,10 @@ def test_json_schemas_and_research_packet_catalogs_parse() -> None:
     assert sum(item["catalog_kind"] == "skill" for item in items) == 7
     assert sum(item["catalog_kind"] == "extension" for item in items) == 23
     assert sum(item["catalog_kind"] == "learning" for item in items) == 13
+    assert load_install_policies(
+        CATALOG_DIR / "install-policies.json",
+        repo_root=REPO_ROOT,
+    ) == {}
     assert not any(CATALOG_DIR.glob("*.csv"))
 
 

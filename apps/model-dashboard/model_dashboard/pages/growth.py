@@ -3,7 +3,9 @@
 # ruff: noqa: E501,F401,F403,F405,I001
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 
 from .. import growth as growth_data
 from ..components import *
@@ -14,6 +16,8 @@ from ..sorting import _sort_rows, _sortable_headers
 
 DEFAULT_GROWTH_CATALOG_DIR = REPO_ROOT / "data" / "growth_registry"
 DEFAULT_GROWTH_STATE_PATH = REPO_ROOT / ".local-ai-lab" / "growth-state-v1.json"
+DEFAULT_GROWTH_INBOX_PATH = REPO_ROOT / ".local-ai-lab" / "growth-inbox-v1.json"
+DEFAULT_GROWTH_POLICY_PATH = DEFAULT_GROWTH_CATALOG_DIR / "install-policies.json"
 GROWTH_VIEWS = (
     ("skills", "Skills"),
     ("extensions", "Extensions"),
@@ -59,6 +63,7 @@ GROWTH_SORT_HEADERS = {
     "Proof + next action": "next_action",
     "Progress": "progress",
 }
+GROWTH_JOB_STAGES = {"preflight", "installing", "verifying", "complete", "failed"}
 
 
 def _query_value(query, key):
@@ -419,7 +424,68 @@ def _progress_cell(item, action_token, view):
     )
 
 
-def _growth_rows(items, action_token, view):
+def _install_cell(item, policy, action_token, view, enable_growth_installs):
+    if item["catalog_kind"] != "extension":
+        return '<span class="empty">Not an extension.</span>'
+    if policy is None:
+        return (
+            '<span class="empty">Review-only: no exact tracked host marketplace, immutable '
+            "revision, version, scope, and rollback policy.</span>"
+        )
+    facts = """
+    <dl class="growth-install-policy-facts">
+      <div><dt>host</dt><dd>{host}</dd></div>
+      <div><dt>plugin id</dt><dd>{plugin_id}</dd></div>
+      <div><dt>marketplace</dt><dd>{marketplace}</dd></div>
+      <div><dt>reviewed version</dt><dd>{version}</dd></div>
+      <div><dt>scope</dt><dd>{scope}</dd></div>
+      <div><dt>risk lane</dt><dd>{risk}</dd></div>
+    </dl>
+    """.format(
+        host=_display(policy["host"]),
+        plugin_id=_display(policy["plugin_id"]),
+        marketplace=_display(policy["marketplace"]),
+        version=_display(policy["reviewed_version"]),
+        scope=_display(policy["scope"]),
+        risk=_text("high-risk" if policy["high_risk"] else "standard-risk"),
+    )
+    if not enable_growth_installs:
+        return facts + (
+            '<p class="empty">Execution is off. Restart with '
+            "<code>ai-lab dashboard --enable-growth-installs</code> to review a live preflight.</p>"
+        )
+
+    def form(operation, label):
+        return """
+        <form class="inline-form growth-install-preflight-form" method="post" action="/actions/growth-install-preflight">
+          <input type="hidden" name="token" value="{token}">
+          <input type="hidden" name="target" value="{target}">
+          <input type="hidden" name="scope" value="{scope}">
+          <input type="hidden" name="operation" value="{operation}">
+          <input type="hidden" name="view" value="{view}">
+          <button type="submit">{label}</button>
+        </form>
+        """.format(
+            token=_text(action_token),
+            target=_text(item["id"]),
+            scope=_text(policy["scope"]),
+            operation=_text(operation),
+            view=_text(view),
+            label=_text(label),
+        )
+
+    controls = form("remove", "Review removal preflight")
+    if item["review_state"] == "trial_approved" and item["status"] != "Blocked":
+        controls = form("install", "Review install preflight") + controls
+    else:
+        controls = (
+            '<p class="empty">Install remains review-only; only safety cleanup removal is offered.</p>'
+            + controls
+        )
+    return facts + controls
+
+
+def _growth_rows(items, action_token, view, policies, enable_growth_installs):
     return [
         [
             _item_cell(item),
@@ -431,9 +497,67 @@ def _growth_rows(items, action_token, view):
             _proof_action_cell(item),
             _risk_facts_cell(item),
             _progress_cell(item, action_token, view),
+            _install_cell(
+                item,
+                policies.get(item["id"]),
+                action_token,
+                view,
+                enable_growth_installs,
+            ),
         ]
         for item in items
     ]
+
+
+def _discovery_inbox(inbox):
+    reviews_by_inbox = {review["inbox_id"]: review for review in inbox["reviews"]}
+    rows = []
+    for item in reversed(inbox["items"]):
+        draft = reviews_by_inbox.get(item["id"])
+        rows.append(
+            """
+            <article class="panel growth-discovery-card">
+              <div class="section-heading-row">
+                <div><h3>{title}</h3><code>{inbox_id}</code></div>
+                <span class="badge">untrusted metadata</span>
+              </div>
+              <p>{summary}</p>
+              <dl>
+                <div><dt>source</dt><dd>{source}</dd></div>
+                <div><dt>kind</dt><dd>{kind}</dd></div>
+                <div><dt>observed version</dt><dd>{version}</dd></div>
+                <div><dt>popularity context</dt><dd>{popularity}</dd></div>
+                <div><dt>review draft</dt><dd>{review}</dd></div>
+              </dl>
+              <p class="empty">Popularity is context only. This record grants no approval and cannot execute.</p>
+              <p><a href="{source_url}" rel="noopener noreferrer">Public metadata source</a></p>
+            </article>
+            """.format(
+                title=_display(item["title"]),
+                inbox_id=_display(item["id"]),
+                summary=_display(item["summary"]),
+                source=_display(item["source"]),
+                kind=_display(item["kind"]),
+                version=_display(item["version"]),
+                popularity=_display(item["popularity"]),
+                review=_display(draft["id"] if draft else None),
+                source_url=_text(item["source_url"]),
+            )
+        )
+    content = (
+        "".join(rows) if rows else '<p class="empty">No discovery metadata has been collected.</p>'
+    )
+    return f"""
+    <section class="growth-discovery-inbox" aria-labelledby="growth-discovery-title">
+      <div class="section-heading-row">
+        <div>
+          <h2 id="growth-discovery-title">Discovery inbox</h2>
+          <p class="section-note">Ignored, escaped, untrusted public metadata from explicit <code>--lookup</code> commands. Review drafts still require a tracked repo patch for catalog promotion.</p>
+        </div>
+      </div>
+      {content}
+    </section>
+    """
 
 
 def _inventory_summary(state, unmatched_count):
@@ -464,12 +588,28 @@ def _growth(
     repo_root=REPO_ROOT,
     action_token="",
     notice="",
+    inbox_path=None,
+    policy_path=None,
+    enable_growth_installs=False,
 ):
     query = query or {}
     requested_view = _query_value(query, "view")
     view = requested_view if requested_view in dict(GROWTH_VIEWS) else "skills"
     catalog_items = growth_data.load_catalogs(catalog_dir)
     state = growth_data.load_state(state_path, repo_root=repo_root)
+    inbox_path = (
+        Path(repo_root) / ".local-ai-lab" / "growth-inbox-v1.json"
+        if inbox_path is None
+        else inbox_path
+    )
+    policy_path = (
+        Path(catalog_dir) / "install-policies.json" if policy_path is None else policy_path
+    )
+    inbox = growth_data.load_inbox(inbox_path, repo_root=repo_root)
+    policies = growth_data.load_install_policy_summaries(
+        policy_path,
+        catalog_items=catalog_items,
+    )
     all_items, unmatched_count = growth_data.item_views(
         catalog_items,
         state,
@@ -479,7 +619,7 @@ def _growth(
         "skills": sum(1 for item in all_items if item["catalog_kind"] == "skill"),
         "extensions": sum(1 for item in all_items if item["catalog_kind"] == "extension"),
         "learning": sum(1 for item in all_items if item["catalog_kind"] == "learning"),
-        "inbox": sum(1 for item in all_items if item["_progress_status"]),
+        "inbox": sum(1 for item in all_items if item["_progress_status"]) + len(inbox["items"]),
     }
     if view == "inbox":
         view_items = [item for item in all_items if item["_progress_status"]]
@@ -514,7 +654,8 @@ def _growth(
       <h2>Growth / Skills Lab</h2>
       <p>Compare cataloged skills, extensions, and learning paths against saved local inventory and repo evidence.</p>
       <p class="empty"><strong>Detected is not evidenced.</strong> Available, configured, installed, enabled, referenced, and evidenced remain separate facts. Catalog priority and metadata review are not install approval.</p>
-      <p class="empty">Inbox is the personal progress queue from ignored <code>.local-ai-lab/</code> state. No discovery, install, removal, network, model, or subprocess action runs from this G2 page.</p>
+      <p class="empty">Inbox combines personal progress with escaped, untrusted discovery metadata from explicit CLI lookups. Rendering performs no network or subprocess work.</p>
+      <p class="empty">Install/remove is {install_state}; catalog priority, metadata review, or popularity never grants execution authority.</p>
     </section>
     {switcher}
     <section class="grid grid-compact growth-stats">
@@ -524,6 +665,7 @@ def _growth(
       {inbox_stat}
     </section>
     {inventory_summary}
+    {discovery_inbox}
     <section class="growth-catalog-section">
       <div class="section-heading-row">
         <div>
@@ -541,8 +683,18 @@ def _growth(
         catalog_stat=_stat_card("Items in view", len(view_items), "ti-sparkles"),
         detected_stat=_stat_card("Detected", detected_count, "ti-radar"),
         evidenced_stat=_stat_card("Evidenced now", evidenced_count, "ti-checkup-list"),
-        inbox_stat=_stat_card("Progress inbox", counts["inbox"], "ti-list-details"),
+        inbox_stat=_stat_card(
+            "Progress inbox + discovery",
+            counts["inbox"],
+            "ti-list-details",
+        ),
         inventory_summary=_inventory_summary(state, unmatched_count),
+        discovery_inbox=_discovery_inbox(inbox) if view == "inbox" else "",
+        install_state=_text(
+            "enabled only for exact tracked execution policies"
+            if enable_growth_installs
+            else "off by default"
+        ),
         heading=_text(dict(GROWTH_VIEWS)[view]),
         safe_prompt=_metric_label("Safe?", tip_key="growth_safety", auto=False),
         filters=_growth_filters(filters, view),
@@ -558,8 +710,15 @@ def _growth(
                     "Proof + next action",
                     "Risk facts",
                     "Progress",
+                    "Install / remove",
                 ],
-                _growth_rows(page.items, action_token, view),
+                _growth_rows(
+                    page.items,
+                    action_token,
+                    view,
+                    policies,
+                    enable_growth_installs,
+                ),
                 empty_message=empty_message,
                 table_class="growth-table",
                 scroll_controls=True,
@@ -583,12 +742,113 @@ def _growth(
     return _layout("Growth / Skills Lab", "/growth", body)
 
 
+def _growth_preflight_page(result, action_token):
+    plan = result["plan"]
+    risk_rows = "".join(
+        f"<div><dt><code>{_text(field)}</code></dt><dd>{_display(value)}</dd></div>"
+        for field, value in sorted(plan["risk_facts"].items())
+    )
+    typed_confirmation = ""
+    if plan["high_risk"]:
+        typed_confirmation = """
+        <label for="growth-confirm-plugin">Type the exact plugin id <code>{plugin_id}</code></label>
+        <input id="growth-confirm-plugin" name="confirm_target" required autocomplete="off" spellcheck="false">
+        <label><input type="checkbox" name="ack_data_scope" value="yes" required> I acknowledge the exact reviewed data scope: {data_scope}</label>
+        """.format(
+            plugin_id=_display(plan["plugin_id"]),
+            data_scope=_display(plan["data_scope"]),
+        )
+    body = """
+    <section class="panel growth-install-preflight" aria-labelledby="growth-preflight-title">
+      <h2 id="growth-preflight-title">Growth {operation} preflight</h2>
+      <p>This nonce is single-use and expires. Re-checking source and version at confirmation is mandatory.</p>
+      <dl>
+        <div><dt>target</dt><dd>{target}</dd></div>
+        <div><dt>source</dt><dd>{source}</dd></div>
+        <div><dt>marketplace</dt><dd>{marketplace}</dd></div>
+        <div><dt>immutable marketplace revision</dt><dd><code>{revision}</code></dd></div>
+        <div><dt>reviewed version</dt><dd>{reviewed_version}</dd></div>
+        <div><dt>live version at preflight</dt><dd>{live_version}</dd></div>
+        <div><dt>components</dt><dd>{components}</dd></div>
+        <div><dt>auth policy</dt><dd>{auth_policy}</dd></div>
+        <div><dt>data scope</dt><dd>{data_scope}</dd></div>
+        <div><dt>scope</dt><dd>{scope}</dd></div>
+        <div><dt>exact argv list</dt><dd><code>{argv}</code></dd></div>
+        <div><dt>rollback argv list</dt><dd><code>{rollback}</code></dd></div>
+      </dl>
+      <h3>Risk facts</h3>
+      <dl class="growth-risk-facts">{risk_rows}</dl>
+      <form method="post" action="/actions/growth-install-execute" class="growth-install-confirm-form">
+        <input type="hidden" name="token" value="{token}">
+        <input type="hidden" name="nonce" value="{nonce}">
+        <input type="hidden" name="target" value="{target}">
+        <input type="hidden" name="scope" value="{scope}">
+        <input type="hidden" name="operation" value="{operation}">
+        <input type="hidden" name="yes" value="yes">
+        {typed_confirmation}
+        <button type="submit">Confirm {operation}</button>
+      </form>
+      <p><a href="/growth?view=extensions">Cancel and return to Growth</a></p>
+    </section>
+    """.format(
+        operation=_display(plan["operation"]),
+        target=_display(plan["target"]),
+        source=_display(plan["marketplace_source"]),
+        marketplace=_display(plan["marketplace"]),
+        revision=_display(plan["marketplace_revision"]),
+        reviewed_version=_display(plan["reviewed_version"]),
+        live_version=_display(plan["live_version"]),
+        components=_display(" / ".join(plan["components"])),
+        auth_policy=_display(plan["auth_policy"]),
+        data_scope=_display(plan["data_scope"]),
+        scope=_display(plan["scope"]),
+        argv=_display(json.dumps(plan["argv"])),
+        rollback=_display(json.dumps(plan["rollback_argv"])),
+        risk_rows=risk_rows,
+        token=_text(action_token),
+        nonce=_text(result["nonce"]),
+        typed_confirmation=typed_confirmation,
+    )
+    return _layout("Growth Install Preflight", "/growth", body)
+
+
+def _growth_job_status_page(status):
+    stage = status.get("stage")
+    if stage not in GROWTH_JOB_STAGES:
+        stage = "failed"
+    step = status.get("step") if isinstance(status.get("step"), int) else 0
+    total = status.get("total_steps") if isinstance(status.get("total_steps"), int) else 3
+    body = """
+    <section class="panel growth-install-status" role="status">
+      <h2>Growth {operation} job</h2>
+      <p><strong>Stage:</strong> {stage}</p>
+      <p><strong>Step:</strong> {step} of {total}</p>
+      <p><strong>Outcome:</strong> {outcome}</p>
+      <p class="empty">No percentage is estimated. Host output is never rendered.</p>
+      <p><a href="/growth/install/status?job={job_id}">Refresh status</a></p>
+      <p><a href="/growth?view=extensions">Back to Growth</a></p>
+    </section>
+    """.format(
+        operation=_display(status.get("operation")),
+        stage=_display(stage),
+        step=_text(step),
+        total=_text(total),
+        outcome=_display(status.get("outcome")),
+        job_id=_text(status.get("job_id")),
+    )
+    return _layout("Growth Install Status", "/growth", body)
+
+
 __all__ = (
     "DEFAULT_GROWTH_CATALOG_DIR",
+    "DEFAULT_GROWTH_INBOX_PATH",
+    "DEFAULT_GROWTH_POLICY_PATH",
     "DEFAULT_GROWTH_STATE_PATH",
     "GROWTH_PAGE_SIZE",
     "_growth",
     "_growth_filter_values",
+    "_growth_job_status_page",
+    "_growth_preflight_page",
     "_growth_view_switcher",
     "_matches_growth_filters",
 )

@@ -1234,6 +1234,7 @@ def test_import_report_and_dashboard_shell_out(tmp_path, monkeypatch) -> None:
                 "--demo",
                 "--disable-import-actions",
                 "--enable-delete-actions",
+                "--enable-growth-installs",
             ]
         )
         == 0
@@ -1250,6 +1251,7 @@ def test_import_report_and_dashboard_shell_out(tmp_path, monkeypatch) -> None:
     assert "--demo" in dashboard_command
     assert "--disable-import-actions" in dashboard_command
     assert "--enable-delete-actions" in dashboard_command
+    assert "--enable-growth-installs" in dashboard_command
 
 
 def test_unknown_subcommand_exits_nonzero(capsys) -> None:

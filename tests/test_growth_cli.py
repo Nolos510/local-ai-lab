@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from local_ai_lab.cli import lab
+from local_ai_lab.growth import commands as growth_commands
 from local_ai_lab.growth import inventory
 from local_ai_lab.growth.state import load_state
 
@@ -288,3 +289,200 @@ def test_growth_argparse_errors_are_privacy_narrow(
     assert "alice" not in captured.err
     assert "sk-secret" not in captured.err
     assert "/Users" not in captured.err
+
+
+def test_discovery_and_update_commands_never_network_without_lookup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    monkeypatch.setattr(
+        growth_commands,
+        "discover",
+        lambda **_kwargs: pytest.fail("discovery adapter must not run without --lookup"),
+    )
+    monkeypatch.setattr(
+        growth_commands,
+        "check_updates",
+        lambda **_kwargs: pytest.fail("update adapter must not run without --lookup"),
+    )
+    args = common_args(tmp_path)
+    assert lab.main(["growth", "discover", *args, "--source", "github"]) == 2
+    assert lab.main(["growth", "check-updates", *args]) == 2
+    captured = capsys.readouterr()
+    assert captured.err.count("requires explicit --lookup") == 2
+    assert not (tmp_path / ".local-ai-lab" / "growth-inbox-v1.json").exists()
+
+
+def test_discovery_lookup_and_review_cli_use_ignored_inbox_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    inbox = repo_root / ".local-ai-lab" / "growth-inbox-v1.json"
+    calls = []
+
+    def fake_discover(**kwargs):
+        calls.append(kwargs)
+        return {"stored": 2, "skipped": 1, "failures": 0}
+
+    monkeypatch.setattr(growth_commands, "discover", fake_discover)
+    assert (
+        lab.main(
+            [
+                "growth",
+                "discover",
+                "--catalog-dir",
+                str(CATALOG_DIR),
+                "--repo-root",
+                str(repo_root),
+                "--inbox",
+                str(inbox),
+                "--source",
+                "mcp",
+                "--lookup",
+                "--query",
+                "local tools",
+            ]
+        )
+        == 0
+    )
+    assert calls[0]["source"] == "mcp"
+    assert calls[0]["query"] == "local tools"
+    assert calls[0]["inbox_path"] == inbox
+    output = capsys.readouterr().out
+    assert "popularity is context, never approval" in output
+
+    def fake_review(**kwargs):
+        calls.append(kwargs)
+        return {"id": "review-" + "a" * 20}
+
+    monkeypatch.setattr(growth_commands, "create_review_draft", fake_review)
+    inbox_id = "inbox-" + "b" * 20
+    assert (
+        lab.main(
+            [
+                "growth",
+                "review",
+                "--repo-root",
+                str(repo_root),
+                "--inbox",
+                str(inbox),
+                inbox_id,
+            ]
+        )
+        == 0
+    )
+    assert calls[-1]["inbox_id"] == inbox_id
+    assert calls[-1]["inbox_path"] == inbox
+    assert "reviewed repo patch" in capsys.readouterr().out
+
+
+def test_install_cli_requires_operation_consent_and_two_step_nonce(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    calls = []
+
+    class FakeService:
+        def preflight(self, **kwargs):
+            calls.append(("preflight", kwargs))
+            return {
+                "plan": {
+                    "target": "ext-safe",
+                    "source": "https://example.invalid/official",
+                    "reviewed_version": "1.2.3",
+                    "argv": ["codex", "plugin", "add", "safe@official"],
+                },
+                "nonce": "N" * 32,
+                "expires_at": 1234.0,
+                "dry_run": kwargs["dry_run"],
+            }
+
+        def execute(self, **kwargs):
+            calls.append(("execute", kwargs))
+            return {"outcome": "success"}
+
+    monkeypatch.setattr(growth_commands, "_install_service", lambda _args: FakeService())
+    base = ["growth", "install", "--target", "ext-safe", "--scope", "user"]
+    assert lab.main(base) == 2
+    assert calls == []
+    assert "--allow-install" in capsys.readouterr().err
+
+    remove_base = ["growth", "remove", "--target", "ext-safe", "--scope", "user"]
+    assert lab.main(remove_base) == 2
+    assert calls == []
+    assert "--allow-remove" in capsys.readouterr().err
+
+    assert lab.main([*base, "--allow-install", "--dry-run"]) == 0
+    assert calls[-1] == (
+        "preflight",
+        {
+            "target": "ext-safe",
+            "scope": "user",
+            "operation": "install",
+            "dry_run": True,
+        },
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert isinstance(payload["plan"]["argv"], list)
+
+    assert lab.main([*base, "--allow-install", "--yes"]) == 2
+    assert "live preflight nonce" in capsys.readouterr().err
+    assert (
+        lab.main(
+            [
+                *base,
+                "--allow-install",
+                "--yes",
+                "--nonce",
+                "N" * 32,
+                "--confirm-target",
+                "safe",
+                "--ack-data-scope",
+            ]
+        )
+        == 0
+    )
+    assert calls[-1][0] == "execute"
+    assert calls[-1][1]["typed_plugin_id"] == "safe"
+    assert calls[-1][1]["data_scope_ack"] is True
+
+
+def test_install_cli_rejects_private_catalog_or_policy_overrides_before_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    called = False
+
+    def forbidden_service(_args):
+        nonlocal called
+        called = True
+        raise AssertionError("noncanonical mutation state must not reach the service")
+
+    monkeypatch.setattr(growth_commands, "_install_service", forbidden_service)
+    result = lab.main(
+        [
+            "growth",
+            "install",
+            "--target",
+            "ext-semgrep-mcp",
+            "--scope",
+            "user",
+            "--allow-install",
+            "--dry-run",
+            "--repo-root",
+            str(tmp_path),
+            "--catalog-dir",
+            str(tmp_path / "data" / "growth_registry"),
+            "--policy",
+            str(tmp_path / "data" / "growth_registry" / "install-policies.json"),
+        ]
+    )
+    assert result == 2
+    assert called is False
+    assert "canonical reviewed repository state" in capsys.readouterr().err

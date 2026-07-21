@@ -882,6 +882,8 @@ def command_dashboard(args: argparse.Namespace) -> int:
         command.append("--enable-run-tests")
     if args.enable_delete_actions:
         command.append("--enable-delete-actions")
+    if args.enable_growth_installs:
+        command.append("--enable-growth-installs")
     return _run(command)
 
 
@@ -1188,6 +1190,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     dashboard_parser.add_argument("--enable-run-tests", action="store_true")
     dashboard_parser.add_argument("--enable-delete-actions", action="store_true")
+    dashboard_parser.add_argument("--enable-growth-installs", action="store_true")
     dashboard_parser.set_defaults(func=command_dashboard, enable_import_actions=None)
 
     return parser

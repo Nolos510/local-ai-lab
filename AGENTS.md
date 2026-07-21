@@ -36,6 +36,14 @@ which local models and project opportunities are worth keeping.
   dashboard render path, RAG/provider command, radar action, inventory scan, or
   unrelated automation may install, enable, disable, or remove them. Growth G1
   inventory is read-only and grants no install authority.
+- Growth mutation may execute only the reviewed official-host plugin argv
+  shapes (`codex plugin add/remove`, `claude plugin install/uninstall`) from a
+  source/version/scope-pinned policy. Discovery inbox records, popularity,
+  catalog presence, `official: true`, inventory detection, and review drafts
+  never grant that policy. Shell/script/package-manager/direct-MCP fallbacks are
+  forbidden. If immutable host resolution is not proved by the reviewed policy
+  patch, execution stays blocked; an uncertain or unverifiable install must run
+  and verify its allowlisted uninstall rollback.
 
 ## 4. Dashboard, Benchmark, And Radar Rules
 
