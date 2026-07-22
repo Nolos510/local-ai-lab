@@ -44,6 +44,11 @@ which local models and project opportunities are worth keeping.
   forbidden. If immutable host resolution is not proved by the reviewed policy
   patch, execution stays blocked; an uncertain or unverifiable install must run
   and verify its allowlisted uninstall rollback.
+- Skill optimization experiments must use reviewed synthetic tasks in an
+  isolated external checkout. They may not harvest Codex/Claude transcripts,
+  install globally, schedule background runs, or auto-adopt generated edits.
+  Qualification evidence does not grant installation authority; any later host
+  activation requires a separate ADR and the reviewed Growth policy flow.
 
 ## 4. Dashboard, Benchmark, And Radar Rules
 

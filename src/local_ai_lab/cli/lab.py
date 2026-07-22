@@ -44,6 +44,7 @@ from local_ai_lab.cli.quant_advisor import (
     write_markdown as write_quant_markdown,
 )
 from local_ai_lab.growth import commands as growth_commands
+from local_ai_lab.skills_lab import commands as skills_commands
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_REGISTRY = REPO_ROOT / "data" / "model_registry" / "candidates.csv"
@@ -956,6 +957,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     growth_commands.add_parser(subparsers)
+    skills_commands.add_parser(subparsers)
 
     status_parser = subparsers.add_parser("status", help="Show local lab loop status.")
     status_parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)

@@ -50,6 +50,14 @@ radar candidate
 This lane provides the local model dashboard, candidate registry, project
 radar, benchmark harness, scoring artifacts, and lab workflow views.
 
+### Skills Lab Qualification Pilot
+
+The repo can inspect sanitized, repeatable evidence for experimental skill
+optimizers through `uv run ai-lab skills status`. The current SkillOpt pilot is
+review-only and **not qualified for Codex, Claude, or local autonomous use**.
+It does not install plugins, read agent transcripts, schedule runs, or adopt
+generated edits. See [`docs/product/skillopt-pilot.md`](docs/product/skillopt-pilot.md).
+
 ## Repository Map
 
 ```text
@@ -62,6 +70,7 @@ data/model_registry/           Approved model candidate registry
 data/project_registry/         GitHub/project opportunity registry
 data/eval_results/             Benchmark artifacts and dashboard CSV exports
 skills/                        Reusable AI workflow skills
+data/skills_lab/               Sanitized skill-optimizer qualification evidence
 docs/                          Architecture, roadmap, lab notes, evidence
 tests/                         Local RAG/provider app tests
 scripts/                       Smoke checks and utility scripts

@@ -1,0 +1,47 @@
+{
+  "schema_version": "skillopt-pilot-evidence-v1",
+  "tool": {
+    "name": "SkillOpt",
+    "repository": "https://github.com/microsoft/SkillOpt",
+    "pinned_commit": "61735e3922efc2b90c6d6cab561e62e98452ca90"
+  },
+  "policy": {
+    "gate_mode": "hard",
+    "task_source": "synthetic_reviewed",
+    "untouched_test": true,
+    "auto_adopt": false,
+    "transcript_harvest": false
+  },
+  "trials": [
+    {
+      "trial_id": "fresh-repeat-1",
+      "accepted": false,
+      "validation_before": 0.0,
+      "validation_after": 0.0,
+      "test_hard": 0.0,
+      "test_soft": 0.083,
+      "edit_count": 0,
+      "backend_error": false
+    },
+    {
+      "trial_id": "fresh-repeat-2",
+      "accepted": false,
+      "validation_before": 0.0,
+      "validation_after": 0.0,
+      "test_hard": 0.0,
+      "test_soft": 0.083,
+      "edit_count": 0,
+      "backend_error": false
+    },
+    {
+      "trial_id": "fresh-repeat-3",
+      "accepted": true,
+      "validation_before": 0.0,
+      "validation_after": 0.25,
+      "test_hard": 0.75,
+      "test_soft": 0.917,
+      "edit_count": 2,
+      "backend_error": false
+    }
+  ]
+}
